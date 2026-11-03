@@ -61,7 +61,7 @@ Sign-off: rastadev (Lane B), 2026-11-03
 
 ## Phase 1: Contract skeleton and key sandbox
 
-Status: Phase 1 code merged 2026-11-03, Lane A gate passed, Lane B scaffold audited under section 2.6, blocking receipts finding fixed and verified live. Lane A signed 2026-11-03. Lane B sign-off pending, awaiting rastadev.
+Status: Phase 1 closed 2026-11-03. Lane A gate passed, Lane B scaffold audited under section 2.6, blocking receipts finding fixed and verified live, both lanes signed.
 
 Evidence:
 - Lane A: Master 7a85b7b, contract skeleton and key sandbox, 4 files, 5210 insertions, contract/Cargo.toml, Cargo.lock, src/lib.rs, tests/test_skeleton.rs. Unit 6/6, sandbox 1/1, fmt clean, clippy warnings denied clean, everyday reviews GLM triage itemized, Gemini NO FINDINGS, DeepSeek 6 findings verified and fixed or recorded, Sol gate PASS itemized.
@@ -75,4 +75,4 @@ Evidence:
 - Merge: Master 522442f, Merge lane-b: Lane B Phase 1 scaffold, audited, 8 files, 310 insertions, clean merge.
 
 Sign-off: Johnson (Lane A), 2026-11-03
-Sign-off: rastadev (Lane B), pending
+Sign-off: rastadev (Lane B), 2026-11-03
