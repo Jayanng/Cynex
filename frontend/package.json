@@ -3,9 +3,21 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Cynex frontend scaffold, Phase P only, no UI code yet",
+  "description": "Cynex frontend, Phase 0: TypeScript schema/digest mirror of the frozen contract API (cynex-v1.0.0)",
   "dependencies": {
     "near-api-js": "^7.0.0",
     "near-kit": "^0.20.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^26.6.6",
+    "jest": "^30.5.2",
+    "ts-jest": "^29.4.15",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "conformance": "tsc && node dist/scripts/conformance.js",
+    "typecheck": "tsc --noEmit",
+    "jest": "NODE_OPTIONS=--experimental-vm-modules npx jest src/cynex-schema.test.ts --runInBand"
   }
 }
