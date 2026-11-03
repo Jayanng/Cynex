@@ -1,14 +1,13 @@
 /**
  * Cynex schema — Lane B TypeScript mirror, Phase 0 DRAFT.
  *
- * Field lists are taken from build plan §3.1.1 / §3.1.8 / §3.1.10.
- * Field types that the plan states explicitly are encoded here:
- * token amounts are u128 base units (BigInt), nonce / expiry /
- * policy version / receipt index / timestamp are u64 (BigInt).
- * Everything else that the Rust freeze has not yet published
- * (exact Rust field order, optionality of pending_* fields, and the
- * exact TrustMode enum shape) is marked DRAFT and must be confirmed
- * against schemas/cynex-v1.0.0/ before Phase 0 sign-off.
+ * Field lists and types mirror the frozen schema in
+ * docs/contract-api.md (Phase 0, commit 5eee26a) and Rust
+ * schemas/cynex-v1.0.0/src/lib.rs. Token amounts are u128 base units
+ * (BigInt), nonce / expiry / policy version / receipt index /
+ * timestamp are u64 (BigInt). Policy version starts at 0 and
+ * increments only on an owner-approved policy change, never on
+ * freeze/unfreeze (frozen contract-api correction to the plan).
  */
 
 export type EvidenceResult = "ALLOWED" | "WARN" | "BLOCK";
@@ -37,12 +36,7 @@ export type ObligationState =
   | "PAID"
   | "RECONCILIATION_REQUIRED";
 
-/**
- * Trust modes, plan §3.1.8. DRAFT: the plan labels these modes but
- * does not give a Rust enum definition; the freeze must confirm
- * whether these are the TrustMode enum variants or a separate
- * attestation label.
- */
+/** Trust modes, frozen in docs/contract-api.md. FIXTURE is a test label only. */
 export type TrustMode =
   | "ON_CHAIN_ATTESTATION_VERIFIED"
   | "OUTLAYER_CALLBACK"
@@ -59,14 +53,20 @@ export interface Policy {
   spent: bigint;
   /** u128 base units */
   reserved: bigint;
+  /** u128 base units, credited by ft_on_transfer, never vault balance */
+  funded: bigint;
   frozen: boolean;
-  /** u64 */
+  /** u64, starts 0 */
   version: bigint;
+  /** account id or null; null means owner-only for timeout/resolution */
+  reconciler: string | null;
 }
 
 export interface Obligation {
   obligation_id: string;
   policy_id: string;
+  /** u64, copied from the policy version at creation */
+  policy_version: bigint;
   recipient: string;
   /** u128 base units */
   amount: bigint;
@@ -75,13 +75,21 @@ export interface Obligation {
   evidence_hash: string;
   /** u64, nanoseconds */
   expires_at_ns: bigint;
-  /** u64, per-obligation, consumed on first settle */
+  /** u64, per-obligation; locked while in_flight, consumed on PAID */
   nonce: bigint;
   state: ObligationState;
-  /** DRAFT optionality: null when no evidence request is open. */
+  /** true only while a transfer promise is outstanding */
+  in_flight: boolean;
+  /** u64, starts 0, increments by 1 on each dispatch */
+  transfer_attempt: bigint;
+  /** u64 or null, set only on dispatch, cleared on callback/resolution */
+  transfer_dispatched_at_ns: bigint | null;
+  /** null when no evidence request is open */
   pending_request_id: string | null;
-  /** DRAFT optionality: settlement digest (§3.1.3), null when none open. */
+  /** settlement digest, 64 hex chars, or null when none open */
   pending_digest: string | null;
+  /** u64 or null, set only by request_evidence */
+  evidence_requested_at_ns: bigint | null;
 }
 
 export interface Receipt {

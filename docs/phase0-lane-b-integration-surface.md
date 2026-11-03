@@ -1,9 +1,7 @@
-# Lane B integration surface - Phase 0 DRAFT (not frozen)
+# Lane B integration surface - Phase 0 - frozen per docs/contract-api.md (5eee26a)
 
-Status: DRAFT. This file records the Lane B integration surface as
-specified in build plan §3.1.4 / §3.1.10 / §3.1.11, pending Jayaang's
-Rust freeze (schemas/cynex-v1.0.0/, docs/contract-api.md). Anything
-the freeze has not yet published is marked TBD and is NOT invented here.
+Status: FROZEN (except gas, see below). This file records the Lane B integration surface as
+frozen in docs/contract-api.md (Phase 0, 5eee26a).
 
 ## Views consumed (plan §3.1.4, caller: anyone)
 - get_policy
@@ -36,12 +34,17 @@ the freeze has not yet published is marked TBD and is NOT invented here.
   in the allowlisted verifier set, NOT #[private]; binds request_id +
   digest + expiry.
 
-## TBD at freeze (do not guess)
-- Timeout constants: TRANSFER_TIMEOUT_NS, EVIDENCE_TIMEOUT_NS
-  (plan §3.1.2: measured/chosen in Phase 0, then frozen).
-- Static gas values for ft_transfer and its callback (plan §3.1.5).
-- Funding path chosen in Phase 0: ft_on_transfer via ft_transfer_call
-  only, or plain ft_transfer (plan §3.1.4) — the other path must not
-  be claimed.
-- Exact Rust field order / optionality for pending_request_id and
-  pending_digest, and the exact TrustMode enum shape (see schema.ts).
+## Frozen at Phase 0 (docs/contract-api.md)
+- Timeout constants: TRANSFER_TIMEOUT_NS = 600000000000 (10 minutes),
+  EVIDENCE_TIMEOUT_NS = 3600000000000 (1 hour).
+- Funding path: ft_transfer_call through ft_on_transfer only, msg JSON
+  with a fund_policy field naming an existing policy. Plain ft_transfer
+  is explicitly NOT a funding path and must not be claimed as one.
+- Static gas: TBD, to be measured in Phase 2, and that TBD blocks
+  Phase 2 sign-off until filled. No gas number is invented here.
+- Threat model: docs/threat-model.md is now "Phase 0 final" (Jayaang,
+  5eee26a); Lane B accepts that final version, it is not re-drafted here.
+- Schema: Policy now includes funded (u128) and reconciler (or null);
+  Obligation includes policy_version, in_flight, transfer_attempt,
+  transfer_dispatched_at_ns, evidence_requested_at_ns; version starts
+  at 0 and does not bump on freeze/unfreeze (see schema.ts).

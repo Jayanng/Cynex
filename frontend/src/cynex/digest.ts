@@ -1,26 +1,23 @@
 /**
  * Cynex settlement digest — Lane B TypeScript mirror, Phase 0 DRAFT.
  *
- * Implements build plan §3.1.3 exactly as written there. This is NOT the
- * frozen Rust schema: Jayaang has not yet landed schemas/cynex-v1.0.0/ or
- * docs/contract-api.md on Master, so this mirror must be cross-checked
- * against his Rust implementation before Phase 0 can be signed. If Rust
- * disagrees on any encoding choice below, the freeze must resolve it and
- * this file must be updated — a hash mismatch is a loud failure, not a
- * detail to paper over.
+ * Implements the frozen settlement digest in docs/contract-api.md
+ * (Phase 0, commit 5eee26a) and Rust schemas/cynex-v1.0.0/src/lib.rs.
+ * Conformance is checked against the frozen 6 vectors in
+ * tests/test-vectors/vectors.json, not against Lane B draft vectors.
  *
- * Encoding (§3.1.3):
+ * Encoding (frozen in docs/contract-api.md, Rust schemas/cynex-v1.0.0):
  *   domain || network_id || vault_id || policy_id || policy_version ||
  *   obligation_id || token_id || recipient || amount || evidence_type ||
  *   evidence_hash || nonce || expiry
- *   - domain = "CYNEX_SETTLEMENT_V1" (ASCII), network_id = "testnet".
- *   - Variable strings (including domain and network_id) are encoded as
- *     u32 big-endian length prefix + UTF-8 bytes. This is the reading of
- *     §3.1.3 that treats domain/network_id as strings under the general
- *     variable-field rule; evidence_hash is the one stated exception,
- *     encoded as raw 32 bytes with NO length prefix. If Rust encodes
- *     domain/network_id as raw bytes instead, the 6 vectors will differ
- *     and that must be settled at freeze time.
+ *   - domain = "CYNEX_SETTLEMENT_V1", encoded as RAW ASCII bytes, with
+ *     NO length prefix. This was the one encoding choice the plan left
+ *     ambiguous and the Rust freeze settled: an earlier Lane B draft
+ *     length-prefixed the domain and therefore did NOT match Rust.
+ *     That draft is superseded; this version matches Rust byte for byte.
+ *   - network_id = "testnet", and every other string field, is encoded
+ *     as u32 big-endian length prefix + UTF-8 bytes.
+ *   - evidence_hash is raw 32 bytes, NO length prefix.
  *   - Integers are fixed width, big-endian: u64 for policy_version,
  *     nonce and expiry (expires_at_ns); u128 for amount.
  *   - SHA-256 over the concatenation.
@@ -89,7 +86,7 @@ function evidenceHashBytes(hex: string): Buffer {
 
 export function encodeSettlementDigest(input: SettlementDigestInput): Buffer {
   return Buffer.concat([
-    lengthPrefixed(SETTLEMENT_DOMAIN),
+    Buffer.from(SETTLEMENT_DOMAIN, "utf8"),
     lengthPrefixed(SETTLEMENT_NETWORK),
     lengthPrefixed(input.vault_id),
     lengthPrefixed(input.policy_id),

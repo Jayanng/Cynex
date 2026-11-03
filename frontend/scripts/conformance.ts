@@ -1,27 +1,27 @@
 /**
- * Cynex conformance — Lane B, Phase 0 DRAFT.
+ * Cynex conformance — Lane B, Phase 0.
  *
- * Reads tests/test-vectors/vectors.json (exactly 6 vectors), recomputes
- * each settlement digest with the TypeScript mirror, and prints
- * "name <sha256>" per vector. Exit codes follow the plan §Phase 0
- * loud-failure rule:
- *   - any mismatch: print "expected <hex> got <hex>" for that vector
- *     and exit non-zero;
+ * Reads the FROZEN tests/test-vectors/vectors.json (exactly 6 vectors,
+ * cynex-v1.0.0, commit 5eee26a), recomputes each settlement digest with
+ * the TypeScript mirror, and prints "id <sha256>" per vector.
+ * Exit codes follow the plan Phase 0 loud-failure rule:
+ *   - any mismatch: print "expected <hex> got <hex>" and exit non-zero;
  *   - a deliberate single-byte change (amount + 1 on vector 0) must
  *     change the hash; if it does not, exit non-zero;
  *   - passing a JS Number for a u64/u128 field must throw; if it
  *     does not, exit non-zero.
- * Usage (after tsc): node dist/scripts/conformance.js
- * The plan names this "npx jest conformance"; this repo uses the
- * Node runner + tsc for Phase 0 DRAFT to avoid adding a test framework
- * before the freeze. The check itself (same 6 hashes, loud failure)
- * is identical, and a jest wrapper can be added at freeze time.
+ * Usage: npm run conformance  (tsc && node dist/scripts/conformance.js)
+ * The frozen contract-api.md also names frontend/src/cynex-schema.ts
+ * and a Jest test; cynex-schema.ts re-exports this mirror, and the
+ * Jest test is provided alongside this runner (see cynex-schema.test.ts).
+ * This Node runner is the check that is actually run and reported here.
  */
 import { readFileSync } from "node:fs";
 import { settlementDigest } from "../src/cynex/digest.js";
 
 interface VectorJson {
-  name: string;
+  id: string;
+  network_id: string;
   vault_id: string;
   policy_id: string;
   policy_version: string;
@@ -30,10 +30,10 @@ interface VectorJson {
   recipient: string;
   amount: string;
   evidence_type: string;
-  evidence_hash: string;
+  evidence_hash_hex: string;
   nonce: string;
-  expiry: string;
-  settlement_digest: string;
+  expiry_ns: string;
+  expected_sha256: string;
 }
 
 const path = new URL("../../../tests/test-vectors/vectors.json", import.meta.url);
@@ -45,6 +45,11 @@ if (data.vectors.length !== 6) {
 
 let failed = false;
 for (const v of data.vectors) {
+  if (v.network_id !== "testnet") {
+    console.error(`${v.id}: network_id must be testnet, got ${v.network_id}`);
+    failed = true;
+    continue;
+  }
   const got = settlementDigest({
     vault_id: v.vault_id,
     policy_id: v.policy_id,
@@ -54,18 +59,17 @@ for (const v of data.vectors) {
     recipient: v.recipient,
     amount: BigInt(v.amount),
     evidence_type: v.evidence_type,
-    evidence_hash: v.evidence_hash,
+    evidence_hash: v.evidence_hash_hex,
     nonce: BigInt(v.nonce),
-    expiry: BigInt(v.expiry),
+    expiry: BigInt(v.expiry_ns),
   });
-  console.log(`${v.name} ${got}`);
-  if (got !== v.settlement_digest) {
-    console.error(`${v.name}: expected ${v.settlement_digest} got ${got}`);
+  console.log(`${v.id} ${got}`);
+  if (got !== v.expected_sha256) {
+    console.error(`${v.id}: expected ${v.expected_sha256} got ${got}`);
     failed = true;
   }
 }
 
-// Single-byte-change sensitivity: amount + 1 must change the hash.
 const first = data.vectors[0];
 const tampered = settlementDigest({
   vault_id: first.vault_id,
@@ -76,18 +80,17 @@ const tampered = settlementDigest({
   recipient: first.recipient,
   amount: BigInt(first.amount) + 1n,
   evidence_type: first.evidence_type,
-  evidence_hash: first.evidence_hash,
+  evidence_hash: first.evidence_hash_hex,
   nonce: BigInt(first.nonce),
-  expiry: BigInt(first.expiry),
+  expiry: BigInt(first.expiry_ns),
 });
-if (tampered === first.settlement_digest) {
+if (tampered === first.expected_sha256) {
   console.error("tamper check failed: amount + 1 did not change the digest");
   failed = true;
 } else {
-  console.log(`tamper check ok: ${first.name} amount+1 -> ${tampered}`);
+  console.log(`tamper check ok: ${first.id} amount+1 -> ${tampered}`);
 }
 
-// BigInt enforcement: a Number amount must throw, not silently lose precision.
 try {
   settlementDigest({
     vault_id: first.vault_id,
@@ -96,12 +99,11 @@ try {
     obligation_id: first.obligation_id,
     token_id: first.token_id,
     recipient: first.recipient,
-    // Deliberately wrong type, to prove the mirror rejects it.
     amount: 1000000 as unknown as bigint,
     evidence_type: first.evidence_type,
-    evidence_hash: first.evidence_hash,
+    evidence_hash: first.evidence_hash_hex,
     nonce: BigInt(first.nonce),
-    expiry: BigInt(first.expiry),
+    expiry: BigInt(first.expiry_ns),
   });
   console.error("BigInt check failed: Number amount was accepted");
   failed = true;
