@@ -132,3 +132,17 @@ TypeScript conformance: frontend/src/cynex-schema.ts mirrors this schema with Bi
 ## What this freeze does not decide
 
 OutLayer callback fields are not frozen here, because they are a Phase 8 spike and are not on the critical path. The blocklist source URL is not frozen here, because it is a Reputation phase decision and must be named there with provenance, never as a bare claim here. The mainnet payout account is not frozen here and must never be invented, it is supplied by the team lead before submission. Exact static gas is TBD above, and blocks Phase 2 sign off until measured.
+
+
+## Sign-off
+
+Sign-off: ________________ (Lane A, Johnson)
+Sign-off: rastadev (Lane B), 2026-11-03
+
+Lane B signature attests that the TypeScript mirror in
+frontend/src/cynex-schema.ts reproduces the frozen 6 vectors in
+tests/test-vectors/vectors.json, with outputs recorded in
+docs/evidence/phase0/conformance-outputs.md. Lane A signature and
+the Lane B acceptance audit under section 2.6 are still required
+to close Phase 0. No frozen content above was changed by this
+sign-off; only this section was added.

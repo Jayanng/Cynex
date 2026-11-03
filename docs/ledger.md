@@ -37,3 +37,24 @@ Evidence, captured live 2026-11-03 on jayanng:
 
 Sign-off: Johnson (Lane A), 2026-11-03
 Sign-off: rastadev (Lane B), 2026-11-03
+
+
+## Phase 0: Schema and interface freeze
+
+Status: Lane B mirror complete and Lane B signed 2026-11-03.
+Awaiting Lane A signature and the Lane B acceptance audit under
+section 2.6 to close Phase 0.
+
+Evidence:
+- Freeze: Master 5eee26a, schemas/cynex-v1.0.0, docs/contract-api.md,
+  tests/test-vectors/vectors.json (exactly 6 vectors), threat model final.
+- Lane B mirror: frontend/src/cynex-schema.ts and frontend/src/cynex/
+  (digest, schema, receipt, api), frontend/src/cynex-schema.test.ts,
+  docs/phase0-lane-b-integration-surface.md, lane-b 81f6987.
+- Conformance outputs: docs/evidence/phase0/conformance-outputs.md
+  (cargo test ok, TypeScript conformance 6 hashes identical to Rust,
+  Jest 9 passed, receipt hash matches Rust test vector).
+- Lane B sign-off on docs/contract-api.md: this commit, Lane B only.
+
+Sign-off: ________________ (Lane A, Johnson)
+Sign-off: rastadev (Lane B), 2026-11-03
