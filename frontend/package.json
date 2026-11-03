@@ -3,9 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Cynex frontend scaffold, Phase P only, no UI code yet",
+  "description": "Cynex frontend scaffold, Phase 0 DRAFT: TypeScript schema/digest mirror (pending Rust freeze), no UI code yet",
   "dependencies": {
     "near-api-js": "^7.0.0",
     "near-kit": "^0.20.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "conformance": "tsc && node dist/scripts/conformance.js",
+    "typecheck": "tsc --noEmit"
   }
 }
