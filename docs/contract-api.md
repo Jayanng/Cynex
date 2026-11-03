@@ -136,13 +136,13 @@ OutLayer callback fields are not frozen here, because they are a Phase 8 spike a
 
 ## Sign-off
 
-Sign-off: ________________ (Lane A, Johnson)
+Sign-off: Johnson (Lane A), 2026-11-03
 Sign-off: rastadev (Lane B), 2026-11-03
 
 Lane B signature attests that the TypeScript mirror in
 frontend/src/cynex-schema.ts reproduces the frozen 6 vectors in
 tests/test-vectors/vectors.json, with outputs recorded in
 docs/evidence/phase0/conformance-outputs.md. Lane A signature and
-the Lane B acceptance audit under section 2.6 are still required
-to close Phase 0. No frozen content above was changed by this
+the Lane B acceptance audit under section 2.6 are now complete,
+and Phase 0 is closed with both lanes signed. No frozen content above was changed by this
 sign-off; only this section was added.

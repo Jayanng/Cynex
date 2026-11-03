@@ -41,9 +41,7 @@ Sign-off: rastadev (Lane B), 2026-11-03
 
 ## Phase 0: Schema and interface freeze
 
-Status: Lane B mirror complete and Lane B signed 2026-11-03.
-Awaiting Lane A signature and the Lane B acceptance audit under
-section 2.6 to close Phase 0.
+Status: Phase 0 closed 2026-11-03. Lane A gate passed with itemized Sol and Gemini verification on NEAR grounds, Lane B mirror audited under section 2.6 and merged as 38e0033, both lanes signed.
 
 Evidence:
 - Freeze: Master 5eee26a, schemas/cynex-v1.0.0, docs/contract-api.md,
@@ -54,7 +52,8 @@ Evidence:
 - Conformance outputs: docs/evidence/phase0/conformance-outputs.md
   (cargo test ok, TypeScript conformance 6 hashes identical to Rust,
   Jest 9 passed, receipt hash matches Rust test vector).
-- Lane B sign-off on docs/contract-api.md: this commit, Lane B only.
+- Lane B sign-off on docs/contract-api.md: Lane B only, then Lane A signed 2026-11-03.
+- Lane B acceptance audit, 2026-11-03: TypeScript digest and Jest reproduced live on jayanng, 6 hashes identical to Rust, Jest 9/9, receipt hash matches, frozen files unchanged except sign-off, one low hex note recorded, merged in 38e0033.
 
-Sign-off: ________________ (Lane A, Johnson)
+Sign-off: Johnson (Lane A), 2026-11-03
 Sign-off: rastadev (Lane B), 2026-11-03
