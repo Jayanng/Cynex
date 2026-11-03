@@ -44,8 +44,9 @@ export class CynexClient {
     return this.view("balances", { policy_id });
   }
 
+    // NEAR JSON u64 is a number, not a string. Sending strings failed live with: invalid type: string "0", expected u64. Pagination values are small, so Number() loses no precision here.
   receipts(start: bigint, limit: bigint): Promise<unknown> {
-    return this.view("receipts", { start: start.toString(), limit: limit.toString() });
+    return this.view("receipts", { start: Number(start), limit: Number(limit) });
   }
 
   state(): Promise<unknown> {
