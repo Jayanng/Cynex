@@ -6,8 +6,7 @@ rows are signed only after Johnson's own Lane B acceptance audit.
 
 ## Phase P: Setup and verification
 
-Status: setup work done on jayanng, awaiting sign-off by both lanes.
-Not yet committed. Not yet pushed.
+Status: setup work done on jayanng and on rastadev (Lane B supplementary evidence, merged). Lane A gate passed, Lane B audit passed, awaiting Lane B signature to close.
 
 Evidence, captured live 2026-11-03 on jayanng:
 - Toolchain: rustc 1.99.0, cargo 1.99.0, wasm32-unknown-unknown
@@ -23,11 +22,18 @@ Evidence, captured live 2026-11-03 on jayanng:
   outlayer.testnet code_hash 5waWVnt6g3FZfjR6vfYXZzpAi3sZdFy8cK2sLz4EJQDt,
   estimate_execution_cost 7000100000000000000000 yocto
   (0.0070001 NEAR), get_execution_cost returns MethodNotFound.
-- Repo: https://github.com/Jayanng/Cynex.git, public, created
+- Repo: https://github.com/Jayanng/Cynex.git, private since 2026-11-03, created
   2026-11-01, cloned empty to /data/workspace/Cynex,
-  branch Master, no commits yet at scaffold time.
+  branch Master. Phase P scaffold committed as c1cbf0f, Lane B evidence
+  merged as cd05961 (lane-b e0f7d36 plus correction db6427e).
 - Evidence summaries: docs/evidence/prep/lane-a-toolchain.md,
-  docs/evidence/prep/lane-b-toolchain.md, docs/evidence/prep/live-facts.md.
+  docs/evidence/prep/lane-b-toolchain.md, docs/evidence/prep/live-facts.md,
+  docs/evidence/prep/lane-b-instabox-phase-p.md (Lane B, rastadev, merged).
+- Lane A gate, 2026-11-03: GLM, Gemini, DeepSeek and Sol reviews passed,
+  findings verified, see gate log held outside the repo to avoid changing the gated diff.
+- Lane B acceptance audit, 2026-11-03: live facts and imports reproduced on
+  jayanng, skills matched, rastadev runs recorded as unproven but consistent,
+  pre-push scaffold note corrected in db6427e, merged in cd05961.
 
-Sign-off: ________________ (Lane A, Johnson)
-Sign-off: ________________ (Lane B, teammate)
+Sign-off: Johnson (Lane A), 2026-11-03
+Sign-off: ________________ (Lane B, teammate, signature still required to close Phase P)
