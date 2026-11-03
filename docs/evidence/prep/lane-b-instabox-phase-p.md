@@ -1,3 +1,5 @@
+> Correction, 2026-11-03, by Lane A review: the Scaffold section below describes the pre-push state. The lane-b branch was pushed to origin on 2026-11-03, after that section was written, and Master at that time was c1cbf0f. The lines saying the branch was not pushed and the remote was still empty are superseded by the push itself. The evidence above them is unchanged.
+
 # Lane B Phase P evidence — Instabox machine verification (supplementary)
 
 This file supplements, and does not replace, docs/evidence/prep/lane-b-toolchain.md
