@@ -317,7 +317,13 @@ impl Contract {
         })
     }
 
-    pub fn receipts(&self, _start: u64, _limit: u64) -> Vec<Receipt> {
+    pub fn receipts(&self, start: u64, limit: u64) -> Vec<Receipt> {
+        // Phase 1 skeleton: no receipts can exist yet, so this is an empty page
+        // for any start and limit. The parameter names must be start and limit,
+        // exactly as frozen in docs/contract-api.md, because NEAR JSON calls
+        // use parameter names, not positions. Renaming them to _start/_limit
+        // broke the frozen client call, which sends {start, limit}.
+        let _ = (start, limit);
         Vec::new()
     }
 
@@ -440,11 +446,29 @@ mod tests {
     #[test]
     fn request_evidence_digest_matches_frozen_basic_vector() {
         let mut c = setup_owner();
-        c.create_policy("policy-001".to_string(), "usdc.fakes.testnet".parse().unwrap(), 1000000);
-        c.create_obligation("obl-001".to_string(), "policy-001".to_string(), "acme-supplies.testnet".parse().unwrap(), 250000000, "delivery-note".to_string(), hex32("686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38"), 1767225600000000000, 1);
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        c.create_obligation(
+            "obl-001".to_string(),
+            "policy-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            250000000,
+            "delivery-note".to_string(),
+            hex32("686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38"),
+            1767225600000000000,
+            1,
+        );
         c.request_evidence("obl-001".to_string());
         let o = c.get_obligation("obl-001".to_string()).unwrap();
-        assert_eq!(o.pending_digest, Some(hex32("0524986a7f7d5e3a332f3a2ec99c1847aa54ae48cad9a9aec1a8e5b6af043ba6")));
+        assert_eq!(
+            o.pending_digest,
+            Some(hex32(
+                "0524986a7f7d5e3a332f3a2ec99c1847aa54ae48cad9a9aec1a8e5b6af043ba6"
+            ))
+        );
     }
 
     #[test]
