@@ -1,0 +1,11 @@
+{
+  "name": "cynex-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Cynex frontend scaffold, Phase P only, no UI code yet",
+  "dependencies": {
+    "near-api-js": "^7.0.0",
+    "near-kit": "^0.20.0"
+  }
+}
