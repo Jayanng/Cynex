@@ -6,7 +6,7 @@ rows are signed only after Johnson's own Lane B acceptance audit.
 
 ## Phase P: Setup and verification
 
-Status: setup work done on jayanng and on rastadev (Lane B supplementary evidence, merged). Lane A gate passed, Lane B audit passed, awaiting Lane B signature to close.
+Status: Phase P closed 2026-11-03. Setup work done on jayanng and on rastadev (Lane B supplementary evidence, merged). Lane A gate passed, Lane B audit passed, both lanes signed.
 
 Evidence, captured live 2026-11-03 on jayanng:
 - Toolchain: rustc 1.99.0, cargo 1.99.0, wasm32-unknown-unknown
@@ -36,4 +36,4 @@ Evidence, captured live 2026-11-03 on jayanng:
   pre-push scaffold note corrected in db6427e, merged in cd05961.
 
 Sign-off: Johnson (Lane A), 2026-11-03
-Sign-off: ________________ (Lane B, teammate, signature still required to close Phase P)
+Sign-off: rastadev (Lane B), 2026-11-03
