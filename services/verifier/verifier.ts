@@ -30,6 +30,12 @@ export function verifyEvidence(
   if (evidenceType !== obligation.evidence_type) {
     reasons.push("EVIDENCE_MISMATCH");
   }
+  // The supplied evidence hash must equal the hash recorded on
+  // the obligation. A valid format wrong hash is BLOCK, not
+  // ALLOWED, even if type and expiry pass.
+  if (evidenceHash.toLowerCase() !== obligation.evidence_hash.toLowerCase()) {
+    reasons.push("EVIDENCE_MISMATCH");
+  }
   if (nowNs > obligation.expires_at_ns) {
     reasons.push("OBLIGATION_EXPIRED");
   }

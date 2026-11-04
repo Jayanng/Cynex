@@ -3,7 +3,7 @@
  *
  * The harness runs the real contract code, never a mock.
  * It looks for the Lane A contract wasm at
- * contract/target/wasm32-unknown-unknown/release/cynex_vault.wasm
+ * contract/target/near/cynex_vault.wasm
  * (or CYNEX_WASM_PATH). If that file does not exist, the
  * harness exits with code 2 and a PENDING message: the
  * contract skeleton has not landed yet, so there is nothing
@@ -16,7 +16,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 
 export const DEFAULT_WASM_PATH =
-  "contract/target/wasm32-unknown-unknown/release/cynex_vault.wasm";
+  "contract/target/near/cynex_vault.wasm";
 
 export function wasmPath(): string {
   return process.env.CYNEX_WASM_PATH ?? DEFAULT_WASM_PATH;
@@ -26,7 +26,7 @@ export function main(): number {
   const path = wasmPath();
   if (!existsSync(path)) {
     console.log("PENDING: contract wasm not found at " + path);
-    console.log("Lane A Phase 1 skeleton has not landed yet. No mock run was made.");
+    console.log("Contract source is present but no built wasm was found (cargo-near is not installed on this machine). No mock run was made.");
     return 2;
   }
   const hash = createHash("sha256").update(readFileSync(path)).digest("hex");
