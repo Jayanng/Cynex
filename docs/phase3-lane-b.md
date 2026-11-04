@@ -30,3 +30,8 @@ Honest gaps:
 Checks: scaffold typecheck exit 0, frontend typecheck exit 0, conformance 6/6, Jest 15/15 (9 schema plus 6 states), verify-live six receipts all true.
 
 Audit correction (Phase 3 audit, Jayaang side, applied on lane-b): WARN_PENDING next now names approve_warning (owner) to READY, then settlement proceeds from READY. Verified against contract lib.rs (approve_warning asserts owner, requires WARN_PENDING, moves to READY) and contract-api.md (approve_warning: caller owner, moves WARN_PENDING to READY). The previous text said only that the owner must resolve the state, without naming the method.
+
+
+## Phase 3 close confirmation (Lane B)
+
+The Phase 3 contract-api close corrections draft dated 2026-11-04, plus its gas addendum, was verified line by line against Master contract lib.rs and the frozen API, and confirmed by Lane B. Gas is carried over from Phase 2 pending re-measurement, not claimed unchanged. The draft is not yet applied to docs/contract-api.md; application happens at Phase 3 close on Master. Lane B signed in docs/ledger.md on 2026-11-04; Lane A signature, draft application, and merge remain outstanding, so Phase 3 is not closed by this signature.
