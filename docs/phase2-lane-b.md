@@ -173,3 +173,34 @@ doc was changed by Lane B in this round.
   two-receipt chain, merge of lane-b to Master, joint
   gas recording in contract-api.md, then a Phase 2
   ledger row signed by both lanes.
+
+
+## Re-audit finding, 2026-11-04: console stale reads (BLOCKING, fixed)
+
+Re-audit result: verify-live exact timestamps, verifier hash check, and sandbox wasm path all pass live. Verify-live on the live two-receipt chain: both receipts verified true, exit 0. Receipt 1 prev_hash matches the hash computed independently from receipt 0 with its exact timestamp.
+
+Blocking finding, new failure mode, not the old one: the console ran live twice, fresh obligations obl-003 and obl-004, 250000000 each to acme-supplies.testnet, policy-001. Both times create and request_evidence succeeded on chain, but the immediate read after request_evidence showed CREATED with pending_request_id null, so the console aborted with exit 1. A read minutes later showed EVIDENCE_PENDING with pending_request_id obl-003-3 and obl-004-4. Systematic, twice, not a one-off lag.
+
+Fix, agent/console.ts only, no contract or frozen-doc changes:
+1. Poll every chain read after a transaction until the expected state appears or 120 seconds elapse (60 attempts at 2 seconds): pending_request_id after request_evidence, READY after submit_evidence, PAID after settle. A poll timeout returns null and the console aborts with a clear message, never a silent stale-state failure.
+2. Print each step live transaction hash. Account.callFunction returns the contract method return value, empty for void methods, not the transaction outcome. The console now uses Account.callFunctionRaw and prints the outcome transaction hash via txHashOf, with transaction_outcome id as fallback and unknown if neither is present.
+
+Two additions beyond the audit text, same failure mode, flagged for the re-auditor: the console also polls for CREATED after create_obligation, and polls the recipient balance after settle until it equals before plus amount, because both reads can go stale the same way.
+
+Evidence for this fix, from this machine, no keys, no transaction sent:
+- Scaffold typecheck clean, frontend typecheck clean, conformance 6/6, Jest 9/9.
+- Console dry-run with a dummy obligation file and no keys: 9 calls in order, poll note printed, exit 2, no transaction sent.
+- Mock poll test against the compiled console: stale CREATED with null pending twice, then EVIDENCE_PENDING with obl-003-3 on attempt 3; stale balance 100 twice, then 350 on attempt 3; timeout case returns null after 3 attempts; txHashOf returns the transaction hash, the outcome id fallback, and unknown for an empty outcome. Exit 0.
+- verify-live re-run on cynex-vault.cynexmaster.testnet: receipt 0 obl-001 and receipt 1 obl-004, both verified true, exit 0, exact timestamps.
+
+Live state left by the re-audit, independently re-read from chain before this fix:
+- obl-003 remains EVIDENCE_PENDING, pending_request_id obl-003-3, acme-supplies.testnet, 250000000.
+- obl-004 PAID, pending_request_id obl-004-4, receipt index 1, recipient balance 250000000 to 500000000 exactly, policy-001 spent 500000000, reserved 0. Manual near-cli completion by Jayaang, not through the console, so it proves the settlement path, not the console.
+- obl-002 remains READY from Phase 2.
+- Cancel observation, Lane A, not Lane B homework and not a merge blocker: the deployed cancel_obligation only allows CREATED, while the frozen doc allows cancel from more states, so obl-003 cannot be cancelled from EVIDENCE_PENDING, only completed or left.
+
+Known caveat, unchanged by this fix: createObligationArgs converts u64 inputs with Number, so a dry-run expiry above 2 to the power 53 rounds. Live values in the re-audit were below that range. This was already flagged in the first audit round.
+
+Next step, for Jayaang: third live re-audit with a fresh console obligation, create, request, submit, settle, all through the console, with live transaction hashes and the balance delta in the console output, and verify-live re-run on the then three-receipt chain. Live console settlement was not run from this machine: owner, verifier, and agent keys are held by Lane A.
+
+Phase 2 sign-off is still NOT done. It needs the third live re-audit, merge to Master, joint gas recording in docs/contract-api.md, then a Phase 2 ledger row signed by both lanes.

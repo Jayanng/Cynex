@@ -148,6 +148,71 @@ async function tokenBalance(provider: JsonRpcProvider, tokenId: string, recipien
   return BigInt(String(result as unknown));
 }
 
+
+export async function sleepMs(ms: number): Promise<void> {
+  await new Promise(function (resolve) { setTimeout(resolve, ms); });
+}
+
+export async function pollObligation(
+  client: CynexClient,
+  obligationId: string,
+  label: string,
+  want: string,
+  maxAttempts = 60,
+  intervalMs = 2000,
+): Promise<unknown | null> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const row = await client.getObligation(obligationId);
+    const state = obligationState(row);
+    const pending = obligationPendingRequestId(row);
+    console.log("poll " + label + " attempt " + attempt + ": state=" + state + " pending_request_id=" + String(pending));
+    if (want === "pending" ? pending !== null : state === want) {
+      return row;
+    }
+    if (attempt < maxAttempts) {
+      await sleepMs(intervalMs);
+    }
+  }
+  console.log("poll timeout for " + label + " after " + maxAttempts + " attempts.");
+  return null;
+}
+
+export async function pollBalance(
+  provider: JsonRpcProvider,
+  tokenId: string,
+  recipient: string,
+  expected: bigint,
+  label: string,
+  maxAttempts = 60,
+  intervalMs = 2000,
+): Promise<bigint | null> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const value = await tokenBalance(provider, tokenId, recipient);
+    console.log("poll " + label + " attempt " + attempt + ": balance=" + value.toString());
+    if (value === expected) {
+      return value;
+    }
+    if (attempt < maxAttempts) {
+      await sleepMs(intervalMs);
+    }
+  }
+  console.log("poll timeout for " + label + " after " + maxAttempts + " attempts.");
+  return null;
+}
+
+export function txHashOf(outcome: unknown): string {
+  const root = outcome as Record<string, unknown>;
+  const tx = root.transaction as Record<string, unknown> | undefined;
+  if (tx && typeof tx.hash === "string") {
+    return tx.hash;
+  }
+  const txOutcome = root.transaction_outcome as Record<string, unknown> | undefined;
+  if (txOutcome && typeof txOutcome.id === "string") {
+    return txOutcome.id;
+  }
+  return "unknown";
+}
+
 async function liveRun(): Promise<number> {
   const vaultId = process.env.CYNEX_VAULT ?? "";
   const ownerId = process.env.CYNEX_OWNER ?? "";
@@ -164,6 +229,7 @@ async function liveRun(): Promise<number> {
   const input = JSON.parse(readFileSync(obligationFile, "utf-8")) as ObligationFile;
   if (!vaultId || !ownerId || !agentId || !verifierId || !ownerKeyFile || !agentKeyFile || !verifierKeyFile) {
     console.log("DRY-RUN: no keys supplied, no transaction was sent.");
+    console.log("live run polls each chain read until the expected state appears or 120 seconds elapse.");
     for (const call of consoleCalls(vaultId || "<vault>", input)) {
       console.log(JSON.stringify(call));
     }
@@ -178,19 +244,29 @@ async function liveRun(): Promise<number> {
   const agent = new Account(agentId, provider, KeyPairSigner.fromSecretKey(agentKey as KeyPairString));
   const client = new CynexClient(vaultId);
   const create = createObligationArgs(input);
-  const createOutcome = await owner.callFunction({
+  const createOutcome = await owner.callFunctionRaw({
     contractId: vaultId,
     methodName: "create_obligation",
     args: create,
   });
-  console.log("create_obligation outcome: " + JSON.stringify(createOutcome));
-  const requestOutcome = await owner.callFunction({
+  console.log("create_obligation tx hash: " + txHashOf(createOutcome));
+  const created = await pollObligation(client, input.obligation_id, "obligation CREATED after create_obligation", "CREATED");
+  if (created === null) {
+    console.log("ABORT: obligation did not appear as CREATED after create_obligation, request_evidence is not attempted.");
+    return 1;
+  }
+  console.log("obligation after create_obligation: " + JSON.stringify(created));
+  const requestOutcome = await owner.callFunctionRaw({
     contractId: vaultId,
     methodName: "request_evidence",
     args: { obligation_id: input.obligation_id },
   });
-  console.log("request_evidence outcome: " + JSON.stringify(requestOutcome));
-  const afterRequest = await client.getObligation(input.obligation_id);
+  console.log("request_evidence tx hash: " + txHashOf(requestOutcome));
+  const afterRequest = await pollObligation(client, input.obligation_id, "pending_request_id after request_evidence", "pending");
+  if (afterRequest === null) {
+    console.log("ABORT: no pending_request_id on chain after request_evidence, settle is not attempted.");
+    return 1;
+  }
   console.log("obligation after request_evidence: " + JSON.stringify(afterRequest));
   const pendingRequestId = obligationPendingRequestId(afterRequest);
   if (pendingRequestId === null) {
@@ -222,13 +298,17 @@ async function liveRun(): Promise<number> {
     console.log("ABORT: scaffold verifier did not allow, submit_evidence is not attempted.");
     return 1;
   }
-  const submitOutcome = await verifier.callFunction({
+  const submitOutcome = await verifier.callFunctionRaw({
     contractId: vaultId,
     methodName: "submit_evidence",
     args: { request_id: pendingRequestId, obligation_id: input.obligation_id, result: "ALLOWED", proof: input.evidence_hash },
   });
-  console.log("submit_evidence outcome: " + JSON.stringify(submitOutcome));
-  const afterEvidence = await client.getObligation(input.obligation_id);
+  console.log("submit_evidence tx hash: " + txHashOf(submitOutcome));
+  const afterEvidence = await pollObligation(client, input.obligation_id, "obligation READY after submit_evidence", "READY");
+  if (afterEvidence === null) {
+    console.log("ABORT: obligation did not become READY after submit_evidence, settle is not attempted.");
+    return 1;
+  }
   console.log("obligation after submit_evidence: " + JSON.stringify(afterEvidence));
   if (obligationState(afterEvidence) !== "READY") {
     console.log("ABORT: obligation is not READY after submit_evidence, settle is not attempted. State: " + obligationState(afterEvidence));
@@ -244,19 +324,27 @@ async function liveRun(): Promise<number> {
     proposed_amount: BigInt(input.amount),
     evidence_ref: input.evidence_ref,
   });
-  const settleOutcome = await agent.callFunction({
+  const settleOutcome = await agent.callFunctionRaw({
     contractId: vaultId,
     methodName: "settle",
     args: { ...settle, proposed_amount: settle.proposed_amount.toString() },
   });
-  console.log("settle outcome: " + JSON.stringify(settleOutcome));
-  const afterSettle = await client.getObligation(input.obligation_id);
+  console.log("settle tx hash: " + txHashOf(settleOutcome));
+  const afterSettle = await pollObligation(client, input.obligation_id, "obligation PAID after settle", "PAID");
+  if (afterSettle === null) {
+    console.log("FAILURE: obligation did not become PAID after settle.");
+    return 1;
+  }
   console.log("obligation after settle: " + JSON.stringify(afterSettle));
   if (obligationState(afterSettle) !== "PAID") {
     console.log("FAILURE: obligation is not PAID after settle. State: " + obligationState(afterSettle));
     return 1;
   }
-  const afterBalance = await tokenBalance(provider, tokenId, input.recipient);
+  const afterBalance = await pollBalance(provider, tokenId, input.recipient, beforeBalance + BigInt(input.amount), "recipient ft_balance_of after settle");
+  if (afterBalance === null) {
+    console.log("FAILURE: recipient balance did not reach the expected value after settle. This is an accounting break, do not report success.");
+    return 1;
+  }
   console.log("recipient ft_balance_of after settle: " + afterBalance.toString());
   if (afterBalance - beforeBalance !== BigInt(input.amount)) {
     console.log("FAILURE: balance increase does not equal the obligation amount. This is an accounting break, do not report success.");
