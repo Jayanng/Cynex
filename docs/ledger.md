@@ -104,7 +104,7 @@ Close note: Phase 2 audit basis is Lane A everyday review plus Sol gate on Lane 
 
 ## Phase 3: Async money-path hardening
 
-Status: Lane B signed 2026-11-04. Phase 3 NOT closed: application of the confirmed contract-api draft on Master, Lane A signature, and merge of lane-b to Master are still outstanding.
+Status: Phase 3 closed 2026-11-04. Contract-api corrections applied on Master c1dd809, lane-b merged to Master, both lanes signed.
 
 Evidence:
 - Lane A: Master c541653, timeout paths, reconciliation, per-token in-flight lock (contract/src/lib.rs, contract/tests/test_async.rs, unit 43 passed, sandbox 1 passed each, fmt and clippy clean, Sol gate PASS). Vault cynex-vault.cynexmaster.testnet code_hash 2kFG4ak3EAuSBnFebnvu182DaNk4KkzBP5LMT1XTPeaJ, matching the draft header. Phase 3 code executing live is proven by obl-003 moving from EVIDENCE_PENDING to CANCELLED, a transition only mark_evidence_timeout can produce from that state, since that method is absent from the Phase 2 contract.
@@ -116,5 +116,7 @@ Evidence:
 - Live state at sign-off: obl-008 PAID, obl-002 READY (100000000, unregistered recipient), obl-003 CANCELLED (250000000, evidence timeout outcome), policy-001 spent 975000000 of 1000000000 funded, reserved 0, not frozen, six receipts all true by verify-live.
 - Checks on lane-b 5926d77, run by Adejoke: scaffold typecheck clean, frontend typecheck clean, conformance 6/6, Jest 16/16 (9 schema plus 7 states), playground live run exit 0, verify-live six receipts all true.
 
-Sign-off: Johnson (Lane A), pending
+Sign-off: Johnson (Lane A), 2026-11-04
 Sign-off: rastadev (Lane B), 2026-11-04
+
+Lane A close note: test vault live proof, cynex-testvault.cynexmaster.testnet, labelled live proof plus author review, not an independent audit, not production: transfer timeout to PAID test-obl-001 and test-obl-002, token lock ERR_TOKEN_IN_FLIGHT live, resolve to READY test-obl-004, resolve to CANCELLED test-obl-005 with further settle failing ERR_INVALID_STATE, policy test-001 spent 2000000, reserved 0, receipts indices 0 and 1 only. Duplicate callback remains unit only. Production final state at close: policy-001 spent 975000000, reserved 0, funded 1000000000, frozen false, receipts 0 to 5 only.
