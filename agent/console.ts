@@ -134,6 +134,9 @@ function obligationState(row: unknown): string {
 }
 
 function obligationPendingRequestId(row: unknown): string | null {
+  if (row === null || row === undefined) {
+    return null;
+  }
   const value = (row as Record<string, unknown>).pending_request_id;
   return value === null || value === undefined ? null : String(value);
 }
@@ -163,11 +166,15 @@ export async function pollObligation(
 ): Promise<unknown | null> {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const row = await client.getObligation(obligationId);
-    const state = obligationState(row);
-    const pending = obligationPendingRequestId(row);
-    console.log("poll " + label + " attempt " + attempt + ": state=" + state + " pending_request_id=" + String(pending));
-    if (want === "pending" ? pending !== null : state === want) {
-      return row;
+    if (row === null || row === undefined) {
+      console.log("poll " + label + " attempt " + attempt + ": row not visible yet");
+    } else {
+      const state = obligationState(row);
+      const pending = obligationPendingRequestId(row);
+      console.log("poll " + label + " attempt " + attempt + ": state=" + state + " pending_request_id=" + String(pending));
+      if (want === "pending" ? pending !== null : state === want) {
+        return row;
+      }
     }
     if (attempt < maxAttempts) {
       await sleepMs(intervalMs);

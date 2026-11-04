@@ -204,3 +204,34 @@ Known caveat, unchanged by this fix: createObligationArgs converts u64 inputs wi
 Next step, for Jayaang: third live re-audit with a fresh console obligation, create, request, submit, settle, all through the console, with live transaction hashes and the balance delta in the console output, and verify-live re-run on the then three-receipt chain. Live console settlement was not run from this machine: owner, verifier, and agent keys are held by Lane A.
 
 Phase 2 sign-off is still NOT done. It needs the third live re-audit, merge to Master, joint gas recording in docs/contract-api.md, then a Phase 2 ledger row signed by both lanes.
+
+
+## Third re-audit, 2026-11-04: poll crashes on a null row (BLOCKING, fixed)
+
+Third re-audit result: transaction hash printing passes live. The console first live line was create_obligation tx hash 2VBFdtgKrK7bEixxD1BzNd4EXj6uEJjHpKUbG7Axnxhw, a real hash from callFunctionRaw. Request, submit, and settle hashes are still unproven, not disproven, because the run crashed before them. Frontend and scaffold again: typecheck clean, conformance 6/6, Jest 9/9, dry run with the poll note, 9 calls, exit 2.
+
+Blocking finding, precisely located, smaller than last time: the console ran live with a fresh obligation obl-005, 250000000 to acme-supplies.testnet, policy-001, nonce 5. The create transaction succeeded and its hash printed, then pollObligation for CREATED crashed immediately, uncaught: TypeError Cannot read properties of null (reading state), at obligationState, exit 1. The first poll read returned null, because getObligation with finality final returns null while the just-created obligation is not yet in a final block. pollObligation called obligationState on the row without a null check, and obligationPendingRequestId had the same flaw. A later chain read confirmed obl-005 exists, CREATED, so the create had succeeded and the poll had crashed on a not-yet-visible row, not on a wrong state.
+
+Fix, agent/console.ts only, no contract or frozen-doc changes:
+1. In pollObligation, a null or undefined row is now treated as not visible yet, logged as row not visible yet, and polling continues. obligationState and pending_request_id are only read once the row exists.
+2. obligationPendingRequestId now returns null for a null or undefined row, instead of reading a field off it.
+
+Other dereferences checked, not changed: every other obligationState call in the console operates on a poll result already checked non-null before use, and the policy row read is for policy-001, which predates the run, so it cannot be a not-yet-visible row. ft_balance_of returns a u128 for a storage-registered recipient, not an Option, so tokenBalance has no null-row case of this kind.
+
+Evidence for this fix, from this machine, no keys, no transaction sent:
+- Scaffold typecheck clean, frontend typecheck clean, conformance 6/6, Jest 9/9.
+- Console dry-run with a dummy obligation file and no keys: 9 calls in order, poll note printed, exit 2, no transaction sent.
+- Mock null-row test against the compiled console: null, null, then CREATED for the CREATED poll, and null, null, CREATED, then EVIDENCE_PENDING with obl-005-5 for the pending poll, both succeeding with no TypeError. Exit 0.
+- verify-live re-run on cynex-vault.cynexmaster.testnet: receipts 0 obl-001, 1 obl-004, 2 obl-005, all verified true, exit 0, exact timestamps.
+
+Live state left by the third re-audit, independently re-read from chain before this fix:
+- obl-005 PAID, pending_request_id obl-005-5, receipt index 2, recipient balance 500000000 to 750000000 exactly, policy-001 spent 750000000, reserved 0, funded 1000000000.
+- Manual near-cli completion by Jayaang, not through the console: request tx AJE1HKm9iN33APWp7uvZ8poZfcW7SCyxkyUJFbCnYshA, submit tx FqbFx3PpkKr6dTq2GJWfuDb9KaGJjpfgVtpHJGgsKfLo, settle tx 6653pDXZWuHfmj4yXXuySqJFwPndCnbiqFqFwpsDNrP6.
+- obl-004 PAID, obl-003 still EVIDENCE_PENDING, obl-002 still READY.
+- Headroom note for the next run: only 250000000 of funded headroom remains for a further demo settlement at this amount. A fourth console run at 250000000 would take policy spent to 1000000000, leaving no headroom for obl-003 or any further settlement without additional funding. That is a Lane A funding decision, not a Lane B code issue.
+
+Design suggestion from the re-audit, NOT implemented in this fix, not a blocker: the console has no resume mode, so a crashed run leaves an obligation behind and a rerun with the same id fails, while a rerun with a new id leaves the old one stuck. A resume flag or settle-only mode would make future audit runs cheaper, but it changes console semantics and needs a decision on which states are resumable, so it is recorded here for Jayaang rather than bundled in silently.
+
+Next step, for Jayaang: fourth live re-audit with a fresh console obligation, all through the console, with live transaction hashes for all four steps, PAID state, and the balance delta in the console output, and verify-live on the then four-receipt chain. Live console settlement was not run from this machine: owner, verifier, and agent keys are held by Lane A.
+
+Phase 2 sign-off is still NOT done. It needs the fourth live re-audit, merge to Master, joint gas recording in docs/contract-api.md, then a Phase 2 ledger row signed by both lanes.
