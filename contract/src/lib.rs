@@ -135,6 +135,11 @@ const RECEIPT_STORAGE_BYTES: u64 = 512;
 // per the frozen money path. This is a conservative placeholder margin,
 // 0.01 NEAR, not a measured gas cost, and is revisited when gas is measured.
 const SETTLE_NATIVE_MARGIN_YOCTO: u128 = 10_000_000_000_000_000_000_000;
+// Frozen in Phase 0, recorded in docs/contract-api.md. Timeout durations are
+// block timestamps, not wall clock, so a timeout is only reached when the
+// chain itself has passed the deadline, never by a caller claiming time passed.
+const TRANSFER_TIMEOUT_NS: u64 = 600_000_000_000;
+const EVIDENCE_TIMEOUT_NS: u64 = 3_600_000_000_000;
 
 #[allow(clippy::too_many_arguments)]
 // Frozen receipt hash takes 8 fields by definition, in a fixed order.
@@ -174,6 +179,42 @@ fn receipt_storage_reserve_yocto() -> u128 {
     RECEIPT_STORAGE_BYTES as u128 * env::storage_byte_cost().as_yoctonear()
 }
 
+// Per-token in-flight lock, Phase 3. The map lives under prefix b"i", created
+// on demand, not as a new Contract struct field, for the same reason receipts
+// use b"r": adding a struct field would change the Borsh layout of the
+// already deployed state and break deserialization on upgrade. A token is
+// locked while any obligation for that token is TRANSFER_PENDING or in
+// RECONCILIATION_REQUIRED with its reservation still held, and released only
+// when that obligation reaches a terminal or retryable state (PAID, READY,
+// CANCELLED) through the callback, resolve_settlement, or cancel_obligation.
+// The per-obligation in_flight flag is still the primary guard; the token
+// lock is the second guard, so a second obligation for the same token cannot
+// dispatch while the first transfer is still ambiguous. Sequential
+// settlements, where the first has already booked PAID or released to READY,
+// are unaffected, because the lock is released before the next settle runs.
+fn token_lock_map() -> LookupMap<String, bool> {
+    LookupMap::new(b"i")
+}
+
+fn is_token_locked(token_id: &AccountId) -> bool {
+    token_lock_map()
+        .get(&token_id.to_string())
+        .copied()
+        .unwrap_or(false)
+}
+
+fn set_token_lock(token_id: &AccountId) {
+    let mut map = token_lock_map();
+    map.insert(token_id.to_string(), true);
+    map.flush();
+}
+
+fn clear_token_lock(token_id: &AccountId) {
+    let mut map = token_lock_map();
+    map.remove(&token_id.to_string());
+    map.flush();
+}
+
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
 pub struct Contract {
@@ -201,6 +242,14 @@ impl Contract {
 
     fn assert_owner(&self) {
         require!(env::predecessor_account_id() == self.owner, "ERR_NOT_OWNER");
+    }
+
+    fn assert_owner_or_reconciler(&self, policy: &Policy) {
+        let caller = env::predecessor_account_id();
+        require!(
+            caller == self.owner || policy.reconciler.as_ref() == Some(&caller),
+            "ERR_NOT_AUTHORIZED"
+        );
     }
 
     pub fn add_verifier(&mut self, verifier: AccountId) {
@@ -313,15 +362,196 @@ impl Contract {
     }
 
     pub fn cancel_obligation(&mut self, obligation_id: String) {
+        // Owner only, never the reconciler. Phase 3 adds RECONCILIATION_REQUIRED
+        // to the CREATED-only Phase 2 rule: an obligation stuck in
+        // reconciliation is resolvable by cancel, not a dead end. Cancelling
+        // from reconciliation releases the reservation and the token lock,
+        // clears in_flight and the dispatch time, and retires the nonce by
+        // making the obligation terminal, so it can never settle again.
+        // Cancelling from TRANSFER_PENDING is still forbidden: a transfer
+        // already dispatched cannot be un-booked by a cancel, it must go
+        // through the callback or through reconciliation.
         self.assert_owner();
         let mut obligation = self
             .obligations
             .get(&obligation_id)
             .cloned()
             .unwrap_or_else(|| env::panic_str("ERR_OBLIGATION_MISSING"));
-        require!(obligation.state == "CREATED", "ERR_INVALID_STATE");
+        require!(
+            obligation.state == "CREATED" || obligation.state == "RECONCILIATION_REQUIRED",
+            "ERR_INVALID_STATE"
+        );
+        if obligation.state == "RECONCILIATION_REQUIRED" {
+            let mut policy = self
+                .policies
+                .get(&obligation.policy_id)
+                .cloned()
+                .unwrap_or_else(|| env::panic_str("ERR_POLICY_MISSING"));
+            policy.reserved = policy
+                .reserved
+                .checked_sub(obligation.amount)
+                .unwrap_or_else(|| env::panic_str("ERR_BUDGET_EXCEEDED"));
+            clear_token_lock(&policy.token_id);
+            obligation.in_flight = false;
+            obligation.transfer_dispatched_at_ns = None;
+            self.policies.insert(obligation.policy_id.clone(), policy);
+        }
         obligation.state = "CANCELLED".to_string();
         self.obligations.insert(obligation_id, obligation);
+    }
+
+    pub fn mark_reconciliation_required(&mut self, obligation_id: String) {
+        // Owner or the policy reconciler, only from TRANSFER_PENDING, only
+        // after TRANSFER_TIMEOUT_NS has passed since dispatch. This is the
+        // only way a callback that never runs becomes visible instead of
+        // staying TRANSFER_PENDING forever. It keeps in_flight true, keeps
+        // the reservation held, keeps the token lock, and keeps the dispatch
+        // time, so resolve_settlement can still check the timeout and so no
+        // retry can happen while the original transfer might still succeed.
+        // Never blind-retry: a second payment for the same obligation is a bug.
+        let mut obligation = self
+            .obligations
+            .get(&obligation_id)
+            .cloned()
+            .unwrap_or_else(|| env::panic_str("ERR_OBLIGATION_MISSING"));
+        let policy = self
+            .policies
+            .get(&obligation.policy_id)
+            .cloned()
+            .unwrap_or_else(|| env::panic_str("ERR_POLICY_MISSING"));
+        self.assert_owner_or_reconciler(&policy);
+        require!(obligation.state == "TRANSFER_PENDING", "ERR_INVALID_STATE");
+        require!(obligation.in_flight, "ERR_INVALID_STATE");
+        let dispatched = obligation
+            .transfer_dispatched_at_ns
+            .unwrap_or_else(|| env::panic_str("ERR_INVALID_STATE"));
+        require!(
+            env::block_timestamp() >= dispatched.saturating_add(TRANSFER_TIMEOUT_NS),
+            "ERR_TIMEOUT_NOT_REACHED"
+        );
+        obligation.state = "RECONCILIATION_REQUIRED".to_string();
+        self.obligations.insert(obligation_id, obligation);
+    }
+
+    pub fn mark_evidence_timeout(&mut self, obligation_id: String, escalate: bool) {
+        // Owner or the policy reconciler, only from EVIDENCE_PENDING, only
+        // after EVIDENCE_TIMEOUT_NS has passed since the evidence request.
+        // Evidence that never arrives never moves an obligation to READY by
+        // default: escalate false moves to CANCELLED, escalate true moves to
+        // WARN_PENDING, from which the owner may approve_warning to READY.
+        // Pending fields are cleared on both paths, so a stale evidence
+        // submission cannot land after the timeout; submit_evidence also
+        // requires EVIDENCE_PENDING, so it rejects anyway.
+        let mut obligation = self
+            .obligations
+            .get(&obligation_id)
+            .cloned()
+            .unwrap_or_else(|| env::panic_str("ERR_OBLIGATION_MISSING"));
+        let policy = self
+            .policies
+            .get(&obligation.policy_id)
+            .cloned()
+            .unwrap_or_else(|| env::panic_str("ERR_POLICY_MISSING"));
+        self.assert_owner_or_reconciler(&policy);
+        require!(obligation.state == "EVIDENCE_PENDING", "ERR_INVALID_STATE");
+        let requested = obligation
+            .evidence_requested_at_ns
+            .unwrap_or_else(|| env::panic_str("ERR_INVALID_STATE"));
+        require!(
+            env::block_timestamp() >= requested.saturating_add(EVIDENCE_TIMEOUT_NS),
+            "ERR_TIMEOUT_NOT_REACHED"
+        );
+        obligation.state = if escalate {
+            "WARN_PENDING".to_string()
+        } else {
+            "CANCELLED".to_string()
+        };
+        obligation.pending_request_id = None;
+        obligation.pending_digest = None;
+        obligation.evidence_requested_at_ns = None;
+        self.obligations.insert(obligation_id, obligation);
+    }
+
+    pub fn resolve_settlement(&mut self, obligation_id: String, outcome: String, proof: String) {
+        // Resolves RECONCILIATION_REQUIRED only, with in_flight still true
+        // and the reservation still held, after the transfer timeout has
+        // passed since dispatch. That timeout check applies even when the
+        // obligation entered reconciliation through a frozen-policy callback
+        // failure, which happens immediately: the frozen failure does not
+        // shortcut the timeout, it only makes the ambiguity visible early.
+        // Proof is the transaction hash of the transfer as seen on chain,
+        // recorded as the receipt tx_ref for a PAID resolution, plus the
+        // caller attestation that is the on-chain call itself. The contract
+        // cannot verify a transaction hash alone on NEAR, so for PAID the
+        // owner must first have done a live chain read showing the recipient
+        // actually received the amount; that read is a required human step,
+        // not a contract check, and the recorded hash lets anyone audit it.
+        // PAID is owner only, never the reconciler. READY and CANCELLED are
+        // owner or reconciler. Failure alone never cancels: CANCELLED here
+        // is an explicit human resolution, not an automatic failure outcome.
+        let mut obligation = self
+            .obligations
+            .get(&obligation_id)
+            .cloned()
+            .unwrap_or_else(|| env::panic_str("ERR_OBLIGATION_MISSING"));
+        let mut policy = self
+            .policies
+            .get(&obligation.policy_id)
+            .cloned()
+            .unwrap_or_else(|| env::panic_str("ERR_POLICY_MISSING"));
+        require!(
+            obligation.state == "RECONCILIATION_REQUIRED",
+            "ERR_INVALID_STATE"
+        );
+        require!(obligation.in_flight, "ERR_INVALID_STATE");
+        let dispatched = obligation
+            .transfer_dispatched_at_ns
+            .unwrap_or_else(|| env::panic_str("ERR_INVALID_STATE"));
+        require!(
+            env::block_timestamp() >= dispatched.saturating_add(TRANSFER_TIMEOUT_NS),
+            "ERR_TIMEOUT_NOT_REACHED"
+        );
+        match outcome.as_str() {
+            "PAID" => {
+                self.assert_owner();
+                require!(!proof.is_empty(), "ERR_INVALID_PROOF");
+                policy.reserved = policy
+                    .reserved
+                    .checked_sub(obligation.amount)
+                    .unwrap_or_else(|| env::panic_str("ERR_BUDGET_EXCEEDED"));
+                policy.spent = policy
+                    .spent
+                    .checked_add(obligation.amount)
+                    .unwrap_or_else(|| env::panic_str("ERR_BUDGET_EXCEEDED"));
+                obligation.state = "PAID".to_string();
+                obligation.in_flight = false;
+                obligation.transfer_dispatched_at_ns = None;
+                clear_token_lock(&policy.token_id);
+                self.append_receipt(
+                    &obligation_id,
+                    &obligation.recipient,
+                    obligation.amount,
+                    &policy.token_id,
+                    &proof,
+                );
+                self.policies.insert(obligation.policy_id.clone(), policy);
+                self.obligations.insert(obligation_id, obligation);
+            }
+            "READY" | "CANCELLED" => {
+                self.assert_owner_or_reconciler(&policy);
+                policy.reserved = policy
+                    .reserved
+                    .checked_sub(obligation.amount)
+                    .unwrap_or_else(|| env::panic_str("ERR_BUDGET_EXCEEDED"));
+                obligation.state = outcome;
+                obligation.in_flight = false;
+                obligation.transfer_dispatched_at_ns = None;
+                clear_token_lock(&policy.token_id);
+                self.policies.insert(obligation.policy_id.clone(), policy);
+                self.obligations.insert(obligation_id, obligation);
+            }
+            _ => env::panic_str("ERR_INVALID_OUTCOME"),
+        }
     }
 
     pub fn approve_warning(&mut self, obligation_id: String) {
@@ -539,6 +769,11 @@ impl Contract {
             "ERR_TERMS_MISMATCH"
         );
         require!(!obligation.in_flight, "ERR_NONCE_ALREADY_CONSUMED");
+        // Per-token in-flight lock, Phase 3: a second obligation for the
+        // same token cannot dispatch while another transfer for that token
+        // is still ambiguous. This is checked before any reserve is written,
+        // so a locked settle changes no state at all.
+        require!(!is_token_locked(&policy.token_id), "ERR_TOKEN_IN_FLIGHT");
         let new_total = policy
             .spent
             .checked_add(policy.reserved)
@@ -571,6 +806,10 @@ impl Contract {
         let amount = obligation.amount;
         self.policies.insert(policy_id, policy);
         self.obligations.insert(obligation_id.clone(), obligation);
+        // Set synchronously, before the promise, like the reservation: a
+        // settle that has written TRANSFER_PENDING must also hold the lock,
+        // or the lock would not cover the window the promise is in flight.
+        set_token_lock(&token_id);
         let args = serde_json::json!({
             "receiver_id": recipient,
             "amount": amount.to_string(),
@@ -597,6 +836,49 @@ impl Contract {
             )
     }
 
+    fn append_receipt(
+        &mut self,
+        obligation_id: &str,
+        recipient: &AccountId,
+        amount: u128,
+        token_id: &AccountId,
+        tx_ref: &str,
+    ) {
+        // Shared by the callback Ok path and by resolve_settlement to PAID,
+        // so a receipt booked by human resolution has the same hash chain,
+        // index order, and NEP-297 event shape as a receipt booked by the
+        // callback. The only difference is tx_ref: empty for a callback,
+        // because a NEP-141 callback carries no transaction hash, and the
+        // human-supplied proof hash for a resolution.
+        let index = self.receipt_index;
+        let receipt = Receipt {
+            index,
+            prev_hash: self.last_receipt_hash,
+            obligation_id: obligation_id.to_string(),
+            recipient: recipient.clone(),
+            amount,
+            token_id: token_id.clone(),
+            timestamp: env::block_timestamp(),
+            tx_ref: tx_ref.to_string(),
+        };
+        let hash = receipt_hash(
+            receipt.index,
+            &receipt.prev_hash,
+            &receipt.obligation_id,
+            receipt.recipient.as_str(),
+            receipt.amount,
+            receipt.token_id.as_str(),
+            receipt.timestamp,
+            &receipt.tx_ref,
+        );
+        env::log_str(&format!("EVENT_JSON:{}", serde_json::to_string(&serde_json::json!({"standard": "nep297", "version": "1.0.0", "event": "receipt", "data": [{"index": receipt.index, "obligation_id": &receipt.obligation_id, "recipient": &receipt.recipient, "amount": receipt.amount.to_string(), "token_id": &receipt.token_id, "timestamp": receipt.timestamp, "prev_hash": receipt.prev_hash.iter().map(|b| format!("{:02x}", b)).collect::<String>(), "tx_ref": &receipt.tx_ref}]})).unwrap()));
+        let mut map: LookupMap<u64, Receipt> = LookupMap::new(b"r");
+        map.insert(index, receipt);
+        map.flush();
+        self.receipt_index = self.receipt_index.saturating_add(1);
+        self.last_receipt_hash = hash;
+    }
+
     #[private]
     pub fn on_transfer_complete(
         &mut self,
@@ -608,6 +890,11 @@ impl Contract {
             Some(o) => o,
             None => return,
         };
+        // Duplicate callbacks are ignored, not double-booked: a callback
+        // that arrives after the first one booked PAID, released to READY,
+        // or moved to reconciliation fails the state or attempt check here
+        // and changes nothing. A stale attempt id fails the attempt check
+        // even if the obligation is in flight again on a later attempt.
         if obligation.state != "TRANSFER_PENDING" || !obligation.in_flight {
             return;
         }
@@ -620,6 +907,10 @@ impl Contract {
         };
         match result {
             Ok(()) => {
+                // Freeze and version bumps block new settle calls only, they
+                // never un-book a transfer already in flight: there is no
+                // frozen check on this path, by design, so a success always
+                // finalizes to PAID even if the policy was frozen meanwhile.
                 policy.reserved = policy
                     .reserved
                     .checked_sub(obligation.amount)
@@ -631,38 +922,25 @@ impl Contract {
                 obligation.state = "PAID".to_string();
                 obligation.in_flight = false;
                 obligation.transfer_dispatched_at_ns = None;
-                let index = self.receipt_index;
-                let receipt = Receipt {
-                    index,
-                    prev_hash: self.last_receipt_hash,
-                    obligation_id: obligation_id.clone(),
-                    recipient: obligation.recipient.clone(),
-                    amount: obligation.amount,
-                    token_id: policy.token_id.clone(),
-                    timestamp: env::block_timestamp(),
-                    tx_ref: String::new(),
-                };
-                let hash = receipt_hash(
-                    receipt.index,
-                    &receipt.prev_hash,
-                    &receipt.obligation_id,
-                    receipt.recipient.as_str(),
-                    receipt.amount,
-                    receipt.token_id.as_str(),
-                    receipt.timestamp,
-                    &receipt.tx_ref,
+                clear_token_lock(&policy.token_id);
+                self.append_receipt(
+                    &obligation_id,
+                    &obligation.recipient,
+                    obligation.amount,
+                    &policy.token_id,
+                    "",
                 );
-                let mut map: LookupMap<u64, Receipt> = LookupMap::new(b"r");
-                env::log_str(&format!("EVENT_JSON:{}", serde_json::to_string(&serde_json::json!({"standard": "nep297", "version": "1.0.0", "event": "receipt", "data": [{"index": receipt.index, "obligation_id": &receipt.obligation_id, "recipient": &receipt.recipient, "amount": receipt.amount.to_string(), "token_id": &receipt.token_id, "timestamp": receipt.timestamp, "prev_hash": receipt.prev_hash.iter().map(|b| format!("{:02x}", b)).collect::<String>(), "tx_ref": &receipt.tx_ref}]})).unwrap()));
-                map.insert(index, receipt);
-                map.flush();
-                self.receipt_index = self.receipt_index.saturating_add(1);
-                self.last_receipt_hash = hash;
                 self.policies.insert(obligation.policy_id.clone(), policy);
                 self.obligations.insert(obligation_id, obligation);
             }
             Err(_) => {
                 if policy.frozen {
+                    // Confirmed failure, but the policy is frozen, so the
+                    // obligation does not go back to READY for an immediate
+                    // retry. It becomes visible as RECONCILIATION_REQUIRED,
+                    // with reservation, in_flight, dispatch time, and token
+                    // lock all retained, and resolve_settlement decides it
+                    // after the transfer timeout, never automatically.
                     obligation.state = "RECONCILIATION_REQUIRED".to_string();
                     self.obligations.insert(obligation_id, obligation);
                     return;
@@ -674,6 +952,7 @@ impl Contract {
                 obligation.state = "READY".to_string();
                 obligation.in_flight = false;
                 obligation.transfer_dispatched_at_ns = None;
+                clear_token_lock(&policy.token_id);
                 self.policies.insert(obligation.policy_id.clone(), policy);
                 self.obligations.insert(obligation_id, obligation);
             }
@@ -1496,6 +1775,412 @@ mod tests {
             hex32("686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38"),
             9999999999999999999,
             1,
+        );
+    }
+
+    fn owner_ctx_at(block_timestamp: u64) {
+        let mut ctx = VMContextBuilder::new();
+        ctx.predecessor_account_id(owner());
+        ctx.current_account_id("cynex-vault.testnet".parse().unwrap());
+        ctx.block_timestamp(block_timestamp);
+        testing_env!(ctx.build());
+    }
+
+    fn setup_transfer_pending(c: &mut Contract, obligation_id: &str, amount: u128) {
+        setup_ready_with_amount(c, obligation_id, amount, 1000000, 1000000);
+        agent_ctx();
+        let _ = c.settle(
+            obligation_id.to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            U128(amount),
+            "x".to_string(),
+        );
+        assert_eq!(
+            c.get_obligation(obligation_id.to_string()).unwrap().state,
+            "TRANSFER_PENDING"
+        );
+    }
+
+    #[test]
+    fn mark_reconciliation_required_after_transfer_timeout() {
+        let mut c = setup_owner();
+        setup_transfer_pending(&mut c, "obl-001", 250000);
+        // Dispatch was at block timestamp 0 in the test context, so the
+        // transfer timeout is reached at 600_000_000_000 exactly.
+        owner_ctx_at(TRANSFER_TIMEOUT_NS);
+        c.mark_reconciliation_required("obl-001".to_string());
+        let o = c.get_obligation("obl-001".to_string()).unwrap();
+        assert_eq!(o.state, "RECONCILIATION_REQUIRED");
+        assert!(o.in_flight);
+        assert_eq!(
+            c.get_policy("policy-001".to_string()).unwrap().reserved,
+            250000
+        );
+        // Reservation is retained while reconciliation is open, and the
+        // token lock is retained with it: the concurrent settle test below
+        // proves a second obligation for the same token cannot dispatch
+        // while this one is unresolved.
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_TOKEN_IN_FLIGHT")]
+    fn concurrent_settle_same_token_returns_lock_error() {
+        let mut c = setup_owner();
+        setup_transfer_pending(&mut c, "obl-001", 250000);
+        // Second obligation, same policy and token, READY while the first
+        // transfer is still in flight. It must fail with the lock error,
+        // never dispatch a second transfer.
+        owner_ctx_at(0);
+        c.create_obligation(
+            "obl-002".to_string(),
+            "policy-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            100000,
+            "delivery-note".to_string(),
+            hex32("686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38"),
+            9999999999999999999,
+            2,
+        );
+        c.request_evidence("obl-002".to_string());
+        c.submit_evidence(
+            "obl-002-2".to_string(),
+            "obl-002".to_string(),
+            "ALLOWED".to_string(),
+            "686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38".to_string(),
+        );
+        agent_ctx();
+        let _ = c.settle(
+            "obl-002".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            U128(100000),
+            "x".to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_TIMEOUT_NOT_REACHED")]
+    fn mark_reconciliation_required_before_timeout_rejects() {
+        let mut c = setup_owner();
+        setup_transfer_pending(&mut c, "obl-001", 250000);
+        owner_ctx_at(TRANSFER_TIMEOUT_NS - 1);
+        c.mark_reconciliation_required("obl-001".to_string());
+    }
+
+    #[test]
+    fn resolve_settlement_paid_books_receipt_with_proof() {
+        let mut c = setup_owner();
+        setup_transfer_pending(&mut c, "obl-001", 250000);
+        owner_ctx_at(TRANSFER_TIMEOUT_NS);
+        c.mark_reconciliation_required("obl-001".to_string());
+        owner_ctx_at(TRANSFER_TIMEOUT_NS);
+        c.resolve_settlement(
+            "obl-001".to_string(),
+            "PAID".to_string(),
+            "test-tx-proof-hash".to_string(),
+        );
+        let o = c.get_obligation("obl-001".to_string()).unwrap();
+        assert_eq!(o.state, "PAID");
+        assert!(!o.in_flight);
+        let policy = c.get_policy("policy-001".to_string()).unwrap();
+        assert_eq!(policy.spent, 250000);
+        assert_eq!(policy.reserved, 0);
+        let receipts = c.receipts(0, 10);
+        assert_eq!(receipts.len(), 1);
+        assert_eq!(receipts[0].obligation_id, "obl-001");
+        assert_eq!(receipts[0].tx_ref, "test-tx-proof-hash");
+    }
+
+    #[test]
+    fn resolve_settlement_ready_releases_reservation() {
+        let mut c = setup_owner();
+        setup_transfer_pending(&mut c, "obl-001", 250000);
+        owner_ctx_at(TRANSFER_TIMEOUT_NS);
+        c.mark_reconciliation_required("obl-001".to_string());
+        owner_ctx_at(TRANSFER_TIMEOUT_NS);
+        c.resolve_settlement("obl-001".to_string(), "READY".to_string(), "".to_string());
+        let o = c.get_obligation("obl-001".to_string()).unwrap();
+        assert_eq!(o.state, "READY");
+        assert!(!o.in_flight);
+        assert_eq!(c.get_policy("policy-001".to_string()).unwrap().reserved, 0);
+        assert_eq!(c.receipts(0, 10).len(), 0);
+        // Token lock released: the obligation can settle again.
+        agent_ctx();
+        let _ = c.settle(
+            "obl-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            U128(250000),
+            "x".to_string(),
+        );
+        assert_eq!(
+            c.get_obligation("obl-001".to_string()).unwrap().state,
+            "TRANSFER_PENDING"
+        );
+    }
+
+    #[test]
+    fn resolve_settlement_cancelled_from_reconciliation() {
+        let mut c = setup_owner();
+        setup_transfer_pending(&mut c, "obl-001", 250000);
+        owner_ctx_at(TRANSFER_TIMEOUT_NS);
+        c.mark_reconciliation_required("obl-001".to_string());
+        owner_ctx_at(TRANSFER_TIMEOUT_NS);
+        c.resolve_settlement(
+            "obl-001".to_string(),
+            "CANCELLED".to_string(),
+            "".to_string(),
+        );
+        let o = c.get_obligation("obl-001".to_string()).unwrap();
+        assert_eq!(o.state, "CANCELLED");
+        assert!(!o.in_flight);
+        assert_eq!(c.get_policy("policy-001".to_string()).unwrap().reserved, 0);
+    }
+
+    #[test]
+    // PAID resolution is owner only, so the owner guard panics with
+    // ERR_NOT_OWNER, not the reconciler guard, when a reconciler tries it.
+    #[should_panic(expected = "ERR_NOT_OWNER")]
+    fn resolve_settlement_reconciler_cannot_resolve_to_paid() {
+        let mut c = setup_owner();
+        setup_transfer_pending(&mut c, "obl-001", 250000);
+        owner_ctx_at(TRANSFER_TIMEOUT_NS);
+        c.set_reconciler(
+            "policy-001".to_string(),
+            "reconciler.testnet".parse().unwrap(),
+        );
+        c.mark_reconciliation_required("obl-001".to_string());
+        let mut ctx = VMContextBuilder::new();
+        ctx.predecessor_account_id("reconciler.testnet".parse().unwrap());
+        ctx.current_account_id("cynex-vault.testnet".parse().unwrap());
+        ctx.block_timestamp(TRANSFER_TIMEOUT_NS);
+        testing_env!(ctx.build());
+        c.resolve_settlement(
+            "obl-001".to_string(),
+            "PAID".to_string(),
+            "proof".to_string(),
+        );
+    }
+
+    #[test]
+    fn reconciler_can_mark_and_resolve_to_ready() {
+        let mut c = setup_owner();
+        setup_transfer_pending(&mut c, "obl-001", 250000);
+        owner_ctx_at(TRANSFER_TIMEOUT_NS);
+        c.set_reconciler(
+            "policy-001".to_string(),
+            "reconciler.testnet".parse().unwrap(),
+        );
+        let mut ctx = VMContextBuilder::new();
+        ctx.predecessor_account_id("reconciler.testnet".parse().unwrap());
+        ctx.current_account_id("cynex-vault.testnet".parse().unwrap());
+        ctx.block_timestamp(TRANSFER_TIMEOUT_NS);
+        testing_env!(ctx.build());
+        c.mark_reconciliation_required("obl-001".to_string());
+        c.resolve_settlement("obl-001".to_string(), "READY".to_string(), "".to_string());
+        assert_eq!(
+            c.get_obligation("obl-001".to_string()).unwrap().state,
+            "READY"
+        );
+    }
+
+    #[test]
+    fn mark_evidence_timeout_cancels_after_evidence_timeout() {
+        let mut c = setup_owner();
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        owner_ctx_at(1000000);
+        c.create_obligation(
+            "obl-001".to_string(),
+            "policy-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            250000,
+            "delivery-note".to_string(),
+            hex32("686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38"),
+            9999999999999999999,
+            1,
+        );
+        c.request_evidence("obl-001".to_string());
+        assert_eq!(
+            c.get_obligation("obl-001".to_string())
+                .unwrap()
+                .evidence_requested_at_ns,
+            Some(1000000)
+        );
+        owner_ctx_at(1000000 + EVIDENCE_TIMEOUT_NS);
+        c.mark_evidence_timeout("obl-001".to_string(), false);
+        assert_eq!(
+            c.get_obligation("obl-001".to_string()).unwrap().state,
+            "CANCELLED"
+        );
+    }
+
+    #[test]
+    fn mark_evidence_timeout_escalate_moves_to_warn_pending() {
+        let mut c = setup_owner();
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        owner_ctx_at(1000000);
+        c.create_obligation(
+            "obl-001".to_string(),
+            "policy-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            250000,
+            "delivery-note".to_string(),
+            hex32("686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38"),
+            9999999999999999999,
+            1,
+        );
+        c.request_evidence("obl-001".to_string());
+        owner_ctx_at(1000000 + EVIDENCE_TIMEOUT_NS);
+        c.mark_evidence_timeout("obl-001".to_string(), true);
+        assert_eq!(
+            c.get_obligation("obl-001".to_string()).unwrap().state,
+            "WARN_PENDING"
+        );
+        // Owner can approve the escalated warning to READY.
+        owner_ctx_at(1000000 + EVIDENCE_TIMEOUT_NS);
+        c.approve_warning("obl-001".to_string());
+        assert_eq!(
+            c.get_obligation("obl-001".to_string()).unwrap().state,
+            "READY"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_TIMEOUT_NOT_REACHED")]
+    fn mark_evidence_timeout_before_timeout_rejects() {
+        let mut c = setup_owner();
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        owner_ctx_at(1000000);
+        c.create_obligation(
+            "obl-001".to_string(),
+            "policy-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            250000,
+            "delivery-note".to_string(),
+            hex32("686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38"),
+            9999999999999999999,
+            1,
+        );
+        c.request_evidence("obl-001".to_string());
+        owner_ctx_at(1000000 + EVIDENCE_TIMEOUT_NS - 1);
+        c.mark_evidence_timeout("obl-001".to_string(), false);
+    }
+
+    #[test]
+    fn cancel_obligation_from_reconciliation_required() {
+        let mut c = setup_owner();
+        setup_transfer_pending(&mut c, "obl-001", 250000);
+        owner_ctx_at(TRANSFER_TIMEOUT_NS);
+        c.mark_reconciliation_required("obl-001".to_string());
+        owner_ctx_at(TRANSFER_TIMEOUT_NS);
+        c.cancel_obligation("obl-001".to_string());
+        let o = c.get_obligation("obl-001".to_string()).unwrap();
+        assert_eq!(o.state, "CANCELLED");
+        assert!(!o.in_flight);
+        assert_eq!(c.get_policy("policy-001".to_string()).unwrap().reserved, 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_INVALID_STATE")]
+    fn cancel_obligation_from_ready_rejects() {
+        let mut c = setup_owner();
+        setup_ready_with_amount(&mut c, "obl-001", 250000, 1000000, 1000000);
+        c.cancel_obligation("obl-001".to_string());
+    }
+
+    #[test]
+    fn freeze_during_in_flight_callback_still_books_paid() {
+        let mut c = setup_owner();
+        setup_transfer_pending(&mut c, "obl-001", 250000);
+        owner_ctx_at(0);
+        c.freeze_policy("policy-001".to_string());
+        // In unit tests the callback is called directly; on chain the
+        // #[private] macro enforces that only the contract itself can call
+        // it, which Phase 2 already proved live with a direct call rejected.
+        c.on_transfer_complete("obl-001".to_string(), 1, Ok(()));
+        let o = c.get_obligation("obl-001".to_string()).unwrap();
+        assert_eq!(o.state, "PAID");
+        assert_eq!(
+            c.get_policy("policy-001".to_string()).unwrap().spent,
+            250000
+        );
+        assert_eq!(c.receipts(0, 10).len(), 1);
+    }
+
+    #[test]
+    fn duplicate_callback_after_paid_books_once() {
+        let mut c = setup_owner();
+        setup_transfer_pending(&mut c, "obl-001", 250000);
+        c.on_transfer_complete("obl-001".to_string(), 1, Ok(()));
+        c.on_transfer_complete("obl-001".to_string(), 1, Ok(()));
+        assert_eq!(
+            c.get_policy("policy-001".to_string()).unwrap().spent,
+            250000
+        );
+        assert_eq!(c.receipts(0, 10).len(), 1);
+    }
+
+    #[test]
+    fn frozen_callback_failure_moves_to_reconciliation_required() {
+        let mut c = setup_owner();
+        setup_transfer_pending(&mut c, "obl-001", 250000);
+        owner_ctx_at(0);
+        c.freeze_policy("policy-001".to_string());
+        c.on_transfer_complete("obl-001".to_string(), 1, Err(PromiseError::Failed));
+        let o = c.get_obligation("obl-001".to_string()).unwrap();
+        assert_eq!(o.state, "RECONCILIATION_REQUIRED");
+        assert!(o.in_flight);
+        assert_eq!(
+            c.get_policy("policy-001".to_string()).unwrap().reserved,
+            250000
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_INVALID_STATE")]
+    fn submit_evidence_after_evidence_timeout_cancel_rejects() {
+        let mut c = setup_owner();
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        owner_ctx_at(1000000);
+        c.create_obligation(
+            "obl-001".to_string(),
+            "policy-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            250000,
+            "delivery-note".to_string(),
+            hex32("686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38"),
+            9999999999999999999,
+            1,
+        );
+        c.request_evidence("obl-001".to_string());
+        c.add_verifier(owner());
+        owner_ctx_at(1000000 + EVIDENCE_TIMEOUT_NS);
+        c.mark_evidence_timeout("obl-001".to_string(), false);
+        assert_eq!(
+            c.get_obligation("obl-001".to_string()).unwrap().state,
+            "CANCELLED"
+        );
+        // Stale evidence after the timeout cancel must reject on state,
+        // never resurrect a cancelled obligation.
+        c.submit_evidence(
+            "obl-001-1".to_string(),
+            "obl-001".to_string(),
+            "ALLOWED".to_string(),
+            "686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38".to_string(),
         );
     }
 
