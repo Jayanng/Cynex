@@ -274,3 +274,8 @@ Receipt index 3 is obl-006, PAID, 100000000, nonce 6, acme-supplies.testnet, pol
 - Fourth re-audit console run against d587116: create huWdzG5cJELhRWrQ3Sqz9YdkeTSrTwnNRYt5eJefcUr, request AXGd2aJ3drry85wiJKBLodmEggND5CmMFQrbrz4LrFnU (pending obl-006-6), submit 3iuznn64C1DLMtwa4GEztidZaTjhxcKnX6Uu3b2yWfBN, balance before settle 750000000.
 - Console settle FMnv3edZwBz3KrHsfQ8n8vDxgCyBzKjPWaPowrYyWtRY failed with Exceeded the prepaid gas at 30 TGas, no receipt, no money moved.
 - Manual near-cli settle y3dGRpBxWYAzp2xhutrqF7bPigsjKYKDA3x2jPq9UmN at 100 TGas, receipt index 3, timestamp 1793788580198155806, prev_hash e08b48ac7d51c12770f4cd20ab521c88abdaf48ed767f19fbb43a0221afb4a0a, balance 750000000 to 850000000, policy spent 850000000. obl-007 then took both to 950000000. Standalone record file: phase2-obl-006-record, cited in the Phase 2 ledger row.
+
+
+## obl-008, console run (74a61ed live proof)
+
+Receipt index 5 is obl-008, PAID, 25000000, nonce 8, acme-supplies.testnet, policy-001, console exit 0: create 5fbBE62r5UBwbCjofPpX5LLapYztu7QFQthdHCX88NLP, request BnDXjmonwbb5GSJxwFaGW1Py3yz9NNAeLaG4tzrb3PLj (pending obl-008-8), submit F5zGbwntiTwqQitfSHkmTozV1XgM5XGNnse2gw93Nnqp, settle EqViKDAQSncjjH7Mc4kg41AtCJfAbZ2UP6fjymaRGHSt, balance 950000000 to 975000000 exactly, timestamp 1793792979518109723. All four hashes verified via RPC by Adejoke. Console fixes in 74a61ed: u64/u128 round-trip throw, scaffold policy_version and transfer_attempt from chain, receipts print without JS-number timestamps.
