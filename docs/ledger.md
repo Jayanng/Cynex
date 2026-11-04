@@ -76,3 +76,24 @@ Evidence:
 
 Sign-off: Johnson (Lane A), 2026-11-03
 Sign-off: rastadev (Lane B), 2026-11-03
+
+
+## Phase 2: Registration and first real settlement
+
+Status: Lane B signed 2026-11-04. Phase 2 NOT closed: merge of lane-b to Master, joint gas recording in docs/contract-api.md, and Lane A signature are still outstanding.
+
+Evidence:
+- Lane A: Master df7c7f5, settle with frozen check order, reserve-then-dispatch ft_transfer with 1 yocto chained to private on_transfer_complete, hash-chained receipts with NEP-297 array events, unit 26/26, sandbox 1/1, fmt and clippy clean.
+- Lane B: lane-b 9a69a4b (console wiring, cynex-verify live receipts), 2a731d6 (console evidence path, exact verify-live timestamps, verifier hash check, sandbox wasm path), c93e9b9 (console polls stale chain reads, prints live tx hashes), d587116 (console poll treats null rows as not visible yet), e2d47cd (takeover fix, see exception below).
+- Live settlements on vault cynex-vault.cynexmaster.testnet, policy-001, recipient acme-supplies.testnet unless noted: receipt 0 obl-001, 250000000, Lane A run; receipt 1 obl-004, 250000000, manual completion; receipt 2 obl-005, 250000000, manual completion; receipt 3 obl-006, 100000000, console run failed on gas then manual completion (see obl-006 record below); receipt 4 obl-007, 100000000, first full console success. Policy spent 950000000 of 1000000000 funded, reserved 0, recipient ft_balance_of 950000000, vault and recipient storage registered on the token (0.00125 NEAR each). verify-live on the five-receipt chain: all five true, exit 0, exact timestamps.
+- obl-006 record, supplied by the Jayaang side and independently verified by Adejoke via RPC: create huWdzG5cJELhRWrQ3Sqz9YdkeTSrTwnNRYt5eJefcUr, request AXGd2aJ3drry85wiJKBLodmEggND5CmMFQrbrz4LrFnU (pending obl-006-6), submit 3iuznn64C1DLMtwa4GEztidZaTjhxcKnX6Uu3b2yWfBN, balance before settle 750000000, console settle FMnv3edZwBz3KrHsfQ8n8vDxgCyBzKjPWaPowrYyWtRY failed with Exceeded the prepaid gas at 30 TGas, manual near-cli settle y3dGRpBxWYAzp2xhutrqF7bPigsjKYKDA3x2jPq9UmN at 100 TGas, receipt index 3, timestamp 1793788580198155806, prev_hash e08b48ac7d51c12770f4cd20ab521c88abdaf48ed767f19fbb43a0221afb4a0a, balance 750000000 to 850000000. Standalone record file: phase2-obl-006-record, cited here so the chain has no unexplained receipt.
+- obl-007, first full console success: create 9jVnt1PfTA5pQpvgxVQa7YvDN9Ky2NTbDjVDLeixBKT, request AfcrZRxbNyPut5s68fX5qCp24reNmUzwCrUhMqQCoqHL, submit 71keXrtq9Yc643ZxpgW8KgEUhoQDYoy1LEfuzpBqiH3N, settle 8gzeDaVNZQyBN3HaoSgT1Zg4A4JRzyzpcVto5feMnpXD, PAID, balance 850000000 to 950000000 exactly. Duplicate obl-007 run failed cleanly at create, exit 1, tx 79dUQp7TTZ1UYXFefAobPiTE9T7WcNPXyYStk6fP2ELy, ERR_OBLIGATION_EXISTS, no state change.
+- Unregistered-recipient failure case, proven by Lane A: obligation back to READY, reservation released, no false paid, tx H1ggfjwdd45jhz4vkAAwkRLSHUXwJsVH47RkBNrk9Txj.
+- Checks on e2d47cd, run by Adejoke: scaffold typecheck clean, frontend typecheck clean, conformance 6/6, Jest 9/9, console dry-run 9 calls exit 2, no transaction sent.
+- Headroom warning: only 50000000 of funded headroom remains. No further demo settlement at 100000000 or more without topping up policy funding first. obl-003 remains EVIDENCE_PENDING (250000000) and obl-002 remains READY (100000000, unregistered recipient); neither can settle as things stand.
+- Measured gas, reported but NOT jointly recorded here: settle 2.588 TGas, ft_transfer 2.023 TGas, callback 2.253 TGas, total about 6.86 TGas. Joint recording in docs/contract-api.md remains a close item and must not be done as a solo Lane B edit.
+
+Exception to the lane rule and to the ledger header rule, for this row only: commit e2d47cd was authored by Jayanng, not by Adejoke, under a Phase 2-only exception. The exception was accepted by rastadev in chat on 2026-11-04, covering e2d47cd (settle gas and error reporting only). The lane rule resumes after Phase 2. Acceptance basis for the takeover fix is live proof plus independent review by Adejoke, NOT a section 2.6 independent audit, because the auditor side authored the fix. Earlier Phase 2 audit rounds were section 2.6 audits by Jayaang.
+
+Sign-off: Johnson (Lane A), pending
+Sign-off: rastadev (Lane B), 2026-11-04

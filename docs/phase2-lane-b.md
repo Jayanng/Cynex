@@ -266,3 +266,11 @@ takeover live run notes in the Phase 2 close record. Adejoke is asked
 to pull this commit, review the diff, run the checks herself, and
 sign Lane B herself if she agrees. She is not asked to sign work she
 has not reviewed.
+
+
+## obl-006 record, verified (closes the takeover-note gap)
+
+Receipt index 3 is obl-006, PAID, 100000000, nonce 6, acme-supplies.testnet, policy-001. Path, supplied by the Jayaang side and independently verified by Adejoke via RPC:
+- Fourth re-audit console run against d587116: create huWdzG5cJELhRWrQ3Sqz9YdkeTSrTwnNRYt5eJefcUr, request AXGd2aJ3drry85wiJKBLodmEggND5CmMFQrbrz4LrFnU (pending obl-006-6), submit 3iuznn64C1DLMtwa4GEztidZaTjhxcKnX6Uu3b2yWfBN, balance before settle 750000000.
+- Console settle FMnv3edZwBz3KrHsfQ8n8vDxgCyBzKjPWaPowrYyWtRY failed with Exceeded the prepaid gas at 30 TGas, no receipt, no money moved.
+- Manual near-cli settle y3dGRpBxWYAzp2xhutrqF7bPigsjKYKDA3x2jPq9UmN at 100 TGas, receipt index 3, timestamp 1793788580198155806, prev_hash e08b48ac7d51c12770f4cd20ab521c88abdaf48ed767f19fbb43a0221afb4a0a, balance 750000000 to 850000000, policy spent 850000000. obl-007 then took both to 950000000. Standalone record file: phase2-obl-006-record, cited in the Phase 2 ledger row.
