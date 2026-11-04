@@ -1,5 +1,5 @@
 /**
- * Cynex CLI, Phase 1 scaffold plus Phase 2 live verification plus Phase 3 playground.
+ * Cynex CLI, Phase 1 scaffold plus Phase 2 live verification plus Phase 3 playground plus Phase 4 budget.
  *
  * Commands:
  *   verify-receipts <receipts.json>
@@ -28,12 +28,22 @@
  *     this output are display only; verify-live and balances are
  *     authoritative for exact amounts. The recommended demo set is
  *     recorded in demo/playground-obligations.json.
+ *   budget <vaultId> <policyId>
+ *     Reads the policy and its balances live from the contract
+ *     (no signing, no transactions) and prints the real per-token
+ *     budget and limit, the headroom for new settlements, and the
+ *     invariant result. Token units and native NEAR are never mixed:
+ *     native headroom is printed separately in yoctoNEAR. A broken
+ *     invariant exits non-zero. Token figures must be exact; an
+ *     inexact figure fails the command instead of rendering a
+ *     rounded budget.
  */
 import { readFileSync } from "node:fs";
 import { receiptHash, GENESIS_PREV_HASH } from "../frontend/src/cynex/receipt.js";
 import { toHex } from "../frontend/src/cynex/api.js";
 import { CynexClient, TESTNET_RPC_URL } from "../frontend/src/cynex/client.js";
 import { describeState, OBLIGATION_STATES } from "../frontend/src/cynex/states.js";
+import { describeBudget, type BalancesRow } from "../frontend/src/cynex/budget.js";
 import type { Receipt } from "../frontend/src/cynex/schema.js";
 
 interface ReceiptJson {
@@ -256,6 +266,38 @@ async function playground(vaultId: string, ids: string[]): Promise<number> {
   return failed ? 1 : 0;
 }
 
+
+async function budget(vaultId: string, policyId: string): Promise<number> {
+  const client = new CynexClient(vaultId);
+  const policy = (await client.getPolicy(policyId)) as Record<string, unknown> | null;
+  if (policy === null || policy === undefined || typeof policy["frozen"] !== "boolean" || typeof policy["token_id"] !== "string") {
+    console.log(policyId + ": policy row unreadable, no budget rendered.");
+    return 1;
+  }
+  const balances = (await client.balances(policyId)) as Record<string, unknown> | null;
+  if (balances === null || balances === undefined) {
+    console.log(policyId + ": balances row unreadable, no budget rendered.");
+    return 1;
+  }
+  let display;
+  try {
+    display = describeBudget(balances as unknown as BalancesRow);
+  } catch (e) {
+    console.log(policyId + ": budget figures inexact or unreadable, no budget rendered: " + String(e));
+    return 1;
+  }
+  console.log(policyId + " (" + policy["token_id"] + "), frozen: " + String(policy["frozen"]));
+  console.log("  token budget, base units: limit " + display.limit.toString() + ", spent " + display.spent.toString() + ", reserved " + display.reserved.toString() + ", funded " + display.funded.toString());
+  console.log("  headroom for new settlements: " + display.headroom.toString());
+  console.log("  invariant: " + (display.invariantOk ? "ok" : "BROKEN") + " (" + display.invariantDetail + ")");
+  if (display.nativeHeadroom !== null) {
+    console.log("  native headroom, yoctoNEAR, separate from token units: " + display.nativeHeadroom.yocto.toString() + (display.nativeHeadroom.exact ? " (exact)" : " (approximate, above JS safe integer range)"));
+  } else {
+    console.log("  native headroom: not reported by the deployed contract");
+  }
+  return display.invariantOk ? 0 : 1;
+}
+
 async function main(argv: string[]): Promise<number> {
   const [command, arg] = argv;
   if (command === "verify-receipts" && arg) {
@@ -267,9 +309,18 @@ async function main(argv: string[]): Promise<number> {
   if (command === "playground" && arg) {
     return playground(arg, argv.slice(2));
   }
+  if (command === "budget" && arg) {
+    const budgetPolicyId = argv[2];
+    if (budgetPolicyId === undefined) {
+      console.log("usage: cynex budget <vaultId> <policyId>");
+      return 2;
+    }
+    return budget(arg, budgetPolicyId);
+  }
   console.log("usage: cynex verify-receipts <receipts.json>");
   console.log("usage: cynex verify-live <vaultId>");
   console.log("usage: cynex playground <vaultId> <obligationId...>");
+  console.log("usage: cynex budget <vaultId> <policyId>");
   return 2;
 }
 

@@ -18,6 +18,6 @@
   "scripts": {
     "conformance": "tsc && node dist/scripts/conformance.js",
     "typecheck": "tsc --noEmit",
-    "jest": "NODE_OPTIONS=--experimental-vm-modules npx jest src/cynex-schema.test.ts src/cynex/states.test.ts --runInBand"
+    "jest": "NODE_OPTIONS=--experimental-vm-modules npx jest src/cynex-schema.test.ts src/cynex/states.test.ts src/cynex/budget.test.ts --runInBand"
   }
 }
