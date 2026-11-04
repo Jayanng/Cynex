@@ -1,5 +1,5 @@
 /**
- * Cynex CLI, Phase 1 scaffold plus Phase 2 live verification.
+ * Cynex CLI, Phase 1 scaffold plus Phase 2 live verification plus Phase 3 playground.
  *
  * Commands:
  *   verify-receipts <receipts.json>
@@ -18,11 +18,22 @@
  *     token_id, timestamp, tx_ref, verified_ok. Exits non-zero
  *     on any chain break. This reads the live chain; it does
  *     not sign, fund, or settle anything.
+ *   playground <vaultId> <obligationId...>
+ *     Reads each listed obligation and its policy live from the
+ *     contract (no signing, no transactions) and prints the Phase 3
+ *     state display for it: label, meaning, next action, and the
+ *     frozen note when the policy is frozen. An obligation that is
+ *     not found on chain, or a state the display does not know,
+ *     fails the command instead of rendering a guess. Amounts in
+ *     this output are display only; verify-live and balances are
+ *     authoritative for exact amounts. The recommended demo set is
+ *     recorded in demo/playground-obligations.json.
  */
 import { readFileSync } from "node:fs";
 import { receiptHash, GENESIS_PREV_HASH } from "../frontend/src/cynex/receipt.js";
 import { toHex } from "../frontend/src/cynex/api.js";
-import { TESTNET_RPC_URL } from "../frontend/src/cynex/client.js";
+import { CynexClient, TESTNET_RPC_URL } from "../frontend/src/cynex/client.js";
+import { describeState, OBLIGATION_STATES } from "../frontend/src/cynex/states.js";
 import type { Receipt } from "../frontend/src/cynex/schema.js";
 
 interface ReceiptJson {
@@ -184,6 +195,67 @@ function verifyFile(file: string): number {
   return results.every((r) => r.verified_ok) ? 0 : 1;
 }
 
+
+async function playground(vaultId: string, ids: string[]): Promise<number> {
+  if (ids.length === 0) {
+    console.log("usage: cynex playground <vaultId> <obligationId...>");
+    return 2;
+  }
+  const client = new CynexClient(vaultId);
+  let failed = false;
+  const seen: string[] = [];
+  for (const id of ids) {
+    const row = (await client.getObligation(id)) as Record<string, unknown> | null;
+    if (row === null || row === undefined || typeof row["state"] !== "string") {
+      console.log(id + ": not found on chain, no state rendered.");
+      failed = true;
+      continue;
+    }
+    const policyId = row["policy_id"];
+    if (typeof policyId !== "string") {
+      console.log(id + ": obligation row has no policy_id, no state rendered.");
+      failed = true;
+      continue;
+    }
+    const policy = (await client.getPolicy(policyId)) as Record<string, unknown> | null;
+    if (policy === null || policy === undefined || typeof policy["frozen"] !== "boolean") {
+      console.log(id + ": policy row unreadable, no state rendered.");
+      failed = true;
+      continue;
+    }
+    let display;
+    try {
+      display = describeState(row["state"], policy["frozen"]);
+    } catch (e) {
+      console.log(id + ": unknown state on chain, no state rendered: " + String(e));
+      failed = true;
+      continue;
+    }
+    seen.push(display.state);
+    console.log(id + ": " + display.state + " - " + display.label + ". " + display.meaning);
+    console.log("  recipient: " + String(row["recipient"]) + ", amount: " + String(row["amount"]) + ", policy: " + policyId + ", policy frozen: " + String(policy["frozen"]));
+    console.log("  next: " + display.next);
+    if (display.frozenNote !== null) {
+      console.log("  frozen note: " + display.frozenNote);
+    }
+  }
+  const seenUnique: string[] = [];
+  for (const s of seen) {
+    if (seenUnique.indexOf(s) === -1) {
+      seenUnique.push(s);
+    }
+  }
+  const missing: string[] = [];
+  for (const s of OBLIGATION_STATES) {
+    if (seenUnique.indexOf(s) === -1) {
+      missing.push(s);
+    }
+  }
+  console.log("states seen live in this run: " + (seenUnique.length > 0 ? seenUnique.join(", ") : "none"));
+  console.log("states with no live example in this run: " + missing.join(", "));
+  return failed ? 1 : 0;
+}
+
 async function main(argv: string[]): Promise<number> {
   const [command, arg] = argv;
   if (command === "verify-receipts" && arg) {
@@ -192,8 +264,12 @@ async function main(argv: string[]): Promise<number> {
   if (command === "verify-live" && arg) {
     return verifyLive(arg);
   }
+  if (command === "playground" && arg) {
+    return playground(arg, argv.slice(2));
+  }
   console.log("usage: cynex verify-receipts <receipts.json>");
   console.log("usage: cynex verify-live <vaultId>");
+  console.log("usage: cynex playground <vaultId> <obligationId...>");
   return 2;
 }
 
