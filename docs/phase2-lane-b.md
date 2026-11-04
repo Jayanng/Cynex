@@ -99,3 +99,77 @@ the Lane A run that made the settlement.
   audit of this Lane B work is on record. Lane B sign-off
   waits on both, per the standing rule: sign only when the
   phase evidence and the audit are actually on record.
+
+
+## Section 2.6 audit fixes, 2026-11-04
+
+Audit file: phase2-lane-b-fixes-for-adejoke, from Jayaang.
+All four fixes are Lane B code only. No contract or frozen
+doc was changed by Lane B in this round.
+
+1. BLOCKING, console evidence path (agent/console.ts).
+   A fresh obligation is CREATED and settle requires READY,
+   so the console now runs, in order: owner
+   create_obligation, owner request_evidence, read the
+   obligation back and take pending_request_id from chain,
+   scaffold verifier check (abort on BLOCK), verifier
+   submit_evidence with request_id equal to
+   pending_request_id, result ALLOWED, proof equal to the
+   obligation evidence_hash hex, read back and abort
+   unless READY, read recipient ft_balance_of before
+   settle, agent settle, read back and require PAID, read
+   recipient ft_balance_of after settle and require the
+   increase to equal the obligation amount, else fail.
+   New env vars: CYNEX_VERIFIER and
+   CYNEX_VERIFIER_KEY_FILE. Precondition, held by Lane A:
+   the verifier account must already be allowlisted with
+   add_verifier. Dry run prints all nine calls in order
+   and exits 2, no transaction sent.
+   Live console run has NOT been done from this machine:
+   the owner, verifier, and agent keys are held by Lane A,
+   and the audit states the live re-audit, including a
+   fresh console settlement, is for Jayaang under 2.6.
+
+2. MEDIUM, verify-live timestamp rounding (cli/cynex.ts).
+   verify-live now reads receipts through raw RPC and
+   quotes index, amount, and timestamp numbers before
+   parsing, so u64 values stay exact as BigInt. Live
+   verify-live now prints the exact timestamp
+   1793751483012073148 (previously rounded to ...3200),
+   verified_ok=true, exit 0. Synthetic two-receipt chain
+   test with exact timestamps: receipt 0 and receipt 1
+   both verified_ok=true. Until the live two-receipt
+   chain exists, that synthetic test is the evidence,
+   not a live two-receipt proof.
+
+3. Verifier evidence hash (services/verifier/verifier.ts).
+   verifyEvidence now compares the supplied evidenceHash
+   to obligation.evidence_hash and returns BLOCK with
+   EVIDENCE_MISMATCH on mismatch. Tested: correct hash
+   ALLOWED, wrong hash BLOCK with EVIDENCE_MISMATCH.
+
+4. Sandbox default wasm path
+   (tests/integration/sandbox.ts). DEFAULT_WASM_PATH is
+   now contract/target/near/cynex_vault.wasm, where cargo
+   near build puts the wasm. Harness still exits PENDING
+   code 2 on this machine, no built wasm here, no mock.
+
+## Items confirmed by the audit, not Lane B homework
+
+- Unregistered-recipient failure case, already proven by
+  Lane A: obligation back to READY, reservation released,
+  no false paid, tx
+  H1ggfjwdd45jhz4vkAAwkRLSHUXwJsVH47RkBNrk9Txj.
+- Measured gas, to be recorded JOINTLY in
+  docs/contract-api.md, not solo by Lane B: settle 2.588
+  TGas, ft_transfer 2.023 TGas, callback 2.253 TGas,
+  total about 6.86 TGas, replacing the Phase 0 gas TBD.
+- create_obligation nonce in the contract versus no
+  nonce in contract-api.md is a joint sign-off item, not
+  a Lane B fix. The frozen doc was not changed here.
+- Still outstanding for Phase 2 close, per the audit:
+  Jayaang re-audit live under 2.6 including a fresh
+  console settlement and verify-live on the live
+  two-receipt chain, merge of lane-b to Master, joint
+  gas recording in contract-api.md, then a Phase 2
+  ledger row signed by both lanes.

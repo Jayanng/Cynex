@@ -1,41 +1,66 @@
 /**
- * Cynex console, Phase 2 Lane B.
+ * Cynex console, Phase 2 Lane B, audit fixes applied.
  *
- * Wires the console to the real contract: create an obligation
- * (owner) and settle it (agent, scoped settle key), then read
- * back the live chain state. This is the Lane B console flow
- * from Phase 2, implemented with near-api-js v7 Account
- * callFunction. No keys are stored in this file or in the repo:
- * key material comes only from files named in environment
- * variables at run time, and is never printed.
+ * Wires the console to the real contract, end to end, in
+ * this order, because a fresh obligation is CREATED and
+ * settle requires READY:
+ *   1. owner create_obligation
+ *   2. owner request_evidence
+ *   3. read the obligation back, take pending_request_id
+ *      from chain, never from a local computation
+ *   4. scaffold verifier check (type, hash, expiry); abort
+ *      on BLOCK, do not submit
+ *   5. verifier submit_evidence with request_id equal to
+ *      pending_request_id, result ALLOWED, proof equal to
+ *      the obligation evidence_hash hex
+ *   6. read the obligation back; abort before settle
+ *      unless the state is READY
+ *   7. read the recipient ft_balance_of before settle
+ *   8. agent settle (scoped settle key)
+ *   9. read the obligation back; it must be PAID
+ *  10. read the recipient ft_balance_of after settle; the
+ *      increase must equal the obligation amount, else
+ *      this is an accounting break and the run fails
+ *
+ * The settle transaction outcome print is not proof. The
+ * obligation PAID read and the balance delta are the proof.
+ *
+ * Preconditions for a live run, held by Lane A, not here:
+ * the verifier account must already be allowlisted with
+ * add_verifier, the vault and the recipient must be
+ * storage registered on the token, and the policy must be
+ * funded. Keys come only from files named in environment
+ * variables and are never printed.
  *
  * Dry run (no keys): prints the exact calls that would be
- * made, in order, and exits 2. A dry run is not a settlement
- * and must never be reported as one.
+ * made, in order, and exits 2. A dry run is not a
+ * settlement and must never be reported as one.
  *
  * Live run: set CYNEX_VAULT, CYNEX_OWNER, CYNEX_AGENT,
- * CYNEX_OWNER_KEY_FILE, CYNEX_AGENT_KEY_FILE, and
- * CYNEX_OBLIGATION_FILE (JSON with obligation_id, policy_id,
- * recipient, amount as a decimal string, evidence_type,
- * evidence_hash as 64 hex characters, expires_at_ns as a
- * decimal string, nonce as a decimal string, and evidence_ref).
- * The console then prints the live transaction outcome and
- * the chain read that follows it for every action, as the
- * plan requires. A console line without either is not proof.
+ * CYNEX_VERIFIER, CYNEX_OWNER_KEY_FILE,
+ * CYNEX_AGENT_KEY_FILE, CYNEX_VERIFIER_KEY_FILE, and
+ * CYNEX_OBLIGATION_FILE (JSON with obligation_id,
+ * policy_id, recipient, amount as a decimal string,
+ * evidence_type, evidence_hash as 64 hex characters,
+ * expires_at_ns as a decimal string, nonce as a decimal
+ * string, and evidence_ref).
+ *
+ * Deployed-contract note, flagged for audit, not hidden:
+ * the frozen contract-api.md create_obligation signature
+ * has no nonce (nonce generated at creation), while the
+ * deployed contract takes nonce as an input argument.
+ * The console follows the deployed contract.
  */
 import { readFileSync } from "node:fs";
 import { JsonRpcProvider, Account, KeyPairSigner } from "near-api-js";
 import type { KeyPairString } from "near-api-js";
 import { buildSettle } from "./wrapper.js";
+import { verifyEvidence } from "../services/verifier/verifier.js";
 import { CynexClient, TESTNET_RPC_URL } from "../frontend/src/cynex/client.js";
+import type { Obligation } from "../frontend/src/cynex/schema.js";
 
 /**
- * Deployed-contract create_obligation arguments. Note a
- * divergence for Lane A audit: the frozen contract-api.md
- * signature has no nonce (nonce is generated at creation),
- * while the deployed contract takes nonce as an input
- * argument. The console follows the deployed contract, and
- * this divergence is flagged here rather than hidden.
+ * Deployed-contract create_obligation arguments.
  */
 export interface DeployCreateObligationArgs {
   policy_id: string;
@@ -93,35 +118,65 @@ export function consoleCalls(vaultId: string, input: ObligationFile): Record<str
   });
   return [
     { account: "owner", contractId: vaultId, methodName: "create_obligation", args: create },
+    { account: "owner", contractId: vaultId, methodName: "request_evidence", args: { obligation_id: input.obligation_id } },
+    { account: "reader", contractId: vaultId, methodName: "get_obligation", args: { obligation_id: input.obligation_id } },
+    { account: "verifier", contractId: vaultId, methodName: "submit_evidence", args: { request_id: "<pending_request_id read from chain>", obligation_id: input.obligation_id, result: "ALLOWED", proof: input.evidence_hash } },
+    { account: "reader", contractId: vaultId, methodName: "get_obligation", args: { obligation_id: input.obligation_id } },
+    { account: "reader", contractId: "<token from policy>", methodName: "ft_balance_of", args: { account_id: input.recipient } },
     { account: "agent", contractId: vaultId, methodName: "settle", args: { ...settle, proposed_amount: settle.proposed_amount.toString() } },
-    { account: "reader", contractId: vaultId, methodName: "receipts", args: { start: 0, limit: 10 } },
+    { account: "reader", contractId: vaultId, methodName: "get_obligation", args: { obligation_id: input.obligation_id } },
+    { account: "reader", contractId: "<token from policy>", methodName: "ft_balance_of", args: { account_id: input.recipient } },
   ];
+}
+
+function obligationState(row: unknown): string {
+  return String((row as Record<string, unknown>).state);
+}
+
+function obligationPendingRequestId(row: unknown): string | null {
+  const value = (row as Record<string, unknown>).pending_request_id;
+  return value === null || value === undefined ? null : String(value);
+}
+
+async function tokenBalance(provider: JsonRpcProvider, tokenId: string, recipient: string): Promise<bigint> {
+  const result = await provider.callFunction({
+    contractId: tokenId,
+    method: "ft_balance_of",
+    args: { account_id: recipient },
+    blockQuery: { finality: "final" },
+  });
+  return BigInt(String(result as unknown));
 }
 
 async function liveRun(): Promise<number> {
   const vaultId = process.env.CYNEX_VAULT ?? "";
   const ownerId = process.env.CYNEX_OWNER ?? "";
   const agentId = process.env.CYNEX_AGENT ?? "";
+  const verifierId = process.env.CYNEX_VERIFIER ?? "";
   const ownerKeyFile = process.env.CYNEX_OWNER_KEY_FILE ?? "";
   const agentKeyFile = process.env.CYNEX_AGENT_KEY_FILE ?? "";
+  const verifierKeyFile = process.env.CYNEX_VERIFIER_KEY_FILE ?? "";
   const obligationFile = process.env.CYNEX_OBLIGATION_FILE ?? "";
-  if (!vaultId || !ownerId || !agentId || !ownerKeyFile || !agentKeyFile || !obligationFile) {
-    if (!obligationFile) {
-      console.log("usage: set CYNEX_VAULT, CYNEX_OWNER, CYNEX_AGENT, CYNEX_OWNER_KEY_FILE, CYNEX_AGENT_KEY_FILE, CYNEX_OBLIGATION_FILE");
-      return 2;
-    }
-    const input = JSON.parse(readFileSync(obligationFile, "utf-8")) as ObligationFile;
+  if (!obligationFile) {
+    console.log("usage: set CYNEX_VAULT, CYNEX_OWNER, CYNEX_AGENT, CYNEX_VERIFIER, CYNEX_OWNER_KEY_FILE, CYNEX_AGENT_KEY_FILE, CYNEX_VERIFIER_KEY_FILE, CYNEX_OBLIGATION_FILE");
+    return 2;
+  }
+  const input = JSON.parse(readFileSync(obligationFile, "utf-8")) as ObligationFile;
+  if (!vaultId || !ownerId || !agentId || !verifierId || !ownerKeyFile || !agentKeyFile || !verifierKeyFile) {
     console.log("DRY-RUN: no keys supplied, no transaction was sent.");
     for (const call of consoleCalls(vaultId || "<vault>", input)) {
       console.log(JSON.stringify(call));
     }
     return 2;
   }
-  const input = JSON.parse(readFileSync(obligationFile, "utf-8")) as ObligationFile;
   const provider = new JsonRpcProvider({ url: TESTNET_RPC_URL });
   const ownerKey = readFileSync(ownerKeyFile, "utf-8").trim();
   const agentKey = readFileSync(agentKeyFile, "utf-8").trim();
+  const verifierKey = readFileSync(verifierKeyFile, "utf-8").trim();
   const owner = new Account(ownerId, provider, KeyPairSigner.fromSecretKey(ownerKey as KeyPairString));
+  const verifier = new Account(verifierId, provider, KeyPairSigner.fromSecretKey(verifierKey as KeyPairString));
+  const agent = new Account(agentId, provider, KeyPairSigner.fromSecretKey(agentKey as KeyPairString));
+  const client = new CynexClient(vaultId);
   const create = createObligationArgs(input);
   const createOutcome = await owner.callFunction({
     contractId: vaultId,
@@ -129,7 +184,60 @@ async function liveRun(): Promise<number> {
     args: create,
   });
   console.log("create_obligation outcome: " + JSON.stringify(createOutcome));
-  const agent = new Account(agentId, provider, KeyPairSigner.fromSecretKey(agentKey as KeyPairString));
+  const requestOutcome = await owner.callFunction({
+    contractId: vaultId,
+    methodName: "request_evidence",
+    args: { obligation_id: input.obligation_id },
+  });
+  console.log("request_evidence outcome: " + JSON.stringify(requestOutcome));
+  const afterRequest = await client.getObligation(input.obligation_id);
+  console.log("obligation after request_evidence: " + JSON.stringify(afterRequest));
+  const pendingRequestId = obligationPendingRequestId(afterRequest);
+  if (pendingRequestId === null) {
+    console.log("ABORT: no pending_request_id on chain after request_evidence, settle is not attempted.");
+    return 1;
+  }
+  const scaffoldObligation: Obligation = {
+    obligation_id: input.obligation_id,
+    policy_id: input.policy_id,
+    policy_version: 1n,
+    recipient: input.recipient,
+    amount: BigInt(input.amount),
+    evidence_type: input.evidence_type,
+    evidence_hash: input.evidence_hash.toLowerCase(),
+    expires_at_ns: BigInt(input.expires_at_ns),
+    nonce: BigInt(input.nonce),
+    state: obligationState(afterRequest) as Obligation["state"],
+    in_flight: false,
+    transfer_attempt: 0n,
+    transfer_dispatched_at_ns: null,
+    pending_request_id: pendingRequestId,
+    pending_digest: null,
+    evidence_requested_at_ns: null,
+  };
+  const nowNs = BigInt(Date.now()) * 1000000n;
+  const check = verifyEvidence(scaffoldObligation, input.evidence_type, input.evidence_hash, nowNs);
+  console.log("scaffold verifier: " + check.result + " reasons=" + check.reasons.join(","));
+  if (check.result !== "ALLOWED") {
+    console.log("ABORT: scaffold verifier did not allow, submit_evidence is not attempted.");
+    return 1;
+  }
+  const submitOutcome = await verifier.callFunction({
+    contractId: vaultId,
+    methodName: "submit_evidence",
+    args: { request_id: pendingRequestId, obligation_id: input.obligation_id, result: "ALLOWED", proof: input.evidence_hash },
+  });
+  console.log("submit_evidence outcome: " + JSON.stringify(submitOutcome));
+  const afterEvidence = await client.getObligation(input.obligation_id);
+  console.log("obligation after submit_evidence: " + JSON.stringify(afterEvidence));
+  if (obligationState(afterEvidence) !== "READY") {
+    console.log("ABORT: obligation is not READY after submit_evidence, settle is not attempted. State: " + obligationState(afterEvidence));
+    return 1;
+  }
+  const policyRow = await client.getPolicy(input.policy_id) as Record<string, unknown>;
+  const tokenId = String(policyRow.token_id);
+  const beforeBalance = await tokenBalance(provider, tokenId, input.recipient);
+  console.log("recipient ft_balance_of before settle: " + beforeBalance.toString());
   const settle = buildSettle({
     obligation_id: input.obligation_id,
     proposed_recipient: input.recipient,
@@ -142,8 +250,18 @@ async function liveRun(): Promise<number> {
     args: { ...settle, proposed_amount: settle.proposed_amount.toString() },
   });
   console.log("settle outcome: " + JSON.stringify(settleOutcome));
-  const client = new CynexClient(vaultId);
-  console.log("obligation after settle: " + JSON.stringify(await client.getObligation(input.obligation_id)));
+  const afterSettle = await client.getObligation(input.obligation_id);
+  console.log("obligation after settle: " + JSON.stringify(afterSettle));
+  if (obligationState(afterSettle) !== "PAID") {
+    console.log("FAILURE: obligation is not PAID after settle. State: " + obligationState(afterSettle));
+    return 1;
+  }
+  const afterBalance = await tokenBalance(provider, tokenId, input.recipient);
+  console.log("recipient ft_balance_of after settle: " + afterBalance.toString());
+  if (afterBalance - beforeBalance !== BigInt(input.amount)) {
+    console.log("FAILURE: balance increase does not equal the obligation amount. This is an accounting break, do not report success.");
+    return 1;
+  }
   console.log("receipts after settle: " + JSON.stringify(await client.receipts(0n, 10n)));
   return 0;
 }

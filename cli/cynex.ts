@@ -22,7 +22,7 @@
 import { readFileSync } from "node:fs";
 import { receiptHash, GENESIS_PREV_HASH } from "../frontend/src/cynex/receipt.js";
 import { toHex } from "../frontend/src/cynex/api.js";
-import { CynexClient } from "../frontend/src/cynex/client.js";
+import { TESTNET_RPC_URL } from "../frontend/src/cynex/client.js";
 import type { Receipt } from "../frontend/src/cynex/schema.js";
 
 interface ReceiptJson {
@@ -97,18 +97,58 @@ export function verifyLiveChain(receipts: Receipt[]): { receipt: Receipt; verifi
   return out;
 }
 
+
+/**
+ * Parse a raw receipts JSON string with exact u64 values.
+ * near-api-js parses JSON with JSON.parse, which rounds
+ * u64 timestamps over 2^53 (live receipt timestamp
+ * 1793751483012073148 reads back as ...3200). The rounded
+ * timestamp recomputes to a different receipt hash, so a
+ * second receipt would falsely fail its link check. Quoting
+ * the index, amount, and timestamp numbers before parsing
+ * keeps them exact as BigInt end to end.
+ */
+export function parseReceiptsRaw(raw: string): Receipt[] {
+  const quoted = raw.replace(/"(index|amount|timestamp)":\s*(-?\d+)/g, "\"$1\":\"$2\"");
+  const rows = JSON.parse(quoted) as Record<string, unknown>[];
+  return rows.map(parseLiveReceipt);
+}
+
+async function fetchReceiptPage(vaultId: string, start: bigint, limit: bigint): Promise<Receipt[]> {
+  const argsBase64 = Buffer.from(JSON.stringify({ start: Number(start), limit: Number(limit) })).toString("base64");
+  const response = await fetch(TESTNET_RPC_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: "cynex-verify-live",
+      method: "query",
+      params: {
+        request_type: "call_function",
+        account_id: vaultId,
+        method_name: "receipts",
+        args_base64: argsBase64,
+        finality: "final",
+      },
+    }),
+  });
+  const data = (await response.json()) as { error?: unknown; result?: { result?: number[] } };
+  if (data.error) {
+    throw new Error("receipts view failed: " + JSON.stringify(data.error));
+  }
+  const raw = Buffer.from(data.result?.result ?? []).toString("utf-8");
+  return parseReceiptsRaw(raw);
+}
+
 async function verifyLive(vaultId: string): Promise<number> {
-  const client = new CynexClient(vaultId);
   const all: Receipt[] = [];
   let start = 0n;
   for (;;) {
-    const page = (await client.receipts(start, 100n)) as unknown;
-    if (!Array.isArray(page) || page.length === 0) {
+    const page = await fetchReceiptPage(vaultId, start, 100n);
+    if (page.length === 0) {
       break;
     }
-    for (const row of page as Record<string, unknown>[]) {
-      all.push(parseLiveReceipt(row));
-    }
+    all.push(...page);
     start += BigInt(page.length);
     if (page.length < 100) {
       break;
