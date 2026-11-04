@@ -28,7 +28,7 @@ Token ledger invariant, checked with checked arithmetic and overflow-checks true
 
 Policy version: version increments only on an owner approved policy change, never on freeze or unfreeze. Freeze sets the frozen flag only, so a freeze and unfreeze cycle does not permanently block obligations created before it. There is no update_policy method in this version. If a policy term must change, freeze the old policy and create a new one, with a new policy_id. Settle checks that the obligation recorded policy_version equals the policy version at settle time, and that the policy is not frozen. A mismatch rejects, because the terms the obligation was created under are no longer the current policy terms.
 
-Nonce: one nonce per obligation, generated at create_obligation, locked on dispatch, not permanently consumed on dispatch. Its job is to make a duplicate settle call detectable as NONCE_ALREADY_CONSUMED even while the first attempt is still in flight, where obligation id plus PAID state alone would not cover that case. The lock is held only while in_flight is true. On a confirmed transfer failure the lock is released, the nonce is reusable for a retry, and the obligation returns to READY settleable. On PAID the nonce is permanently consumed, because PAID is terminal. The nonce does not replace state checks.
+Nonce: one nonce per obligation, supplied by the owner at create_obligation, locked on dispatch, not permanently consumed on dispatch. Its job is to make a duplicate settle call detectable as NONCE_ALREADY_CONSUMED even while the first attempt is still in flight, where obligation id plus PAID state alone would not cover that case. The lock is held only while in_flight is true. On a confirmed transfer failure the lock is released, the nonce is reusable for a retry, and the obligation returns to READY settleable. On PAID the nonce is permanently consumed, because PAID is terminal. The nonce does not replace state checks.
 
 Pending evidence fields: pending_request_id is the id the verifier must echo in submit_evidence. pending_digest is the settlement digest that evidence must bind to. Evidence for a different request id or digest is rejected.
 
@@ -50,15 +50,15 @@ The genesis receipt uses prev_hash as 32 zero bytes. Each later receipt uses the
 
 ## Methods
 
-Owner means predecessor equals owner. Owner actions are signed by the owner wallet or CLI, never by the executor host. Reconciler means the account recorded in the policy reconciler field at policy creation, or changed later only by the owner via set_reconciler. If the field is null, only the owner may call timeout and resolution methods. A reconciler may only call the two timeout methods and resolve_settlement, never owner only methods, and never resolve_settlement to PAID, see below.
+Owner means predecessor equals owner. Owner actions are signed by the owner wallet or CLI, never by the executor host. Reconciler means the account recorded in the policy reconciler field, which starts None at policy creation and is changed only by the owner via set_reconciler. If the field is null, only the owner may call timeout and resolution methods. A reconciler may only call the two timeout methods and resolve_settlement, never owner only methods, and never resolve_settlement to PAID, see below.
 
-create_policy(policy_id, owner, token_id, limit, reconciler): caller owner. Creates a policy with spent 0, reserved 0, funded 0, frozen false, version 0, and the given reconciler or null. set_reconciler(policy_id, reconciler): caller owner. Changes only the reconciler field, it does not bump version and does not change terms.
+create_policy(policy_id, token_id, limit): caller owner. Creates a policy with spent 0, reserved 0, funded 0, frozen false, version 1, and reconciler None. Reconciler is changed only by set_reconciler, never at policy creation. set_reconciler(policy_id, reconciler): caller owner. Changes only the reconciler field, it does not bump version and does not change terms.
 
-create_obligation(policy_id, obligation_id, recipient, amount, evidence_type, evidence_hash, expires_at_ns): caller owner. Creates an obligation in CREATED, with a fresh nonce, policy_version copied from the policy at creation, in_flight false, and no pending evidence and no evidence request time. The recipient, amount, evidence type, evidence hash and expiry recorded here are the authoritative terms. Nothing the agent later proposes can change them.
+create_obligation(policy_id, obligation_id, recipient, amount, evidence_type, evidence_hash, expires_at_ns, nonce): caller owner. Creates an obligation in CREATED, with the caller-supplied nonce recorded as given, policy_version copied from the policy at creation, in_flight false, and no pending evidence and no evidence request time. The nonce is used in pending_request_id, as obligation_id plus a hyphen plus the nonce, and in the settlement digest. The recipient, amount, evidence type, evidence hash and expiry recorded here are the authoritative terms. Nothing the agent later proposes can change them.
 
 freeze_policy(policy_id): caller owner. Sets frozen true only, it does not bump version. New settle calls are blocked while frozen. A transfer already in flight is not un-booked by a freeze. unfreeze_policy(policy_id): caller owner. Sets frozen false only, it does not bump version, and obligations created before the freeze become settleable again if their recorded version still matches and they are in READY.
 
-cancel_obligation(obligation_id): caller owner. Allowed from CREATED, EVIDENCE_PENDING, READY, WARN_PENDING, and RECONCILIATION_REQUIRED. Expiry alone does not auto-cancel, because auto-cancel would hide a missed settlement.
+cancel_obligation(obligation_id): caller owner. Allowed from CREATED only in Phase 2, otherwise ERR_INVALID_STATE. Broader cancel states are not implemented in Phase 2 and must not be claimed as available. Expiry alone does not auto-cancel, because auto-cancel would hide a missed settlement.
 
 approve_warning(obligation_id): caller owner. Moves WARN_PENDING to READY.
 
@@ -76,11 +76,11 @@ ft_on_transfer(sender_id, amount, msg): caller the configured token only, throug
 
 on_transfer_complete(obligation_id, attempt_id): private, called only as the callback on this contract, with callback result Result<(), PromiseError>. ft_transfer returns unit, so the result carries no value. It acts only if the obligation is still TRANSFER_PENDING, in_flight is true, and attempt_id equals the current transfer_attempt, otherwise it returns without changing state, spent, reserved, or receipts, so a late or stale callback cannot double book or undo a resolution. On Ok, reserved minus amount, spent plus amount, state PAID, append receipt, clear in_flight, clear transfer_dispatched_at_ns, nonce permanently consumed. On Err, confirmed failure, tokens did not move, release reservation and lock, unlock the nonce for a retry, clear in_flight, clear transfer_dispatched_at_ns. If the policy is frozen at callback time, a failure moves the obligation to RECONCILIATION_REQUIRED for an owner decision, it does not move to CANCELLED, because cancel_obligation does not allow TRANSFER_PENDING and freeze never un-books an in-flight transfer. A success always finalizes to PAID even if the policy was frozen in the meantime. Failure alone never cancels.
 
-mark_reconciliation_required(obligation_id): caller owner or the policy reconciler. Moves TRANSFER_PENDING to RECONCILIATION_REQUIRED, only after TRANSFER_TIMEOUT_NS has passed since transfer_dispatched_at_ns, and only from TRANSFER_PENDING. It keeps in_flight true, keeps the reservation held, and does not release the nonce lock, so no retry can happen while the original transfer might still succeed. Rejects otherwise. This exists because a NEAR contract cannot move itself on a timer.
+mark_reconciliation_required(obligation_id): NOT implemented in Phase 2, planned for Phase 3 async money path hardening. Intended behaviour, as a design record only: caller owner or the policy reconciler. Moves TRANSFER_PENDING to RECONCILIATION_REQUIRED, only after TRANSFER_TIMEOUT_NS has passed since transfer_dispatched_at_ns, and only from TRANSFER_PENDING. It keeps in_flight true, keeps the reservation held, and does not release the nonce lock, so no retry can happen while the original transfer might still succeed. Rejects otherwise. This exists because a NEAR contract cannot move itself on a timer.
 
-mark_evidence_timeout(obligation_id, escalate): caller owner or the policy reconciler. Moves EVIDENCE_PENDING only, and only after EVIDENCE_TIMEOUT_NS has passed since evidence_requested_at_ns. If escalate is false it moves to CANCELLED, if escalate is true it moves to WARN_PENDING. Evidence that never arrives never moves an obligation to READY by default. Evidence that never arrives never moves an obligation to READY by default.
+mark_evidence_timeout(obligation_id, escalate): NOT implemented in Phase 2, planned for Phase 3 async money path hardening. Intended behaviour, as a design record only: caller owner or the policy reconciler. Moves EVIDENCE_PENDING only, and only after EVIDENCE_TIMEOUT_NS has passed since evidence_requested_at_ns. If escalate is false it moves to CANCELLED, if escalate is true it moves to WARN_PENDING. Evidence that never arrives never moves an obligation to READY by default. Evidence that never arrives never moves an obligation to READY by default.
 
-resolve_settlement(obligation_id, outcome, proof): caller owner for PAID, READY, or CANCELLED, or the policy reconciler for READY or CANCELLED only, never for PAID. Resolves RECONCILIATION_REQUIRED only, with in_flight still true and the reservation still held, after a timeout. Proof is the transaction hash of the transfer as seen on chain, recorded as the receipt tx_ref for a PAID resolution, plus the caller attestation that is the on chain call itself. The contract cannot verify a transaction hash alone on NEAR, so for PAID the owner must first have done a live chain read showing the recipient actually received the amount, and that read is a required human step, not a contract check, and the recorded hash lets anyone audit it later. For PAID, the contract books spent plus amount, clears the reservation, clears in_flight, clears transfer_dispatched_at_ns, permanently consumes the nonce, appends the receipt, and moves to PAID. For READY, on a human confirmed failure where the recipient balance shows no such transfer, it releases the reservation, clears in_flight, clears transfer_dispatched_at_ns, unlocks the nonce, and moves to READY, so the obligation is settleable again with a new attempt. For CANCELLED, it releases the reservation, clears in_flight, clears transfer_dispatched_at_ns, retires the nonce so it cannot be reused, and moves to CANCELLED, which is terminal. This is how every async outcome stays resolvable, and it is never a blind retry of a payment.
+resolve_settlement(obligation_id, outcome, proof): NOT implemented in Phase 2, planned for Phase 3 async money path hardening. Intended behaviour, as a design record only: caller owner for PAID, READY, or CANCELLED, or the policy reconciler for READY or CANCELLED only, never for PAID. Resolves RECONCILIATION_REQUIRED only, with in_flight still true and the reservation still held, after a timeout. Proof is the transaction hash of the transfer as seen on chain, recorded as the receipt tx_ref for a PAID resolution, plus the caller attestation that is the on chain call itself. The contract cannot verify a transaction hash alone on NEAR, so for PAID the owner must first have done a live chain read showing the recipient actually received the amount, and that read is a required human step, not a contract check, and the recorded hash lets anyone audit it later. For PAID, the contract books spent plus amount, clears the reservation, clears in_flight, clears transfer_dispatched_at_ns, permanently consumes the nonce, appends the receipt, and moves to PAID. For READY, on a human confirmed failure where the recipient balance shows no such transfer, it releases the reservation, clears in_flight, clears transfer_dispatched_at_ns, unlocks the nonce, and moves to READY, so the obligation is settleable again with a new attempt. For CANCELLED, it releases the reservation, clears in_flight, clears transfer_dispatched_at_ns, retires the nonce so it cannot be reused, and moves to CANCELLED, which is terminal. This is how every async outcome stays resolvable, and it is never a blind retry of a payment.
 
 ## Views
 
@@ -88,11 +88,11 @@ get_policy(policy_id): anyone. Returns the Policy.
 
 get_obligation(obligation_id): anyone. Returns the Obligation.
 
-balances(policy_id): anyone. Returns spent, reserved, limit, and native NEAR headroom as separate figures, never summed.
+balances(policy_id): anyone. Returns spent, reserved, limit, funded, and native NEAR headroom as separate figures, never summed.
 
 receipts(start, limit): anyone, paginated. Returns receipts in index order, starting at start, up to limit entries. Pagination is what lets cynex-verify replay from genesis without loading the whole chain at once.
 
-state(): anyone. Returns the vault level state needed by the console, including frozen flags and the verifier set size, without leaking keys.
+state(): anyone. Returns owner, receipt_index, and last_receipt_hash only. It does not return frozen flags or verifier set size in Phase 2.
 
 ## Timeout constants, frozen
 
@@ -101,9 +101,20 @@ EVIDENCE_TIMEOUT_NS equals 3600000000000, which is 1 hour.
 
 These are demo aware by design, not demo shortcuts. The happy path never hits either timeout, so a normal demo runs straight through. A timeout path is demoed with a pre-aged obligation, created an hour or more before the demo, then resolved live in seconds with a real transaction, or with sandbox block time fast forward in tests. Waiting out a timeout live on stage is not the demo plan, and shortening these constants to make that wait bearable would weaken the vault, because a legitimate verifier might not answer in a few minutes and a slow callback could be marked for reconciliation too early.
 
-## Static gas, TBD
+## Static gas, measured in Phase 2 on testnet
 
-Static gas for ft_transfer and for on_transfer_complete is TBD. It will be measured in Phase 2 on testnet and in sandbox, recorded here, and that TBD blocks Phase 2 sign off until it is filled. No gas number in this document is invented, and no gas number from another contract or another chain is borrowed here.
+Measured live on testnet from tx-status gas_burnt, not invented, and not borrowed from another contract or another chain. Gas varies slightly with state size, so ranges are recorded, not single constants. Attached values are not measured values and are labelled as such.
+
+- create_obligation, obl-007: vault receipt 1,668,275,033,487, about 1.669 TGas.
+- request_evidence, obl-007: vault receipt 1,711,980,408,098, about 1.712 TGas.
+- submit_evidence, obl-007: vault receipt 1,806,273,256,696, about 1.806 TGas.
+- settle, vault receipt: obl-001 2,587,743,237,093, about 2.588 TGas; obl-007 2,592,303,237,093, about 2.592 TGas; observed range 2.588 to 2.592 TGas.
+- ft_transfer, both runs: 2,022,560,758,234, about 2.023 TGas.
+- on_transfer_complete callback: obl-001 2,253,450,887,353, about 2.253 TGas; obl-007 2,260,781,393,053, about 2.261 TGas; observed range 2.253 to 2.261 TGas.
+- Total settle path, contract execution only: about 6.86 to 6.88 TGas, well within the attached 30 plus 30 TGas in code, FT_TRANSFER_GAS 30 TGas and CALLBACK_GAS 30 TGas, and well within the console settle prepaid 100 TGas.
+- Receipt storage reserve: RECEIPT_STORAGE_BYTES 512 in code, worst-case Borsh Receipt with 64-char obligation_id, recipient, token_id, and 44-char tx_ref is 316 bytes, so 512 is a bound, not a measured size.
+
+The Phase 2 sign-off block on this gas is now filled. No gas number in this document is invented.
 
 ## Funding path, frozen
 
@@ -115,7 +126,7 @@ Registration, before any settlement: register the vault and each recipient with 
 
 ## Money path, frozen order
 
-Settle validates and reserves synchronously, then dispatches ft_transfer with 1 yoctoNEAR attached and static gas once measured, chained to on_transfer_complete. The callback books the outcome as described above. Freeze and version bumps block new settle calls only. An in-flight success always finalizes, and is never un-booked because policy changed. A bad agent call never auto-freezes a policy, because that would let the agent brick the demo. Storage exhaustion is a clean rejection with VAULT_STORAGE_EXHAUSTED when native headroom is insufficient for 1 yocto plus gas headroom plus the per-settlement receipt storage reserve, never a panic mid-transfer. The per-settlement reserve covers the new receipt only, and its size is measured in Phase 2 and recorded here.
+Settle validates and reserves synchronously, then dispatches ft_transfer with 1 yoctoNEAR attached and static gas as measured above, chained to on_transfer_complete. The callback books the outcome as described above. Freeze and version bumps block new settle calls only. An in-flight success always finalizes, and is never un-booked because policy changed. A bad agent call never auto-freezes a policy, because that would let the agent brick the demo. Storage exhaustion is a clean rejection with VAULT_STORAGE_EXHAUSTED when native headroom is insufficient for 1 yocto plus gas headroom plus the per-settlement receipt storage reserve, never a panic mid-transfer. The per-settlement reserve covers the new receipt only, and its size is measured in Phase 2 and recorded here.
 
 ## cynex-verify, frozen surface
 
@@ -131,7 +142,7 @@ TypeScript conformance: frontend/src/cynex-schema.ts mirrors this schema with Bi
 
 ## What this freeze does not decide
 
-OutLayer callback fields are not frozen here, because they are a Phase 8 spike and are not on the critical path. The blocklist source URL is not frozen here, because it is a Reputation phase decision and must be named there with provenance, never as a bare claim here. The mainnet payout account is not frozen here and must never be invented, it is supplied by the team lead before submission. Exact static gas is TBD above, and blocks Phase 2 sign off until measured.
+OutLayer callback fields are not frozen here, because they are a Phase 8 spike and are not on the critical path. The blocklist source URL is not frozen here, because it is a Reputation phase decision and must be named there with provenance, never as a bare claim here. The mainnet payout account is not frozen here and must never be invented, it is supplied by the team lead before submission. Exact static gas is measured above, and the Phase 2 sign-off block on it is now filled.
 
 
 ## Sign-off
@@ -146,3 +157,7 @@ docs/evidence/phase0/conformance-outputs.md. Lane A signature and
 the Lane B acceptance audit under section 2.6 are now complete,
 and Phase 0 is closed with both lanes signed. No frozen content above was changed by this
 sign-off; only this section was added.
+
+## Phase 2 close corrections, 2026-11-04
+
+Applied on Master after the lane-b merge and Lane B re-sign, as part of the Phase 2 close, with Lane B aware via its ledger row noting this draft pending for Master. Corrections are doc-to-code alignment only, plus measured gas: create_policy signature and version 1, create_obligation nonce supplied by the owner, cancel_obligation CREATED only in Phase 2, reconciliation methods marked not implemented in Phase 2 and planned for Phase 3, state() returns owner, receipt_index, and last_receipt_hash only, balances() includes funded, and static gas recorded with observed ranges. No contract code, schema, digest, test vector, receipt hash formula, timeout constant, or frozen settle check order was changed by these corrections.
