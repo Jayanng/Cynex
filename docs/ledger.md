@@ -80,7 +80,7 @@ Sign-off: rastadev (Lane B), 2026-11-03
 
 ## Phase 2: Registration and first real settlement
 
-Status: Lane B re-signed 2026-11-04 after console fixes commit 74a61ed, superseding the 545746e sign-off. Phase 2 NOT closed: merge of lane-b to Master, joint gas recording in docs/contract-api.md, and Lane A signature are still outstanding.
+Status: Phase 2 closed 2026-11-04. Lane-b merged to Master as 64321b5, contract-api corrections and measured gas applied on Master as 9c70b69, both lanes signed below.
 
 Evidence:
 - Lane A: Master df7c7f5, settle with frozen check order, reserve-then-dispatch ft_transfer with 1 yocto chained to private on_transfer_complete, hash-chained receipts with NEP-297 array events, unit 26/26, sandbox 1/1, fmt and clippy clean.
@@ -96,5 +96,7 @@ Evidence:
 
 Exception to the lane rule and to the ledger header rule, for this row only: commits e2d47cd and 74a61ed were authored by Jayanng, not by Adejoke, under a Phase 2-only exception. The exception was accepted by rastadev in chat on 2026-11-04, covering e2d47cd (settle gas and error reporting only), and re-confirmed by the re-sign instruction the same day, extending it to 74a61ed (console exactness, scaffold from chain, receipts print only). The lane rule resumes after Phase 2. Acceptance basis for the takeover fix and its continuation is live proof plus independent review by Adejoke, NOT a section 2.6 independent audit, because the auditor side authored both commits. Earlier Phase 2 audit rounds were section 2.6 audits by Jayaang.
 
-Sign-off: Johnson (Lane A), pending
+Sign-off: Johnson (Lane A), 2026-11-04
 Sign-off: rastadev (Lane B), 2026-11-04 (re-signed after 74a61ed, superseding 545746e)
+
+Close note: Phase 2 audit basis is Lane A everyday review plus Sol gate on Lane A code, live testnet proof for both lanes, Adejoke independent review of Lane B code and chain state, and, for the takeover commits e2d47cd and 74a61ed only, live proof plus Adejoke independent review, NOT a section 2.6 independent audit, as labelled in the Lane B row. Contract-api corrections and measured gas in 9c70b69 are doc-to-code alignment only, no contract change. Deferred, not closed by this row: obl-002 READY 100000000 and obl-003 EVIDENCE_PENDING 250000000, both beyond the remaining 25000000 funded headroom, reconciliation methods not implemented in Phase 2 and planned for Phase 3, and broader cancel states not implemented in Phase 2.
