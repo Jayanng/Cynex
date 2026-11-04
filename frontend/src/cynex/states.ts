@@ -66,7 +66,7 @@ const DISPLAY: Record<
     label: "Warning pending",
     terminal: false,
     meaning: "Evidence warned rather than allowed, awaiting an owner decision.",
-    next: "Settlement requires READY; the owner must resolve this state before settlement proceeds.",
+    next: "Owner approves the warning (approve_warning) to move it to READY, then settlement proceeds from READY.",
   },
   BLOCKED: {
     label: "Blocked",

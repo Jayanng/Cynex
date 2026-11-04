@@ -51,6 +51,13 @@ describe("describeState", function () {
     expect(d.meaning).toContain("locked");
   });
 
+  test("warning pending names approve_warning to READY", function () {
+    const d = describeState("WARN_PENDING", false);
+    expect(d.next).toContain("approve_warning");
+    expect(d.next).toContain("READY");
+    expect(d.terminal).toBe(false);
+  });
+
   test("transfer pending never implies paid", function () {
     const d = describeState("TRANSFER_PENDING", false);
     expect(d.meaning).toContain("Never assume paid");

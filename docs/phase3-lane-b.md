@@ -28,3 +28,5 @@ Honest gaps:
 - No contract changes, no frozen doc changes, no signing in this work. Lane B sign-off and the section 2.6 audit are still pending.
 
 Checks: scaffold typecheck exit 0, frontend typecheck exit 0, conformance 6/6, Jest 15/15 (9 schema plus 6 states), verify-live six receipts all true.
+
+Audit correction (Phase 3 audit, Jayaang side, applied on lane-b): WARN_PENDING next now names approve_warning (owner) to READY, then settlement proceeds from READY. Verified against contract lib.rs (approve_warning asserts owner, requires WARN_PENDING, moves to READY) and contract-api.md (approve_warning: caller owner, moves WARN_PENDING to READY). The previous text said only that the owner must resolve the state, without naming the method.
