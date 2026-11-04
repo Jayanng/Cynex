@@ -86,12 +86,25 @@ export interface ObligationFile {
 }
 
 export function createObligationArgs(input: ObligationFile): DeployCreateObligationArgs {
-  // NEAR JSON u64/u128 inputs are numbers. Demo values are
-  // chosen to be exact in a JS number (amount 250000000);
-  // expires_at_ns above 2^53 rounds to the nearest
-  // representable value, which is immaterial for an expiry
-  // date, but large amounts or exact timestamps need an
-  // encoding confirmed with Lane A before use.
+  // NEAR JSON u64/u128 inputs are numbers, so a value that is
+  // not exactly representable as a JS number must never be
+  // silently rounded. Check each u64/u128 input against its
+  // BigInt form and throw if it does not round-trip exactly.
+  // Live Phase 2 values pass this check: amounts 250000000 and
+  // 100000000, nonces 1 to 8, and expiry 1893456000000000000 are
+  // all exactly representable. A future value that fails here
+  // is a hard error, not a rounded expiry or amount.
+  for (const [name, value] of [
+    ["amount", input.amount],
+    ["expires_at_ns", input.expires_at_ns],
+    ["nonce", input.nonce],
+  ] as const) {
+    if (BigInt(Number(value)).toString() !== BigInt(value).toString()) {
+      throw new Error(
+        "obligation input " + name + " is not exactly representable as a JS number: " + value,
+      );
+    }
+  }
   const hashBytes: number[] = [];
   for (let i = 0; i < input.evidence_hash.length; i += 2) {
     hashBytes.push(parseInt(input.evidence_hash.slice(i, i + 2), 16));
@@ -311,10 +324,11 @@ async function liveRun(): Promise<number> {
     console.log("ABORT: no pending_request_id on chain after request_evidence, settle is not attempted.");
     return 1;
   }
+  const policyForScaffold = (await client.getPolicy(input.policy_id)) as Record<string, unknown>;
   const scaffoldObligation: Obligation = {
     obligation_id: input.obligation_id,
     policy_id: input.policy_id,
-    policy_version: 1n,
+    policy_version: BigInt(String(policyForScaffold.version)),
     recipient: input.recipient,
     amount: BigInt(input.amount),
     evidence_type: input.evidence_type,
@@ -323,7 +337,7 @@ async function liveRun(): Promise<number> {
     nonce: BigInt(input.nonce),
     state: obligationState(afterRequest) as Obligation["state"],
     in_flight: false,
-    transfer_attempt: 0n,
+    transfer_attempt: BigInt(String((afterRequest as Record<string, unknown>).transfer_attempt)),
     transfer_dispatched_at_ns: null,
     pending_request_id: pendingRequestId,
     pending_digest: null,
@@ -390,7 +404,18 @@ async function liveRun(): Promise<number> {
     console.log("FAILURE: balance increase does not equal the obligation amount. This is an accounting break, do not report success.");
     return 1;
   }
-  console.log("receipts after settle: " + JSON.stringify(await client.receipts(0n, 10n)));
+  const receiptsAfter = (await client.receipts(0n, 10n)) as Array<Record<string, unknown>>;
+  console.log(
+    "receipts after settle (index, obligation_id, recipient, amount only; timestamps are JS numbers and round above 2^53, use cynex verify-live for exact timestamps): " +
+      JSON.stringify(
+        receiptsAfter.map((r) => ({
+          index: r.index,
+          obligation_id: r.obligation_id,
+          recipient: r.recipient,
+          amount: r.amount,
+        })),
+      ),
+  );
   return 0;
 }
 
