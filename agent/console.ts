@@ -207,6 +207,14 @@ export async function pollBalance(
   return null;
 }
 
+// Gas for console change calls. near-api-js defaults to 30 TGas prepaid.
+// Settle attaches 30 TGas for ft_transfer plus 30 TGas for the callback,
+// plus about 2.6 TGas of its own execution measured in Phase 2, so 30 TGas
+// prepaid can never cover it and fails with Exceeded the prepaid gas.
+// Lane A live settlements used 100 TGas for settle and succeeded.
+export const DEFAULT_CALL_GAS = 30000000000000n;
+export const SETTLE_CALL_GAS = 100000000000000n;
+
 export function txHashOf(outcome: unknown): string {
   const root = outcome as Record<string, unknown>;
   const tx = root.transaction as Record<string, unknown> | undefined;
@@ -219,6 +227,27 @@ export function txHashOf(outcome: unknown): string {
   }
   return "unknown";
 }
+
+export function txHashFromError(error: unknown): string {
+  const root = error as Record<string, unknown>;
+  const direct = root.transaction as Record<string, unknown> | undefined;
+  if (direct && typeof direct.hash === "string") {
+    return direct.hash;
+  }
+  const result = root.transactionResult as Record<string, unknown> | undefined;
+  if (result) {
+    const tx = result.transaction as Record<string, unknown> | undefined;
+    if (tx && typeof tx.hash === "string") {
+      return tx.hash;
+    }
+    const outcome = result.transaction_outcome as Record<string, unknown> | undefined;
+    if (outcome && typeof outcome.id === "string") {
+      return outcome.id;
+    }
+  }
+  return txHashOf(error);
+}
+
 
 async function liveRun(): Promise<number> {
   const vaultId = process.env.CYNEX_VAULT ?? "";
@@ -255,6 +284,7 @@ async function liveRun(): Promise<number> {
     contractId: vaultId,
     methodName: "create_obligation",
     args: create,
+    gas: DEFAULT_CALL_GAS,
   });
   console.log("create_obligation tx hash: " + txHashOf(createOutcome));
   const created = await pollObligation(client, input.obligation_id, "obligation CREATED after create_obligation", "CREATED");
@@ -267,6 +297,7 @@ async function liveRun(): Promise<number> {
     contractId: vaultId,
     methodName: "request_evidence",
     args: { obligation_id: input.obligation_id },
+    gas: DEFAULT_CALL_GAS,
   });
   console.log("request_evidence tx hash: " + txHashOf(requestOutcome));
   const afterRequest = await pollObligation(client, input.obligation_id, "pending_request_id after request_evidence", "pending");
@@ -309,6 +340,7 @@ async function liveRun(): Promise<number> {
     contractId: vaultId,
     methodName: "submit_evidence",
     args: { request_id: pendingRequestId, obligation_id: input.obligation_id, result: "ALLOWED", proof: input.evidence_hash },
+    gas: DEFAULT_CALL_GAS,
   });
   console.log("submit_evidence tx hash: " + txHashOf(submitOutcome));
   const afterEvidence = await pollObligation(client, input.obligation_id, "obligation READY after submit_evidence", "READY");
@@ -335,6 +367,7 @@ async function liveRun(): Promise<number> {
     contractId: vaultId,
     methodName: "settle",
     args: { ...settle, proposed_amount: settle.proposed_amount.toString() },
+    gas: SETTLE_CALL_GAS,
   });
   console.log("settle tx hash: " + txHashOf(settleOutcome));
   const afterSettle = await pollObligation(client, input.obligation_id, "obligation PAID after settle", "PAID");
@@ -362,7 +395,13 @@ async function liveRun(): Promise<number> {
 }
 
 if (import.meta.url === "file://" + process.argv[1]) {
-  liveRun().then((code) => {
-    process.exitCode = code;
-  });
+  liveRun()
+    .then((code) => {
+      process.exitCode = code;
+    })
+    .catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.log("console FAILED: tx hash: " + txHashFromError(error) + " error: " + message);
+      process.exitCode = 1;
+    });
 }

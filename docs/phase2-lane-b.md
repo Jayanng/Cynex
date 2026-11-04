@@ -235,3 +235,34 @@ Design suggestion from the re-audit, NOT implemented in this fix, not a blocker:
 Next step, for Jayaang: fourth live re-audit with a fresh console obligation, all through the console, with live transaction hashes for all four steps, PAID state, and the balance delta in the console output, and verify-live on the then four-receipt chain. Live console settlement was not run from this machine: owner, verifier, and agent keys are held by Lane A.
 
 Phase 2 sign-off is still NOT done. It needs the fourth live re-audit, merge to Master, joint gas recording in docs/contract-api.md, then a Phase 2 ledger row signed by both lanes.
+
+
+## Takeover fix, 2026-11-04: console settle gas and error reporting (Phase 2 only, Johnson-ordered exception)
+
+Standing lane rule: Muse does only Lane A, never builds a Lane B
+deliverable. Johnson ordered an exception for this phase only, on
+2026-11-04, after four back-and-forth fix rounds, so that Muse would
+fix the console gas and error handling on lane-b, live test it, and
+have Adejoke pull, review, and sign herself, instead of further
+rounds. The lane rule resumes after Phase 2. This commit is authored
+by Jayanng, not by Adejoke, and it is recorded here so the history
+stays honest. Adejoke's signature is still hers to give, never forged.
+
+Fix, agent/console.ts only, no contract or frozen-doc changes:
+1. Settle gas is now explicit at 100 TGas (SETTLE_CALL_GAS), because
+near-api-js defaults to 30 TGas prepaid and settle attaches 30 TGas
+for ft_transfer plus 30 TGas for the callback, plus about 2.6 TGas of
+its own execution measured in Phase 2, so 30 TGas prepaid failed live
+with Exceeded the prepaid gas in the fourth re-audit. Create,
+request, and submit gas is now explicit at 30 TGas, the previous
+default, so no behaviour changes there.
+2. A failed console run now ends cleanly: the top-level catch prints
+console FAILED with the tx hash taken from the error object, when
+present, and the failure reason, then exits 1, instead of crashing
+uncaught with a Node.js stack trace and no hash printed.
+
+Live test for this fix, by Muse, not through Adejoke: see the
+takeover live run notes in the Phase 2 close record. Adejoke is asked
+to pull this commit, review the diff, run the checks herself, and
+sign Lane B herself if she agrees. She is not asked to sign work she
+has not reviewed.
