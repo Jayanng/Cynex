@@ -131,10 +131,17 @@ pub fn settlement_digest(
 const FT_TRANSFER_GAS: Gas = Gas::from_tgas(30);
 const CALLBACK_GAS: Gas = Gas::from_tgas(30);
 const RECEIPT_STORAGE_BYTES: u64 = 512;
-// Safety margin for the 1 yocto ft_transfer deposit plus gas headroom,
-// per the frozen money path. This is a conservative placeholder margin,
-// 0.01 NEAR, not a measured gas cost, and is revisited when gas is measured.
-const SETTLE_NATIVE_MARGIN_YOCTO: u128 = 10_000_000_000_000_000_000_000;
+// Phase 4, plan 3.1.5 corrected formula: liquid >= 1 yocto + gas headroom
+// + per-settlement receipt storage reserve, else VAULT_STORAGE_EXHAUSTED.
+// The 1 yocto term is the NEP-141 ft_transfer deposit, explicit here so
+// the formula can be audited line by line. Gas headroom is a conservative
+// 0.01 NEAR margin, not a measured gas cost: the vault does not pay
+// execution gas from its own balance, the caller prepays it, so this
+// margin is safety headroom for future storage and deposit fluctuations,
+// not a claim about measured gas. Receipt reserve is 512 bytes, the
+// Phase 2 measured bound, at the current storage byte cost.
+const FT_TRANSFER_DEPOSIT_YOCTO: u128 = 1;
+const SETTLE_GAS_HEADROOM_YOCTO: u128 = 10_000_000_000_000_000_000_000;
 // Frozen in Phase 0, recorded in docs/contract-api.md. Timeout durations are
 // block timestamps, not wall clock, so a timeout is only reached when the
 // chain itself has passed the deadline, never by a caller claiming time passed.
@@ -177,6 +184,30 @@ fn native_headroom_yocto() -> u128 {
 
 fn receipt_storage_reserve_yocto() -> u128 {
     RECEIPT_STORAGE_BYTES as u128 * env::storage_byte_cost().as_yoctonear()
+}
+
+fn settle_storage_requirement_yocto() -> u128 {
+    receipt_storage_reserve_yocto()
+        .saturating_add(FT_TRANSFER_DEPOSIT_YOCTO)
+        .saturating_add(SETTLE_GAS_HEADROOM_YOCTO)
+}
+
+fn assert_policy_invariant(policy: &Policy) {
+    // Phase 4: token ledger invariant, checked after every policy balance
+    // change, before the policy is written back. Token units only, never
+    // summed with native NEAR. A failure here is a budget bug, so it
+    // panics with the budget code; because the assert runs before the
+    // write, the calling method changes no further state after it.
+    // Obligation-only transitions do not change spent, reserved, funded,
+    // or limit, so they cannot break this invariant and do not need it.
+    let total = policy
+        .spent
+        .checked_add(policy.reserved)
+        .unwrap_or_else(|| env::panic_str("ERR_BUDGET_EXCEEDED"));
+    require!(policy.spent <= policy.limit, "ERR_BUDGET_EXCEEDED");
+    require!(policy.reserved <= policy.limit, "ERR_BUDGET_EXCEEDED");
+    require!(total <= policy.limit, "ERR_BUDGET_EXCEEDED");
+    require!(total <= policy.funded, "ERR_BUDGET_EXCEEDED");
 }
 
 // Per-token in-flight lock, Phase 3. The map lives under prefix b"i", created
@@ -276,6 +307,7 @@ impl Contract {
             version: 1,
             reconciler: None,
         };
+        assert_policy_invariant(&policy);
         self.policies.insert(policy_id, policy);
     }
 
@@ -336,6 +368,7 @@ impl Contract {
             .cloned()
             .unwrap_or_else(|| env::panic_str("ERR_POLICY_MISSING"));
         policy.frozen = true;
+        assert_policy_invariant(&policy);
         self.policies.insert(policy_id, policy);
     }
 
@@ -347,6 +380,7 @@ impl Contract {
             .cloned()
             .unwrap_or_else(|| env::panic_str("ERR_POLICY_MISSING"));
         policy.frozen = false;
+        assert_policy_invariant(&policy);
         self.policies.insert(policy_id, policy);
     }
 
@@ -358,6 +392,7 @@ impl Contract {
             .cloned()
             .unwrap_or_else(|| env::panic_str("ERR_POLICY_MISSING"));
         policy.reconciler = Some(reconciler);
+        assert_policy_invariant(&policy);
         self.policies.insert(policy_id, policy);
     }
 
@@ -394,6 +429,7 @@ impl Contract {
             clear_token_lock(&policy.token_id);
             obligation.in_flight = false;
             obligation.transfer_dispatched_at_ns = None;
+            assert_policy_invariant(&policy);
             self.policies.insert(obligation.policy_id.clone(), policy);
         }
         obligation.state = "CANCELLED".to_string();
@@ -527,6 +563,7 @@ impl Contract {
                 obligation.in_flight = false;
                 obligation.transfer_dispatched_at_ns = None;
                 clear_token_lock(&policy.token_id);
+                assert_policy_invariant(&policy);
                 self.append_receipt(
                     &obligation_id,
                     &obligation.recipient,
@@ -547,6 +584,7 @@ impl Contract {
                 obligation.in_flight = false;
                 obligation.transfer_dispatched_at_ns = None;
                 clear_token_lock(&policy.token_id);
+                assert_policy_invariant(&policy);
                 self.policies.insert(obligation.policy_id.clone(), policy);
                 self.obligations.insert(obligation_id, obligation);
             }
@@ -723,6 +761,7 @@ impl Contract {
             .funded
             .checked_add(amount.0)
             .unwrap_or_else(|| env::panic_str("ERR_BUDGET_EXCEEDED"));
+        assert_policy_invariant(&policy);
         self.policies.insert(policy_id, policy);
         U128(0)
     }
@@ -782,8 +821,12 @@ impl Contract {
         require!(new_total <= policy.limit, "ERR_BUDGET_EXCEEDED");
         require!(new_total <= policy.funded, "ERR_BUDGET_EXCEEDED");
         let headroom = native_headroom_yocto();
+        // Phase 4 formula, plan 3.1.5: liquid >= 1 yocto + gas headroom
+        // + receipt reserve. For integer yocto this is the same threshold
+        // as the old headroom > reserve + 0.01 NEAR check, with the 1 yocto
+        // term now explicit, not hidden inside the margin.
         require!(
-            headroom > receipt_storage_reserve_yocto().saturating_add(SETTLE_NATIVE_MARGIN_YOCTO),
+            headroom >= settle_storage_requirement_yocto(),
             "ERR_VAULT_STORAGE_EXHAUSTED"
         );
         // Reserve synchronously, before any promise, so two concurrent
@@ -792,6 +835,7 @@ impl Contract {
             .reserved
             .checked_add(obligation.amount)
             .unwrap_or_else(|| env::panic_str("ERR_BUDGET_EXCEEDED"));
+        assert_policy_invariant(&policy);
         obligation.state = "TRANSFER_PENDING".to_string();
         obligation.in_flight = true;
         obligation.transfer_attempt = obligation
@@ -923,6 +967,7 @@ impl Contract {
                 obligation.in_flight = false;
                 obligation.transfer_dispatched_at_ns = None;
                 clear_token_lock(&policy.token_id);
+                assert_policy_invariant(&policy);
                 self.append_receipt(
                     &obligation_id,
                     &obligation.recipient,
@@ -942,6 +987,9 @@ impl Contract {
                     // lock all retained, and resolve_settlement decides it
                     // after the transfer timeout, never automatically.
                     obligation.state = "RECONCILIATION_REQUIRED".to_string();
+                    // No invariant assert here: policy is unchanged and
+                    // not written back in this branch, so an assert would
+                    // check a policy that this branch does not touch.
                     self.obligations.insert(obligation_id, obligation);
                     return;
                 }
@@ -953,6 +1001,7 @@ impl Contract {
                 obligation.in_flight = false;
                 obligation.transfer_dispatched_at_ns = None;
                 clear_token_lock(&policy.token_id);
+                assert_policy_invariant(&policy);
                 self.policies.insert(obligation.policy_id.clone(), policy);
                 self.obligations.insert(obligation_id, obligation);
             }
@@ -2208,5 +2257,266 @@ mod tests {
             d,
             hex32("0524986a7f7d5e3a332f3a2ec99c1847aa54ae48cad9a9aec1a8e5b6af043ba6")
         );
+    }
+
+    #[test]
+    fn phase4_property_invariant_over_1000_sequences() {
+        // Phase 4 property test: deterministic, no new dependency.
+        // Each sequence is create, request, submit ALLOWED, settle, then
+        // one of callback Ok, callback Err, reconcile to READY, reconcile
+        // to CANCELLED, or reconcile to PAID. After every sequence the
+        // contract policy is checked against a model, and any failure
+        // names the sequence and action, so the first failing sequence
+        // is printed instead of a bare invariant failure.
+        let mut c = setup_owner();
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            10_000_000,
+        );
+        let mut ctx = VMContextBuilder::new();
+        ctx.predecessor_account_id("usdc.fakes.testnet".parse().unwrap());
+        ctx.current_account_id("cynex-vault.testnet".parse().unwrap());
+        testing_env!(ctx.build());
+        c.ft_on_transfer(
+            "cynexmaster.testnet".parse().unwrap(),
+            U128(10_000_000),
+            "{\"fund_policy\": \"policy-001\"}".to_string(),
+        );
+        owner_ctx_at(0);
+        c.add_verifier(owner());
+        let mut rng: u64 = 0x9e3779b97f4a7c15;
+        let mut next_rand = || {
+            rng = rng
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            rng >> 33
+        };
+        let mut spent_model: u128 = 0;
+        let mut paid_count: u64 = 0;
+        for i in 0..1000u32 {
+            let amount: u128 = 1 + (next_rand() % 400) as u128;
+            let action = next_rand() % 5;
+            let id = format!("prop-{:04}", i);
+            let nonce = (i + 1) as u64;
+            owner_ctx_at(0);
+            c.create_obligation(
+                id.clone(),
+                "policy-001".to_string(),
+                "acme-supplies.testnet".parse().unwrap(),
+                amount,
+                "delivery-note".to_string(),
+                hex32("686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38"),
+                9999999999999999999,
+                nonce,
+            );
+            c.request_evidence(id.clone());
+            c.submit_evidence(
+                format!("{}-{}", id, nonce),
+                id.clone(),
+                "ALLOWED".to_string(),
+                "686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38".to_string(),
+            );
+            assert_eq!(
+                c.get_obligation(id.clone()).unwrap().state,
+                "READY",
+                "sequence {} action {}: obligation not READY after evidence",
+                i,
+                action
+            );
+            agent_ctx();
+            let _ = c.settle(
+                id.clone(),
+                "acme-supplies.testnet".parse().unwrap(),
+                U128(amount),
+                "x".to_string(),
+            );
+            let policy = c.get_policy("policy-001".to_string()).unwrap();
+            assert_eq!(
+                policy.reserved, amount,
+                "sequence {} action {}: reserved after settle",
+                i, action
+            );
+            assert_eq!(
+                policy.spent, spent_model,
+                "sequence {} action {}: spent after settle",
+                i, action
+            );
+            match action {
+                0 => {
+                    c.on_transfer_complete(id.clone(), 1, Ok(()));
+                    spent_model += amount;
+                    paid_count += 1;
+                    assert_eq!(
+                        c.get_obligation(id.clone()).unwrap().state,
+                        "PAID",
+                        "sequence {} action {}: not PAID after callback Ok",
+                        i,
+                        action
+                    );
+                }
+                1 => {
+                    c.on_transfer_complete(id.clone(), 1, Err(PromiseError::Failed));
+                    assert_eq!(
+                        c.get_obligation(id.clone()).unwrap().state,
+                        "READY",
+                        "sequence {} action {}: not READY after callback Err",
+                        i,
+                        action
+                    );
+                }
+                2 => {
+                    owner_ctx_at(TRANSFER_TIMEOUT_NS + 1);
+                    c.mark_reconciliation_required(id.clone());
+                    assert_eq!(
+                        c.get_obligation(id.clone()).unwrap().state,
+                        "RECONCILIATION_REQUIRED",
+                        "sequence {} action {}: not reconciling",
+                        i,
+                        action
+                    );
+                    owner_ctx_at(TRANSFER_TIMEOUT_NS + 1);
+                    c.resolve_settlement(id.clone(), "READY".to_string(), "no-arrival".to_string());
+                    assert_eq!(
+                        c.get_obligation(id.clone()).unwrap().state,
+                        "READY",
+                        "sequence {} action {}: not READY after resolve",
+                        i,
+                        action
+                    );
+                }
+                3 => {
+                    owner_ctx_at(TRANSFER_TIMEOUT_NS + 1);
+                    c.mark_reconciliation_required(id.clone());
+                    owner_ctx_at(TRANSFER_TIMEOUT_NS + 1);
+                    c.resolve_settlement(
+                        id.clone(),
+                        "CANCELLED".to_string(),
+                        "no-arrival".to_string(),
+                    );
+                    assert_eq!(
+                        c.get_obligation(id.clone()).unwrap().state,
+                        "CANCELLED",
+                        "sequence {} action {}: not CANCELLED after resolve",
+                        i,
+                        action
+                    );
+                }
+                _ => {
+                    owner_ctx_at(TRANSFER_TIMEOUT_NS + 1);
+                    c.mark_reconciliation_required(id.clone());
+                    owner_ctx_at(TRANSFER_TIMEOUT_NS + 1);
+                    c.resolve_settlement(
+                        id.clone(),
+                        "PAID".to_string(),
+                        format!("prop-proof-{}", i),
+                    );
+                    spent_model += amount;
+                    paid_count += 1;
+                    assert_eq!(
+                        c.get_obligation(id.clone()).unwrap().state,
+                        "PAID",
+                        "sequence {} action {}: not PAID after resolve",
+                        i,
+                        action
+                    );
+                }
+            }
+            let policy = c.get_policy("policy-001".to_string()).unwrap();
+            assert_eq!(
+                policy.spent, spent_model,
+                "sequence {} action {}: spent model mismatch at end",
+                i, action
+            );
+            assert_eq!(
+                policy.reserved, 0,
+                "sequence {} action {}: reserved not released at end",
+                i, action
+            );
+            assert!(
+                policy.spent + policy.reserved <= policy.limit,
+                "sequence {} action {}: token invariant over limit",
+                i,
+                action
+            );
+            assert!(
+                policy.spent + policy.reserved <= policy.funded,
+                "sequence {} action {}: token invariant over funded",
+                i,
+                action
+            );
+            assert_eq!(
+                c.state().1,
+                paid_count,
+                "sequence {} action {}: receipt count mismatch",
+                i,
+                action
+            );
+        }
+        println!("invariant held over {} sequences", 1000);
+    }
+
+    #[test]
+    fn phase4_exactly_at_limit_settles() {
+        let mut c = setup_owner();
+        setup_ready_with_amount(&mut c, "obl-001", 1000, 1000, 1000);
+        agent_ctx();
+        let _ = c.settle(
+            "obl-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            U128(1000),
+            "x".to_string(),
+        );
+        c.on_transfer_complete("obl-001".to_string(), 1, Ok(()));
+        assert_eq!(
+            c.get_obligation("obl-001".to_string()).unwrap().state,
+            "PAID"
+        );
+        let policy = c.get_policy("policy-001".to_string()).unwrap();
+        assert_eq!(policy.spent, 1000);
+        assert_eq!(policy.reserved, 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_BUDGET_EXCEEDED")]
+    fn phase4_limit_plus_one_rejects() {
+        let mut c = setup_owner();
+        setup_ready_with_amount(&mut c, "obl-001", 1001, 1000, 1000);
+        agent_ctx();
+        let _ = c.settle(
+            "obl-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            U128(1001),
+            "x".to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_VAULT_STORAGE_EXHAUSTED")]
+    fn phase4_low_liquid_returns_storage_exhausted() {
+        let mut c = setup_owner();
+        setup_ready_with_amount(&mut c, "obl-001", 250000, 1000000, 1000000);
+        let mut ctx = VMContextBuilder::new();
+        ctx.predecessor_account_id("cynex-agent.testnet".parse().unwrap());
+        ctx.current_account_id("cynex-vault.testnet".parse().unwrap());
+        ctx.account_balance(NearToken::from_yoctonear(1_000_000_000_000_000_000_000));
+        testing_env!(ctx.build());
+        let _ = c.settle(
+            "obl-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            U128(250000),
+            "x".to_string(),
+        );
+    }
+
+    #[test]
+    fn phase4_storage_requirement_formula() {
+        assert_eq!(
+            settle_storage_requirement_yocto(),
+            receipt_storage_reserve_yocto()
+                .saturating_add(FT_TRANSFER_DEPOSIT_YOCTO)
+                .saturating_add(SETTLE_GAS_HEADROOM_YOCTO)
+        );
+        assert_eq!(FT_TRANSFER_DEPOSIT_YOCTO, 1);
     }
 }
