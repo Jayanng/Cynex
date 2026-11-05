@@ -809,6 +809,15 @@ impl Contract {
             .get(&obligation_id)
             .cloned()
             .unwrap_or_else(|| env::panic_str("ERR_OBLIGATION_MISSING"));
+        // Nonce first, before the state check: a duplicate settle must be
+        // detectable as NONCE_ALREADY_CONSUMED, per the frozen nonce
+        // paragraph in contract-api.md. In flight means the first attempt
+        // is still pending, and PAID means the nonce is permanently
+        // consumed. Any other non-READY state still rejects with
+        // ERR_INVALID_STATE. This check reads state only and writes
+        // nothing, so moving it cannot move funds.
+        require!(!obligation.in_flight, "ERR_NONCE_ALREADY_CONSUMED");
+        require!(obligation.state != "PAID", "ERR_NONCE_ALREADY_CONSUMED");
         require!(obligation.state == "READY", "ERR_INVALID_STATE");
         require!(
             obligation.recipient == proposed_recipient,
@@ -829,7 +838,9 @@ impl Contract {
             obligation.policy_version == policy.version,
             "ERR_TERMS_MISMATCH"
         );
-        require!(!obligation.in_flight, "ERR_NONCE_ALREADY_CONSUMED");
+        // The nonce check moved to the top of settle, above the state
+        // check, so a duplicate settle is reported as
+        // NONCE_ALREADY_CONSUMED instead of ERR_INVALID_STATE.
         // Per-token in-flight lock, Phase 3: a second obligation for the
         // same token cannot dispatch while another transfer for that token
         // is still ambiguous. This is checked before any reserve is written,
@@ -1511,8 +1522,11 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "ERR_INVALID_STATE")]
+    #[should_panic(expected = "ERR_NONCE_ALREADY_CONSUMED")]
     fn settle_rejects_double_settle() {
+        // The second call lands while the first attempt is still in
+        // flight, TRANSFER_PENDING, so it must report the nonce, not
+        // a generic state error.
         let mut c = setup_owner();
         setup_ready_with_amount(&mut c, "obl-001", 250000, 1000000, 1000000);
         agent_ctx();
@@ -1522,6 +1536,89 @@ mod tests {
             U128(250000),
             "x".to_string(),
         );
+        let _ = c.settle(
+            "obl-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            U128(250000),
+            "x".to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_NONCE_ALREADY_CONSUMED")]
+    fn settle_rejects_replay_after_paid() {
+        let mut c = setup_owner();
+        setup_ready_with_amount(&mut c, "obl-001", 250000, 1000000, 1000000);
+        agent_ctx();
+        let _ = c.settle(
+            "obl-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            U128(250000),
+            "x".to_string(),
+        );
+        // In unit tests the callback argument is passed directly.
+        c.on_transfer_complete("obl-001".to_string(), 1, Ok(()));
+        let o = c.get_obligation("obl-001".to_string()).unwrap();
+        assert_eq!(o.state, "PAID");
+        // The callback must have cleared in_flight, so the replay below
+        // can only be rejected by the new PAID check, not by the
+        // in-flight check. Without this assertion the test would pass
+        // even if the callback left the nonce locked.
+        assert!(!o.in_flight);
+        let _ = c.settle(
+            "obl-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            U128(250000),
+            "x".to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_OBLIGATION_EXPIRED")]
+    fn settle_rejects_expired_obligation() {
+        let mut c = setup_owner();
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        let mut ctx = VMContextBuilder::new();
+        ctx.predecessor_account_id("usdc.fakes.testnet".parse().unwrap());
+        ctx.current_account_id("cynex-vault.testnet".parse().unwrap());
+        testing_env!(ctx.build());
+        c.ft_on_transfer(
+            "cynexmaster.testnet".parse().unwrap(),
+            U128(1000000),
+            "{\"fund_policy\": \"policy-001\"}".to_string(),
+        );
+        let mut ctx = VMContextBuilder::new();
+        ctx.predecessor_account_id(owner());
+        ctx.current_account_id("cynex-vault.testnet".parse().unwrap());
+        testing_env!(ctx.build());
+        c.create_obligation(
+            "obl-001".to_string(),
+            "policy-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            250000,
+            "delivery-note".to_string(),
+            hex32("686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38"),
+            1000,
+            1,
+        );
+        c.request_evidence("obl-001".to_string());
+        c.add_verifier(owner());
+        c.submit_evidence(
+            "obl-001-1".to_string(),
+            "obl-001".to_string(),
+            "ALLOWED".to_string(),
+            "686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38".to_string(),
+        );
+        // Time passes after the obligation reaches READY, then settle.
+        let mut ctx = VMContextBuilder::new();
+        ctx.predecessor_account_id("cynex-agent.testnet".parse().unwrap());
+        ctx.current_account_id("cynex-vault.testnet".parse().unwrap());
+        ctx.block_timestamp(2000);
+        testing_env!(ctx.build());
         let _ = c.settle(
             "obl-001".to_string(),
             "acme-supplies.testnet".parse().unwrap(),
