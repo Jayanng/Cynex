@@ -152,3 +152,8 @@ The submit path needs the verifier key held by Lane A.
 - Conformance 6/6.
 - Jest 31/31 (9 schema, 7 states, 7 budget, 8 verifier).
 - No contract changes, no frozen doc changes, no signing in this work.
+
+
+## Phase 5 close confirmation (Lane B)
+
+The Phase 5 contract-api close corrections draft, supplied 2026-11-05 as pasted text in chat, was verified line by line against Master contract lib.rs and live RPC reads (all four proof transactions queried, both submit obligations and the timeout obligation read live, deployment transaction checked, wasm SHA-256 recomputed to the deployed code_hash, before-Phase-5 claims checked against Master be093f0), and confirmed by Lane B. The rejection cases in the draft carry no transaction hash and were not independently re-derived; the artifact file behind the proof hash was not supplied; the Sol gate and reviewer agreement is Lane A evidence. The draft is not yet applied to docs/contract-api.md; application happens at Phase 5 close on Master. The section 2.6 audit PASS (2026-11-05, no blocking findings) is recorded in the relayed note; PR 6 itself carries no audit comment. The matched live ALLOWED gap is closed: Jayaang ran the full console live run on production with the demo artifact (obl-verify-demo PAID, receipt index 7, acme 977002100 to 977003100 exactly), verified by Lane B against live RPC reads. Lane B signed in docs/ledger.md on 2026-11-05; Lane A signature, draft application, and merge remain outstanding, so Phase 5 is not closed by this signature.
