@@ -196,15 +196,14 @@ default.
 - The frozen playground case needs the owner to freeze
   policy `p6-001` during the demo; the policy is not frozen
   now, so it cannot be demonstrated until then.
-- The Phase 6 contract-api corrections draft was sent
-  separately and has not arrived in this chat yet. The Lane A
-  claims in this doc (nonce check before the state check,
-  in-flight and PAID both reporting
-  `NONCE_ALREADY_CONSUMED`) were verified directly against
-  Master `lib.rs` and the six live proof transactions, not
-  taken from the instructions alone. The draft will be
-  confirmed line by line before signing, as in Phases 3, 4,
-  and 5.
+- The Phase 6 contract-api corrections draft arrived
+  2026-11-05 in the sign note and was confirmed line by line
+  by Lane B against Master `lib.rs` and the live proofs (see
+  the close confirmation below). The Lane A claims in this doc
+  (nonce check before the state check, in-flight and PAID both
+  reporting `NONCE_ALREADY_CONSUMED`) were verified directly
+  against Master `lib.rs` and the live proof transactions, not
+  taken from the instructions alone.
 
 ## Checks
 
@@ -221,6 +220,26 @@ default.
 - Executor smoke test: unauthenticated settle 401, bad token
   401, invalid input 400 with no execution, rate limit 429
   on the sixth call in 60 seconds.
-- No contract changes, no frozen doc changes, no signing in
-  this work. Lane B sign-off and section 2.6 audit still
-  pending.
+- No contract changes, no frozen doc changes. Lane B signed
+  2026-11-05 after the section 2.6 audit PASS (see the close
+  confirmation below).
+
+## Phase 6 close confirmation (Lane B)
+
+The Phase 6 contract-api corrections draft (supplied 2026-11-05
+in the sign note, not committed) was verified line by line by
+Lane B against Master lib.rs (cc29f2e) and live RPC reads and
+is confirmed: the nonce check now runs before the state check,
+the later in_flight require was removed as unreachable, no
+other check changed order or code, RECONCILIATION_REQUIRED
+keeps in_flight true, and the nonce is still not permanently
+consumed on dispatch. The draft is NOT yet applied to
+docs/contract-api.md; application happens at Phase 6 close on
+Master, after Lane B confirmation, following the Phase 5 close
+pattern. Lane B signed in docs/ledger.md on 2026-11-05. Lane A
+signature, draft application, and merge remain outstanding, so
+Phase 6 is not closed by this signature. The section 2.6 audit
+PASS (28 checks, one finding, fixed as 14b16fb) is recorded in
+the audit file supplied 2026-11-05 and in the ledger row; Lane
+B independently re-queried all 17 audit transactions from
+chain with 0 mismatches.
