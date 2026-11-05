@@ -124,7 +124,7 @@ Lane A close note: test vault live proof, cynex-testvault.cynexmaster.testnet, l
 
 ## Phase 4: Budget and storage safety
 
-Status: Lane B signed 2026-11-05. Phase 4 NOT closed: application of the confirmed contract-api draft on Master, Lane A signature, and merge of lane-b to Master are still outstanding.
+Status: Phase 4 closed 2026-11-05. Contract-api corrections applied on Master 604325f, lane-b merged to Master, both lanes signed.
 
 Evidence:
 - Lane A: Master f5efac9, budget and storage safety (contract/src/lib.rs only, 315 insertions). Vault cynex-vault.cynexmaster.testnet code_hash GDvKC8GdUuR4n7mWPd8SCk3Heayd2QbqGJaijtnpncYm, deployed by tx 7wTv9xE7sGBXEmqkZ8AEG63SnQVgKifjorGQ7pMH9y2X (DeployContract, Success). Test vault cynex-testvault.cynexmaster.testnet carries the same code hash, so test vault and production run the same wasm.
@@ -138,5 +138,7 @@ Evidence:
 - Live state at sign-off: policy-001 limit 1000000000, spent 975000000, reserved 0, funded 1000000000, not frozen, headroom 25000000; policy p4-prod-001 limit 1000, spent 1000, reserved 0, funded 1000, headroom 0; production receipts 0 to 6, seven total, verify-live not rerun at sign-off (receipts 0 to 5 verified in Phase 3, receipt 6 verified by direct read here).
 - Checks on lane-b 0b33845, run by Adejoke at build time: scaffold typecheck clean, frontend typecheck clean, conformance 6/6, Jest 23/23 (9 schema plus 7 states plus 7 budget), budget live runs exit 0 on policy-001 and p4-prod-001, unknown policy exits 1, playground regression unchanged.
 
-Sign-off: Johnson (Lane A), pending
+Sign-off: Johnson (Lane A), 2026-11-05
 Sign-off: rastadev (Lane B), 2026-11-05
+
+Lane A close note: test vault live proof, cynex-testvault.cynexmaster.testnet, same wasm as production, code hash GDvKC8GdUuR4n7mWPd8SCk3Heayd2QbqGJaijtnpncYm, labelled live proof plus author review, not an independent audit: exactly at limit 1000 paid, settle 6tmNdRz6seNB2wpPauYNDzoi2fBsyWk1kAq36vDPEnYd; limit plus 1 rejected ERR_BUDGET_EXCEEDED, settle JBdMRgMNaNAsH17SS7KwdYR6jck1tNSERhLPSrwu5rux, still READY; low liquid rejected ERR_VAULT_STORAGE_EXHAUSTED, settle 243BzQnKo5RJjnuq5ucFKpow2AduzTZj3SbbzVvDMcmf, still READY, then top-up and retry paid. Measured settle gas 7.362 TGas total, vault 2.867, ft_transfer 2.017, callback 2.478. Production live proof, same wasm: exactly at limit 1000 paid on policy p4-prod-001, settle FqnRuYQSmGB6C7bCXCiZcU9dFEd3FnSufFczpT5zxyXE, receipt index 6; limit plus 1 rejected ERR_BUDGET_EXCEEDED, settle G5nDEPfA6DfAYmcLRKZvXQ6ibtyWWVTJgNjuEGjZxHUG, still READY, receipts still 7. Low liquid was not run on production, by design. Production final state at close, read live: policy-001 spent 975000000, reserved 0, funded 1000000000, frozen false, headroom 25000000; policy p4-prod-001 spent 1000, reserved 0, funded 1000; receipts 0 to 6, seven total.
