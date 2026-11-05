@@ -730,12 +730,34 @@ impl Contract {
             env::block_timestamp() <= obligation.expires_at_ns,
             "ERR_EVIDENCE_EXPIRED"
         );
+        // Evidence timeout, Phase 5: a verifier result arriving after
+        // EVIDENCE_TIMEOUT_NS from the request is expired, even if the
+        // obligation itself has not expired and mark_evidence_timeout
+        // has not been called yet. Verifier down fails closed: no
+        // READY by default, and no late result can land.
+        // EVIDENCE_PENDING always carries a request time, set by
+        // request_evidence. A missing time here is an invariant
+        // violation, so fail closed instead of silently skipping
+        // the timeout check.
+        let requested = obligation
+            .evidence_requested_at_ns
+            .unwrap_or_else(|| env::panic_str("ERR_INVALID_STATE"));
+        require!(
+            env::block_timestamp() <= requested.saturating_add(EVIDENCE_TIMEOUT_NS),
+            "ERR_EVIDENCE_EXPIRED"
+        );
         obligation.state = match result.as_str() {
             "ALLOWED" => "READY".to_string(),
             "WARN" => "WARN_PENDING".to_string(),
             "BLOCK" => "BLOCKED".to_string(),
             _ => env::panic_str("ERR_INVALID_RESULT"),
         };
+        // Pending evidence fields are cleared on a decided obligation,
+        // matching mark_evidence_timeout, so no stale request, digest,
+        // or request time remains after the verdict lands.
+        obligation.pending_request_id = None;
+        obligation.pending_digest = None;
+        obligation.evidence_requested_at_ns = None;
         self.obligations.insert(obligation_id, obligation);
     }
 
@@ -1569,6 +1591,197 @@ mod tests {
         assert_eq!(
             c.get_obligation("obl-001".to_string()).unwrap().state,
             "WARN_PENDING"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_EVIDENCE_EXPIRED")]
+    fn submit_evidence_after_evidence_timeout_rejects() {
+        let mut c = setup_owner();
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        owner_ctx_at(1000000);
+        c.create_obligation(
+            "obl-001".to_string(),
+            "policy-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            250000,
+            "delivery-note".to_string(),
+            hex32("686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38"),
+            9999999999999999999,
+            1,
+        );
+        c.request_evidence("obl-001".to_string());
+        c.add_verifier(owner());
+        // One nanosecond past the 1 hour evidence timeout, with the
+        // obligation itself far from expired, and without calling
+        // mark_evidence_timeout first: the late result must reject.
+        owner_ctx_at(1000000 + EVIDENCE_TIMEOUT_NS + 1);
+        c.submit_evidence(
+            "obl-001-1".to_string(),
+            "obl-001".to_string(),
+            "ALLOWED".to_string(),
+            "686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38".to_string(),
+        );
+    }
+
+    #[test]
+    fn submit_evidence_clears_pending_fields() {
+        let mut c = setup_owner();
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        c.create_obligation(
+            "obl-001".to_string(),
+            "policy-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            250000,
+            "delivery-note".to_string(),
+            hex32("686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38"),
+            9999999999999999999,
+            1,
+        );
+        c.request_evidence("obl-001".to_string());
+        let before = c.get_obligation("obl-001".to_string()).unwrap();
+        assert_eq!(before.pending_request_id, Some("obl-001-1".to_string()));
+        assert!(before.pending_digest.is_some());
+        assert!(before.evidence_requested_at_ns.is_some());
+        c.add_verifier(owner());
+        c.submit_evidence(
+            "obl-001-1".to_string(),
+            "obl-001".to_string(),
+            "ALLOWED".to_string(),
+            "686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38".to_string(),
+        );
+        let o = c.get_obligation("obl-001".to_string()).unwrap();
+        assert_eq!(o.state, "READY");
+        assert_eq!(o.pending_request_id, None);
+        assert_eq!(o.pending_digest, None);
+        assert_eq!(o.evidence_requested_at_ns, None);
+    }
+
+    #[test]
+    fn submit_evidence_at_exact_evidence_timeout_accepts() {
+        let mut c = setup_owner();
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        owner_ctx_at(1000000);
+        c.create_obligation(
+            "obl-001".to_string(),
+            "policy-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            250000,
+            "delivery-note".to_string(),
+            hex32("686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38"),
+            9999999999999999999,
+            1,
+        );
+        c.request_evidence("obl-001".to_string());
+        c.add_verifier(owner());
+        // At exactly requested plus EVIDENCE_TIMEOUT_NS, submit still
+        // accepts: the timeout is "after", not "at or after". One
+        // nanosecond later it rejects, see the timeout test. At this
+        // exact instant mark_evidence_timeout also becomes valid, so
+        // whichever transaction lands first wins; there is no dead
+        // zone, and no overlapping double decision.
+        owner_ctx_at(1000000 + EVIDENCE_TIMEOUT_NS);
+        c.submit_evidence(
+            "obl-001-1".to_string(),
+            "obl-001".to_string(),
+            "ALLOWED".to_string(),
+            "686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38".to_string(),
+        );
+        assert_eq!(
+            c.get_obligation("obl-001".to_string()).unwrap().state,
+            "READY"
+        );
+    }
+
+    #[test]
+    fn submit_evidence_warn_and_block_clear_pending_fields() {
+        let mut c = setup_owner();
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        for (id, result, expected) in [
+            ("obl-001", "WARN", "WARN_PENDING"),
+            ("obl-002", "BLOCK", "BLOCKED"),
+        ] {
+            c.create_obligation(
+                id.to_string(),
+                "policy-001".to_string(),
+                "acme-supplies.testnet".parse().unwrap(),
+                250000,
+                "delivery-note".to_string(),
+                hex32("686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38"),
+                9999999999999999999,
+                1,
+            );
+            c.request_evidence(id.to_string());
+            c.add_verifier(owner());
+            c.submit_evidence(
+                format!("{}-1", id),
+                id.to_string(),
+                result.to_string(),
+                "686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38".to_string(),
+            );
+            let o = c.get_obligation(id.to_string()).unwrap();
+            assert_eq!(o.state, expected);
+            assert_eq!(o.pending_request_id, None);
+            assert_eq!(o.pending_digest, None);
+            assert_eq!(o.evidence_requested_at_ns, None);
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_INVALID_STATE")]
+    fn submit_evidence_second_submit_rejects() {
+        let mut c = setup_owner();
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        c.create_obligation(
+            "obl-001".to_string(),
+            "policy-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            250000,
+            "delivery-note".to_string(),
+            hex32("686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38"),
+            9999999999999999999,
+            1,
+        );
+        c.request_evidence("obl-001".to_string());
+        c.add_verifier(owner());
+        c.submit_evidence(
+            "obl-001-1".to_string(),
+            "obl-001".to_string(),
+            "ALLOWED".to_string(),
+            "686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38".to_string(),
+        );
+        assert_eq!(
+            c.get_obligation("obl-001".to_string()).unwrap().state,
+            "READY"
+        );
+        // A second submit with identical args must fail on the state
+        // check, not on a field sentinel: the obligation is no longer
+        // EVIDENCE_PENDING, and pending fields are already cleared.
+        c.submit_evidence(
+            "obl-001-1".to_string(),
+            "obl-001".to_string(),
+            "ALLOWED".to_string(),
+            "686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38".to_string(),
         );
     }
 
