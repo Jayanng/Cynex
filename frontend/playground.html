@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cynex playground: break it yourself</title>
+<style>
+body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2em auto; padding: 0 1em; }
+label { display: block; margin: 0.8em 0 0.2em; font-weight: bold; }
+input, select { width: 100%; padding: 0.4em; font-size: 1em; }
+button { margin-top: 1em; padding: 0.6em 1.2em; font-size: 1em; }
+pre { background: #f4f4f4; padding: 1em; white-space: pre-wrap; word-break: break-all; }
+.hint { color: #555; font-size: 0.9em; }
+</style>
+</head>
+<body>
+<h1>Cynex playground: break it yourself</h1>
+<p class="hint">Every settle here is a real transaction against the live vault, signed by the agent key on the executor host. A wrong payee or amount is rejected on chain with a reason code and a transaction hash. Nothing here is simulated. The executor token authenticates you to the executor; the agent key never leaves the executor host and the owner key is never here.</p>
+
+<label for="token">Executor token</label>
+<input id="token" type="password" autocomplete="off" placeholder="operator token from CYNEX_EXECUTOR_TOKEN">
+<button id="authenticate" type="button">Authenticate</button>
+
+<label for="vault">Vault</label>
+<select id="vault"></select>
+
+<label for="obligation">Demo obligation (owner-created only)</label>
+<select id="obligation"></select>
+
+<label for="payee">Proposed payee</label>
+<input id="payee" type="text" value="acme-supplies.testnet">
+
+<label for="amount">Proposed amount (base units, u128 as a decimal string)</label>
+<input id="amount" type="text" value="1000">
+
+<label for="evidence-ref">Evidence ref</label>
+<input id="evidence-ref" type="text" value="phase6-demo">
+
+<button id="read-live" type="button">Read live state (no transaction)</button>
+<button id="fire-settle" type="button">Fire settle</button>
+
+<p id="status"></p>
+<h2>Live read</h2>
+<pre id="live-read"></pre>
+<h2>Settle result</h2>
+<pre id="result"></pre>
+
+<script type="module" src="/playground-client.js"></script>
+</body>
+</html>

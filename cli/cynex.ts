@@ -46,8 +46,33 @@
  *     trust mode with every result. Exit 0 on ALLOWED, 1 on
  *     BLOCK or an unreadable chain row, 2 on usage or an
  *     unreadable artifact file.
+ *   attack-one <vaultId> <obligationId> <proposedRecipient> <proposedAmount> <evidenceRef> [--dry-run]
+ *     Fires one real settle against the live vault with the
+ *     agent key (CYNEX_AGENT, CYNEX_AGENT_KEY_FILE), at 100 TGas
+ *     prepaid, with the proposed amount as a JSON string (a U128
+ *     number would fail deserialization before any contract
+ *     check). Prints the tx hash, the reason code from the
+ *     chain, the obligation state read live after the call, and
+ *     the recipient balance before and after, then a RESULT JSON
+ *     line for the executor to parse. Exit 0 when the call
+ *     executed (success or a rejection with a tx hash), 1 when
+ *     it could not execute, 2 on usage, validation, or dry-run.
+ *   attack <vaultId> <scenariosFile> [--only <scenario>] [--dry-run] [--allow-production-settle] [--transcript <file>]
+ *     Runs the four attack scenarios as real transactions:
+ *     recipient substitution, terms mismatch, nonce replay, and
+ *     budget exceeded. Each scenario reads its obligation and
+ *     policy live, derives the attack parameters from the
+ *     recorded terms, fires the settle, and checks the reason
+ *     code and that zero tokens moved. The nonce scenario
+ *     settles its obligation correctly first, then replays it;
+ *     an already-PAID obligation replays directly. A happy-path
+ *     settle on the production vault needs
+ *     --allow-production-settle, otherwise the run refuses.
+ *     Appends the run to the transcript file (default
+ *     docs/phase6-attack-transcript.md). Exit 0 when every
+ *     scenario produced its expected code, 1 otherwise.
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, appendFileSync } from "node:fs";
 import { receiptHash, GENESIS_PREV_HASH } from "../frontend/src/cynex/receipt.js";
 import { toHex } from "../frontend/src/cynex/api.js";
 import { CynexClient, TESTNET_RPC_URL } from "../frontend/src/cynex/client.js";
@@ -55,6 +80,30 @@ import { describeState, OBLIGATION_STATES } from "../frontend/src/cynex/states.j
 import { describeBudget, type BalancesRow } from "../frontend/src/cynex/budget.js";
 import { verifyArtifact, TRUST_MODE } from "../services/verifier/verifier.js";
 import type { Receipt, Obligation } from "../frontend/src/cynex/schema.js";
+import { JsonRpcProvider, Account, KeyPairSigner } from "near-api-js";
+import type { KeyPairString } from "near-api-js";
+import { SETTLE_CALL_GAS, txHashOf, txHashFromError } from "../agent/console.js";
+import { buildSettle } from "../agent/wrapper.js";
+import {
+  ATTACK_EVIDENCE_REF,
+  ATTACK_SCENARIOS,
+  SCENARIO_LABELS,
+  attackParams,
+  formatTranscriptRow,
+  isValidAccountId,
+  parseAmountU128,
+  reasonCodeFromError,
+  transcriptHeader,
+  validateSettleParams,
+} from "../services/attacks/attacks.js";
+import type {
+  AttackObligation,
+  AttackParams,
+  AttackPolicy,
+  AttackScenario,
+  TranscriptRow,
+} from "../services/attacks/attacks.js";
+
 
 interface ReceiptJson {
   index: string;
@@ -405,6 +454,364 @@ async function verifyArtifactCmd(vaultId: string, obligationId: string, artifact
   return check.result === "ALLOWED" ? 0 : 1;
 }
 
+
+const PRODUCTION_VAULT_ID = "cynex-vault.cynexmaster.testnet";
+
+interface AttackOneResult {
+  scenario: string;
+  obligationId: string;
+  proposedRecipient: string;
+  proposedAmount: string;
+  txHash: string;
+  reasonCode: string | null;
+  settled: boolean;
+  stateAfter: string;
+  balanceBefore: string;
+  balanceAfter: string;
+  moved: string;
+}
+
+async function tokenBalanceOf(provider: JsonRpcProvider, tokenId: string, recipient: string): Promise<bigint> {
+  const result = await provider.callFunction({
+    contractId: tokenId,
+    method: "ft_balance_of",
+    args: { account_id: recipient },
+    blockQuery: { finality: "final" },
+  });
+  return BigInt(String(result as unknown));
+}
+
+async function readObligationRow(
+  client: CynexClient,
+  obligationId: string,
+  want: string | null,
+  label: string,
+): Promise<Record<string, unknown> | null> {
+  for (let attempt = 1; attempt <= 30; attempt++) {
+    const row = (await client.getObligation(obligationId)) as Record<string, unknown> | null;
+    if (row !== null && row !== undefined) {
+      if (want === null || String(row.state) === want) {
+        return row;
+      }
+      console.log("poll " + label + " attempt " + String(attempt) + ": state=" + String(row.state));
+    } else {
+      console.log("poll " + label + " attempt " + String(attempt) + ": row not visible yet");
+    }
+    if (attempt < 30) {
+      await new Promise(function (resolve) {
+        setTimeout(resolve, 2000);
+      });
+    }
+  }
+  console.log("poll timeout for " + label + " after 30 attempts.");
+  return null;
+}
+
+function agentAccount(provider: JsonRpcProvider): Account | null {
+  const agentId = process.env.CYNEX_AGENT ?? "";
+  const agentKeyFile = process.env.CYNEX_AGENT_KEY_FILE ?? "";
+  if (agentId === "" || agentKeyFile === "") {
+    return null;
+  }
+  const agentKey = readFileSync(agentKeyFile, "utf-8").trim();
+  return new Account(agentId, provider, KeyPairSigner.fromSecretKey(agentKey as KeyPairString));
+}
+
+async function fireSettle(
+  provider: JsonRpcProvider,
+  client: CynexClient,
+  agent: Account,
+  vaultId: string,
+  obligationId: string,
+  proposedRecipient: string,
+  proposedAmount: bigint,
+  evidenceRef: string,
+  scenario: string,
+): Promise<AttackOneResult> {
+  const obligation = await fetchObligationExact(vaultId, obligationId);
+  if (obligation === null) {
+    throw new Error(obligationId + ": not found on chain, settle not attempted");
+  }
+  const policy = (await client.getPolicy(obligation.policy_id)) as Record<string, unknown> | null;
+  if (policy === null || policy === undefined || typeof policy.token_id !== "string") {
+    throw new Error(obligation.policy_id + ": policy row unreadable, settle not attempted");
+  }
+  const tokenId = String(policy.token_id);
+  const balanceBefore = await tokenBalanceOf(provider, tokenId, obligation.recipient);
+  const settle = buildSettle({
+    obligation_id: obligationId,
+    proposed_recipient: proposedRecipient,
+    proposed_amount: proposedAmount,
+    evidence_ref: evidenceRef,
+  });
+  let txHash = "unknown";
+  let reasonCode: string | null = null;
+  let settled = false;
+  try {
+    const outcome = await agent.callFunctionRaw({
+      contractId: vaultId,
+      methodName: "settle",
+      args: { ...settle, proposed_amount: settle.proposed_amount.toString() },
+      gas: SETTLE_CALL_GAS,
+    });
+    txHash = txHashOf(outcome);
+    settled = true;
+  } catch (e) {
+    txHash = txHashFromError(e);
+    reasonCode = reasonCodeFromError(e instanceof Error ? e.message : String(e));
+    console.log("settle rejected on chain: tx hash: " + txHash + " reason: " + String(reasonCode));
+  }
+  const after = await readObligationRow(client, obligationId, settled ? "PAID" : null, "obligation after settle " + obligationId);
+  const stateAfter = after === null ? "unknown" : String(after.state);
+  const balanceAfter = await tokenBalanceOf(provider, tokenId, obligation.recipient);
+  const moved = balanceAfter - balanceBefore;
+  return {
+    scenario,
+    obligationId,
+    proposedRecipient,
+    proposedAmount: proposedAmount.toString(),
+    txHash,
+    reasonCode,
+    settled,
+    stateAfter,
+    balanceBefore: balanceBefore.toString(),
+    balanceAfter: balanceAfter.toString(),
+    moved: moved.toString(),
+  };
+}
+
+function printAttackResult(result: AttackOneResult): void {
+  if (result.settled) {
+    console.log(
+      "attack " + result.scenario + " " + result.obligationId + ": SETTLED tx " + result.txHash + " state " + result.stateAfter + " balance " + result.balanceBefore + " -> " + result.balanceAfter + " (moved " + result.moved + ")",
+    );
+  } else {
+    console.log(
+      "attack " + result.scenario + " " + result.obligationId + ": tx " + result.txHash + " code " + String(result.reasonCode) + " state " + result.stateAfter + " balance " + result.balanceBefore + " -> " + result.balanceAfter + " (moved " + result.moved + ")",
+    );
+  }
+  console.log("RESULT " + JSON.stringify(result));
+}
+
+function toTranscriptRow(label: string, result: AttackOneResult): TranscriptRow {
+  return {
+    scenario: label,
+    obligationId: result.obligationId,
+    proposedRecipient: result.proposedRecipient,
+    proposedAmount: result.proposedAmount,
+    txHash: result.txHash,
+    reasonCode: result.settled ? "SETTLED" : String(result.reasonCode),
+    stateAfter: result.stateAfter,
+    balanceBefore: result.balanceBefore,
+    balanceAfter: result.balanceAfter,
+    moved: result.moved,
+  };
+}
+
+async function attackOneCmd(argv: string[]): Promise<number> {
+  const [vaultId, obligationId, proposedRecipient, proposedAmount, evidenceRef, flag] = argv;
+  if (vaultId === undefined || obligationId === undefined || proposedRecipient === undefined || proposedAmount === undefined || evidenceRef === undefined) {
+    console.log("usage: cynex attack-one <vaultId> <obligationId> <proposedRecipient> <proposedAmount> <evidenceRef> [--dry-run]");
+    return 2;
+  }
+  const problems = validateSettleParams(proposedRecipient, proposedAmount, evidenceRef);
+  if (!isValidAccountId(vaultId)) {
+    problems.push("vaultId is not a valid account id: " + vaultId);
+  }
+  if (problems.length > 0) {
+    console.log("attack-one refused before execution: " + problems.join("; "));
+    return 2;
+  }
+  const amount = parseAmountU128(proposedAmount);
+  const provider = new JsonRpcProvider({ url: TESTNET_RPC_URL });
+  const client = new CynexClient(vaultId);
+  if (flag === "--dry-run") {
+    const obligation = await fetchObligationExact(vaultId, obligationId);
+    console.log("DRY-RUN: no transaction was sent.");
+    console.log(
+      JSON.stringify({
+        account: "agent",
+        contractId: vaultId,
+        methodName: "settle",
+        args: { obligation_id: obligationId, proposed_recipient: proposedRecipient, proposed_amount: proposedAmount, evidence_ref: evidenceRef },
+        gas: "100000000000000",
+        obligation: obligation === null ? null : { state: obligation.state, recipient: obligation.recipient, amount: obligation.amount.toString() },
+      }),
+    );
+    return 2;
+  }
+  const agent = agentAccount(provider);
+  if (agent === null) {
+    console.log("attack-one needs the agent key: set CYNEX_AGENT and CYNEX_AGENT_KEY_FILE (bare private key file, outside the repo). No transaction was sent.");
+    return 2;
+  }
+  let result: AttackOneResult;
+  try {
+    result = await fireSettle(provider, client, agent, vaultId, obligationId, proposedRecipient, amount, evidenceRef, "single");
+  } catch (e) {
+    console.log("attack-one failed before the settle call: " + String(e instanceof Error ? e.message : e));
+    return 1;
+  }
+  printAttackResult(result);
+  if (result.txHash === "unknown") {
+    return 1;
+  }
+  return 0;
+}
+
+interface AttackScenariosFile {
+  vaults: Array<{
+    vaultId: string;
+    label: string;
+    production: boolean;
+    recipient: string;
+    terms: string;
+    nonce: string;
+    budget: string;
+  }>;
+}
+
+async function attackCmd(argv: string[]): Promise<number> {
+  const [vaultId, scenariosFile] = argv;
+  const onlyIndex = argv.indexOf("--only");
+  const only = onlyIndex !== -1 ? argv[onlyIndex + 1] : undefined;
+  const dryRun = argv.indexOf("--dry-run") !== -1;
+  const allowProductionSettle = argv.indexOf("--allow-production-settle") !== -1;
+  const transcriptIndex = argv.indexOf("--transcript");
+  const transcriptFile = transcriptIndex !== -1 && argv[transcriptIndex + 1] !== undefined ? argv[transcriptIndex + 1] : "docs/phase6-attack-transcript.md";
+  if (vaultId === undefined || scenariosFile === undefined) {
+    console.log("usage: cynex attack <vaultId> <scenariosFile> [--only <scenario>] [--dry-run] [--allow-production-settle] [--transcript <file>]");
+    return 2;
+  }
+  if (only !== undefined && (ATTACK_SCENARIOS as readonly string[]).indexOf(only) === -1) {
+    console.log("unknown scenario: " + only + ", expected one of " + ATTACK_SCENARIOS.join(", "));
+    return 2;
+  }
+  let parsed: AttackScenariosFile;
+  try {
+    parsed = JSON.parse(readFileSync(scenariosFile, "utf-8")) as AttackScenariosFile;
+  } catch (e) {
+    console.log("scenarios file unreadable: " + String(e instanceof Error ? e.message : e));
+    return 2;
+  }
+  const section = (parsed.vaults ?? []).find(function (v) {
+    return v.vaultId === vaultId;
+  });
+  if (section === undefined) {
+    console.log("no scenario section for vault " + vaultId + " in " + scenariosFile);
+    return 2;
+  }
+  const scenarios = (only === undefined ? ATTACK_SCENARIOS : [only as AttackScenario]) as AttackScenario[];
+  const provider = new JsonRpcProvider({ url: TESTNET_RPC_URL });
+  const client = new CynexClient(vaultId);
+  const agent = dryRun ? null : agentAccount(provider);
+  if (!dryRun && agent === null) {
+    console.log("attack needs the agent key: set CYNEX_AGENT and CYNEX_AGENT_KEY_FILE (bare private key file, outside the repo). No transaction was sent.");
+    return 2;
+  }
+  const rows: TranscriptRow[] = [];
+  let allOk = true;
+  for (const scenario of scenarios) {
+    const obligationId = section[scenario];
+    const obligation = await fetchObligationExact(vaultId, obligationId);
+    if (obligation === null) {
+      console.log(scenario + " " + obligationId + ": not found on chain, scenario failed.");
+      allOk = false;
+      continue;
+    }
+    const policyRow = (await client.getPolicy(obligation.policy_id)) as Record<string, unknown> | null;
+    if (policyRow === null || policyRow === undefined || typeof policyRow.token_id !== "string") {
+      console.log(scenario + " " + obligationId + ": policy row unreadable, scenario failed.");
+      allOk = false;
+      continue;
+    }
+    const policy: AttackPolicy = {
+      limit: BigInt(String(policyRow.limit)),
+      funded: BigInt(String(policyRow.funded)),
+      spent: BigInt(String(policyRow.spent)),
+      reserved: BigInt(String(policyRow.reserved)),
+    };
+    const attackObligation: AttackObligation = {
+      obligation_id: obligation.obligation_id,
+      recipient: obligation.recipient,
+      amount: obligation.amount,
+      state: obligation.state,
+    };
+    let params: AttackParams;
+    try {
+      params = attackParams(scenario, attackObligation, policy);
+    } catch (e) {
+      console.log(scenario + " " + obligationId + ": cannot produce the expected code from this obligation: " + String(e instanceof Error ? e.message : e));
+      allOk = false;
+      continue;
+    }
+    if (dryRun) {
+      console.log(
+        "DRY-RUN " + scenario + " " + obligationId + ": settle " + JSON.stringify({ obligation_id: obligationId, proposed_recipient: params.proposedRecipient, proposed_amount: params.proposedAmount.toString(), evidence_ref: params.evidenceRef }) + " expected " + params.expectedCode,
+      );
+      continue;
+    }
+    if (agent === null) {
+      console.log("attack needs the agent key: set CYNEX_AGENT and CYNEX_AGENT_KEY_FILE. No transaction was sent.");
+      return 2;
+    }
+    if (scenario === "nonce") {
+      if (obligation.state === "READY") {
+        if (section.production && !allowProductionSettle) {
+          console.log("nonce " + obligationId + ": the production happy-path settle needs --allow-production-settle; refusing to move tokens on production without it. Scenario failed, no transaction was sent.");
+          allOk = false;
+          continue;
+        }
+        const settled = await fireSettle(provider, client, agent, vaultId, obligationId, obligation.recipient, obligation.amount, ATTACK_EVIDENCE_REF, "nonce-settle");
+        printAttackResult(settled);
+        rows.push(toTranscriptRow("nonce-settle (happy path)", settled));
+        if (!settled.settled || settled.stateAfter !== "PAID" || settled.moved !== obligation.amount.toString()) {
+          console.log("nonce " + obligationId + ": the correct settle did not land PAID with the exact balance increase, the replay is not attempted.");
+          allOk = false;
+          continue;
+        }
+      } else if (obligation.state === "PAID") {
+        console.log("nonce " + obligationId + ": already PAID on chain, replaying directly without a new happy-path settle.");
+      } else {
+        console.log("nonce " + obligationId + ": state is " + obligation.state + ", neither READY nor PAID, the replay cannot be demonstrated.");
+        allOk = false;
+        continue;
+      }
+    }
+    let result: AttackOneResult;
+    try {
+      result = await fireSettle(provider, client, agent, vaultId, obligationId, params.proposedRecipient, params.proposedAmount, params.evidenceRef, scenario);
+    } catch (e) {
+      console.log(scenario + " " + obligationId + ": failed before the settle call: " + String(e instanceof Error ? e.message : e));
+      allOk = false;
+      continue;
+    }
+    printAttackResult(result);
+    rows.push(toTranscriptRow(SCENARIO_LABELS[scenario], result));
+    if (result.moved !== "0") {
+      console.log("FAILURE: attack " + scenario + " moved tokens (" + result.moved + "). Stopping the run immediately; this is a loud failure, file it.");
+      return 1;
+    }
+    if (result.settled || result.reasonCode !== params.expectedCode) {
+      console.log(scenario + " " + obligationId + ": expected " + params.expectedCode + ", got settled=" + String(result.settled) + " code=" + String(result.reasonCode) + ". Scenario failed.");
+      allOk = false;
+    }
+  }
+  if (rows.length > 0 && !dryRun) {
+    const stamp = new Date().toISOString();
+    const sectionText =
+      "\n## Run " + stamp + " vault " + vaultId + " (" + section.label + ")\n\n" + transcriptHeader() + "\n" + rows.map(formatTranscriptRow).join("\n") + "\n";
+    try {
+      appendFileSync(transcriptFile, sectionText);
+      console.log("transcript appended to " + transcriptFile);
+    } catch (e) {
+      console.log("WARNING: transcript could not be appended to " + transcriptFile + ": " + String(e instanceof Error ? e.message : e) + ". The transcript printed above is the record.");
+    }
+  }
+  return allOk ? 0 : 1;
+}
+
+
 async function main(argv: string[]): Promise<number> {
   const [command, arg] = argv;
   if (command === "verify-receipts" && arg) {
@@ -433,11 +840,19 @@ async function main(argv: string[]): Promise<number> {
     }
     return verifyArtifactCmd(arg, verifyObligationId, verifyArtifactFile);
   }
+  if (command === "attack-one" && arg) {
+    return attackOneCmd(argv.slice(1));
+  }
+  if (command === "attack" && arg) {
+    return attackCmd(argv.slice(1));
+  }
   console.log("usage: cynex verify-receipts <receipts.json>");
   console.log("usage: cynex verify-live <vaultId>");
   console.log("usage: cynex playground <vaultId> <obligationId...>");
   console.log("usage: cynex budget <vaultId> <policyId>");
   console.log("usage: cynex verify-artifact <vaultId> <obligationId> <artifactFile>");
+  console.log("usage: cynex attack-one <vaultId> <obligationId> <proposedRecipient> <proposedAmount> <evidenceRef> [--dry-run]");
+  console.log("usage: cynex attack <vaultId> <scenariosFile> [--only <scenario>] [--dry-run] [--allow-production-settle] [--transcript <file>]");
   return 2;
 }
 
