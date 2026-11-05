@@ -8,8 +8,10 @@
  *   2. owner request_evidence
  *   3. read the obligation back, take pending_request_id
  *      from chain, never from a local computation
- *   4. scaffold verifier check (type, hash, expiry); abort
- *      on BLOCK, do not submit
+ *   4. real verifier check: SHA-256 over the artifact bytes
+ *      from CYNEX_ARTIFACT_FILE, compared to the hash on
+ *      chain, bound to the settlement digest and the pending
+ *      request; abort on BLOCK, do not submit
  *   5. verifier submit_evidence with request_id equal to
  *      pending_request_id, result ALLOWED, proof equal to
  *      the obligation evidence_hash hex
@@ -43,7 +45,9 @@
  * policy_id, recipient, amount as a decimal string,
  * evidence_type, evidence_hash as 64 hex characters,
  * expires_at_ns as a decimal string, nonce as a decimal
- * string, and evidence_ref).
+ * string, and evidence_ref). The artifact bytes come from
+ * CYNEX_ARTIFACT_FILE; without it the live run aborts before
+ * submit_evidence (fail closed, no READY by default).
  *
  * Deployed-contract note, flagged for audit, not hidden:
  * the frozen contract-api.md create_obligation signature
@@ -55,7 +59,7 @@ import { readFileSync } from "node:fs";
 import { JsonRpcProvider, Account, KeyPairSigner } from "near-api-js";
 import type { KeyPairString } from "near-api-js";
 import { buildSettle } from "./wrapper.js";
-import { verifyEvidence } from "../services/verifier/verifier.js";
+import { verifyArtifact, TRUST_MODE } from "../services/verifier/verifier.js";
 import { CynexClient, TESTNET_RPC_URL } from "../frontend/src/cynex/client.js";
 import type { Obligation } from "../frontend/src/cynex/schema.js";
 
@@ -144,6 +148,19 @@ export function consoleCalls(vaultId: string, input: ObligationFile): Record<str
 
 function obligationState(row: unknown): string {
   return String((row as Record<string, unknown>).state);
+}
+
+function hexOfBytes(value: unknown): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (Array.isArray(value)) {
+    return Buffer.from(value as number[]).toString("hex");
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  return null;
 }
 
 function obligationPendingRequestId(row: unknown): string | null {
@@ -271,8 +288,9 @@ async function liveRun(): Promise<number> {
   const agentKeyFile = process.env.CYNEX_AGENT_KEY_FILE ?? "";
   const verifierKeyFile = process.env.CYNEX_VERIFIER_KEY_FILE ?? "";
   const obligationFile = process.env.CYNEX_OBLIGATION_FILE ?? "";
+  const artifactFile = process.env.CYNEX_ARTIFACT_FILE ?? "";
   if (!obligationFile) {
-    console.log("usage: set CYNEX_VAULT, CYNEX_OWNER, CYNEX_AGENT, CYNEX_VERIFIER, CYNEX_OWNER_KEY_FILE, CYNEX_AGENT_KEY_FILE, CYNEX_VERIFIER_KEY_FILE, CYNEX_OBLIGATION_FILE");
+    console.log("usage: set CYNEX_VAULT, CYNEX_OWNER, CYNEX_AGENT, CYNEX_VERIFIER, CYNEX_OWNER_KEY_FILE, CYNEX_AGENT_KEY_FILE, CYNEX_VERIFIER_KEY_FILE, CYNEX_OBLIGATION_FILE, CYNEX_ARTIFACT_FILE");
     return 2;
   }
   const input = JSON.parse(readFileSync(obligationFile, "utf-8")) as ObligationFile;
@@ -324,15 +342,32 @@ async function liveRun(): Promise<number> {
     console.log("ABORT: no pending_request_id on chain after request_evidence, settle is not attempted.");
     return 1;
   }
-  const policyForScaffold = (await client.getPolicy(input.policy_id)) as Record<string, unknown>;
-  const scaffoldObligation: Obligation = {
+  const policyForEvidence = (await client.getPolicy(input.policy_id)) as Record<string, unknown>;
+  const chainEvidenceHash = hexOfBytes((afterRequest as Record<string, unknown>).evidence_hash);
+  const chainPendingDigest = hexOfBytes((afterRequest as Record<string, unknown>).pending_digest);
+  if (chainEvidenceHash === null || chainEvidenceHash !== input.evidence_hash.toLowerCase()) {
+    console.log("ABORT: evidence_hash on chain does not match the obligation file, submit_evidence is not attempted.");
+    return 1;
+  }
+  if (artifactFile === "") {
+    console.log("ABORT: CYNEX_ARTIFACT_FILE is not set, the artifact bytes cannot be read, submit_evidence is not attempted.");
+    return 1;
+  }
+  let artifactBytes: Buffer;
+  try {
+    artifactBytes = readFileSync(artifactFile);
+  } catch (e) {
+    console.log("ABORT: artifact file unreadable, submit_evidence is not attempted: " + String(e));
+    return 1;
+  }
+  const evidenceObligation: Obligation = {
     obligation_id: input.obligation_id,
     policy_id: input.policy_id,
-    policy_version: BigInt(String(policyForScaffold.version)),
+    policy_version: BigInt(String(policyForEvidence.version)),
     recipient: input.recipient,
     amount: BigInt(input.amount),
     evidence_type: input.evidence_type,
-    evidence_hash: input.evidence_hash.toLowerCase(),
+    evidence_hash: chainEvidenceHash,
     expires_at_ns: BigInt(input.expires_at_ns),
     nonce: BigInt(input.nonce),
     state: obligationState(afterRequest) as Obligation["state"],
@@ -340,20 +375,20 @@ async function liveRun(): Promise<number> {
     transfer_attempt: BigInt(String((afterRequest as Record<string, unknown>).transfer_attempt)),
     transfer_dispatched_at_ns: null,
     pending_request_id: pendingRequestId,
-    pending_digest: null,
+    pending_digest: chainPendingDigest,
     evidence_requested_at_ns: null,
   };
   const nowNs = BigInt(Date.now()) * 1000000n;
-  const check = verifyEvidence(scaffoldObligation, input.evidence_type, input.evidence_hash, nowNs);
-  console.log("scaffold verifier: " + check.result + " reasons=" + check.reasons.join(","));
+  const check = verifyArtifact(artifactBytes, evidenceObligation, String(policyForEvidence.token_id), vaultId, nowNs);
+  console.log("verifier " + TRUST_MODE + ": " + check.result + " reasons=" + check.reasons.join(",") + " digest=" + check.digest + " request_id=" + String(check.requestId));
   if (check.result !== "ALLOWED") {
-    console.log("ABORT: scaffold verifier did not allow, submit_evidence is not attempted.");
+    console.log("ABORT: verifier did not allow, submit_evidence is not attempted.");
     return 1;
   }
   const submitOutcome = await verifier.callFunctionRaw({
     contractId: vaultId,
     methodName: "submit_evidence",
-    args: { request_id: pendingRequestId, obligation_id: input.obligation_id, result: "ALLOWED", proof: input.evidence_hash },
+    args: { request_id: pendingRequestId, obligation_id: input.obligation_id, result: "ALLOWED", proof: check.evidenceHash },
     gas: DEFAULT_CALL_GAS,
   });
   console.log("submit_evidence tx hash: " + txHashOf(submitOutcome));

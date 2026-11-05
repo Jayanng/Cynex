@@ -1,5 +1,5 @@
 /**
- * Cynex CLI, Phase 1 scaffold plus Phase 2 live verification plus Phase 3 playground plus Phase 4 budget.
+ * Cynex CLI, Phase 1 scaffold plus Phase 2 live verification plus Phase 3 playground plus Phase 4 budget plus Phase 5 verifier.
  *
  * Commands:
  *   verify-receipts <receipts.json>
@@ -37,6 +37,15 @@
  *     invariant exits non-zero. Token figures must be exact; an
  *     inexact figure fails the command instead of rendering a
  *     rounded budget.
+ *   verify-artifact <vaultId> <obligationId> <artifactFile>
+ *     Reads the obligation live from the contract (exact u64
+ *     values via raw RPC, same pattern as verify-live), reads
+ *     the artifact bytes from the file, computes a real SHA-256
+ *     and compares it to the hash on chain, bound to the
+ *     settlement digest and the pending request. Prints the
+ *     trust mode with every result. Exit 0 on ALLOWED, 1 on
+ *     BLOCK or an unreadable chain row, 2 on usage or an
+ *     unreadable artifact file.
  */
 import { readFileSync } from "node:fs";
 import { receiptHash, GENESIS_PREV_HASH } from "../frontend/src/cynex/receipt.js";
@@ -44,7 +53,8 @@ import { toHex } from "../frontend/src/cynex/api.js";
 import { CynexClient, TESTNET_RPC_URL } from "../frontend/src/cynex/client.js";
 import { describeState, OBLIGATION_STATES } from "../frontend/src/cynex/states.js";
 import { describeBudget, type BalancesRow } from "../frontend/src/cynex/budget.js";
-import type { Receipt } from "../frontend/src/cynex/schema.js";
+import { verifyArtifact, TRUST_MODE } from "../services/verifier/verifier.js";
+import type { Receipt, Obligation } from "../frontend/src/cynex/schema.js";
 
 interface ReceiptJson {
   index: string;
@@ -298,6 +308,103 @@ async function budget(vaultId: string, policyId: string): Promise<number> {
   return display.invariantOk ? 0 : 1;
 }
 
+
+async function fetchObligationExact(vaultId: string, obligationId: string): Promise<Obligation | null> {
+  const argsBase64 = Buffer.from(JSON.stringify({ obligation_id: obligationId })).toString("base64");
+  const response = await fetch(TESTNET_RPC_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: "cynex-verify-artifact",
+      method: "query",
+      params: {
+        request_type: "call_function",
+        account_id: vaultId,
+        method_name: "get_obligation",
+        args_base64: argsBase64,
+        finality: "final",
+      },
+    }),
+  });
+  const data = (await response.json()) as { error?: unknown; result?: { result?: number[] } };
+  if (data.error) {
+    throw new Error("get_obligation view failed: " + JSON.stringify(data.error));
+  }
+  const raw = Buffer.from(data.result?.result ?? []).toString("utf-8");
+  if (raw === "null") {
+    return null;
+  }
+  const quoted = raw.replace(/"(amount|expires_at_ns|nonce|transfer_attempt|transfer_dispatched_at_ns|evidence_requested_at_ns)":\s*(-?\d+)/g, "\"$1\":\"$2\"");
+  const row = JSON.parse(quoted) as Record<string, unknown>;
+  function hexField(value: unknown): string | null {
+    if (value === null || value === undefined) {
+      return null;
+    }
+    if (Array.isArray(value)) {
+      return Buffer.from(value as number[]).toString("hex");
+    }
+    return String(value);
+  }
+  const evidenceHash = hexField(row.evidence_hash);
+  if (evidenceHash === null) {
+    throw new Error("obligation row has no evidence_hash");
+  }
+  return {
+    obligation_id: String(row.obligation_id),
+    policy_id: String(row.policy_id),
+    policy_version: BigInt(String(row.policy_version)),
+    recipient: String(row.recipient),
+    amount: BigInt(String(row.amount)),
+    evidence_type: String(row.evidence_type),
+    evidence_hash: evidenceHash,
+    expires_at_ns: BigInt(String(row.expires_at_ns)),
+    nonce: BigInt(String(row.nonce)),
+    state: String(row.state) as Obligation["state"],
+    in_flight: Boolean(row.in_flight),
+    transfer_attempt: BigInt(String(row.transfer_attempt)),
+    transfer_dispatched_at_ns: row.transfer_dispatched_at_ns === null || row.transfer_dispatched_at_ns === undefined ? null : BigInt(String(row.transfer_dispatched_at_ns)),
+    pending_request_id: row.pending_request_id === null || row.pending_request_id === undefined ? null : String(row.pending_request_id),
+    pending_digest: hexField(row.pending_digest),
+    evidence_requested_at_ns: row.evidence_requested_at_ns === null || row.evidence_requested_at_ns === undefined ? null : BigInt(String(row.evidence_requested_at_ns)),
+  };
+}
+
+async function verifyArtifactCmd(vaultId: string, obligationId: string, artifactFile: string): Promise<number> {
+  let obligation: Obligation | null;
+  try {
+    obligation = await fetchObligationExact(vaultId, obligationId);
+  } catch (e) {
+    console.log(obligationId + ": obligation read failed, nothing verified: " + String(e));
+    return 1;
+  }
+  if (obligation === null) {
+    console.log(obligationId + ": not found on chain, nothing verified.");
+    return 1;
+  }
+  const policy = (await new CynexClient(vaultId).getPolicy(obligation.policy_id)) as Record<string, unknown> | null;
+  if (policy === null || policy === undefined || typeof policy.token_id !== "string") {
+    console.log(obligation.policy_id + ": policy row unreadable, nothing verified.");
+    return 1;
+  }
+  let artifact: Buffer;
+  try {
+    artifact = readFileSync(artifactFile);
+  } catch (e) {
+    console.log("artifact file unreadable: " + String(e));
+    return 2;
+  }
+  const nowNs = BigInt(Date.now()) * 1000000n;
+  const check = verifyArtifact(artifact, obligation, policy.token_id, vaultId, nowNs);
+  console.log("trust mode: " + TRUST_MODE);
+  console.log("obligation " + obligation.obligation_id + " (" + obligation.policy_id + ") state " + obligation.state);
+  console.log("result: " + check.result + " reasons=" + check.reasons.join(","));
+  console.log("evidence hash (computed SHA-256 over " + artifact.length + " bytes): " + check.evidenceHash);
+  console.log("settlement digest: " + check.digest);
+  console.log("request_id: " + String(check.requestId));
+  return check.result === "ALLOWED" ? 0 : 1;
+}
+
 async function main(argv: string[]): Promise<number> {
   const [command, arg] = argv;
   if (command === "verify-receipts" && arg) {
@@ -317,10 +424,20 @@ async function main(argv: string[]): Promise<number> {
     }
     return budget(arg, budgetPolicyId);
   }
+  if (command === "verify-artifact" && arg) {
+    const verifyObligationId = argv[2];
+    const verifyArtifactFile = argv[3];
+    if (verifyObligationId === undefined || verifyArtifactFile === undefined) {
+      console.log("usage: cynex verify-artifact <vaultId> <obligationId> <artifactFile>");
+      return 2;
+    }
+    return verifyArtifactCmd(arg, verifyObligationId, verifyArtifactFile);
+  }
   console.log("usage: cynex verify-receipts <receipts.json>");
   console.log("usage: cynex verify-live <vaultId>");
   console.log("usage: cynex playground <vaultId> <obligationId...>");
   console.log("usage: cynex budget <vaultId> <policyId>");
+  console.log("usage: cynex verify-artifact <vaultId> <obligationId> <artifactFile>");
   return 2;
 }
 
