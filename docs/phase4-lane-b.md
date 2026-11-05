@@ -21,3 +21,8 @@ Honest gaps:
 - No contract changes, no frozen doc changes, no signing in this work. Lane B sign-off and section 2.6 audit still pending.
 
 Checks: scaffold typecheck exit 0, frontend typecheck exit 0, conformance 6/6, Jest 23/23 (9 schema plus 7 states plus 7 budget).
+
+
+## Phase 4 close confirmation (Lane B)
+
+The Phase 4 contract-api close corrections draft dated 2026-11-04, updated 2026-11-05, plus its measured gas and live proofs, was verified line by line against Master contract lib.rs and live RPC reads (all six proof transactions queried, gas_burnt checked against the draft figures, rejection obligations read as still READY, deployment transaction checked), and confirmed by Lane B. Gas is measured on Phase 4 and replaces the Phase 2 table for Phase 4 settle. The draft is not yet applied to docs/contract-api.md; application happens at Phase 4 close on Master. Lane B signed in docs/ledger.md on 2026-11-05; Lane A signature, draft application, and merge remain outstanding, so Phase 4 is not closed by this signature. The section 2.6 audit PASS (2026-11-05, no blocking findings) is recorded in the draft file; PR 5 itself carries no audit comment.
