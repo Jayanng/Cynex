@@ -51,7 +51,7 @@ Notes on the baseline:
 
 ## Runner live run
 
-No runner live run yet. The runner needs the agent key, which
+The first runner live run is the section 2.6 audit, recorded below. The runner needs the agent key, which
 is held by Lane A; there are no key files on the Lane B
 machine, so the end-to-end run is the section 2.6 audit step.
 Run it on the test vault first, then production for the
@@ -69,3 +69,67 @@ The production run must not settle a happy path: its nonce
 obligation (`obl-verify-demo`) is already PAID, so it replays
 directly, and the runner refuses a production happy-path settle
 without `--allow-production-settle`.
+
+## Runner live run, section 2.6 audit, 2026-11-05
+
+The runner's live run happened in the section 2.6 audit (PR #7,
+head 4416385), run by Lane A with the agent key from the compiled
+PR code. Lane B re-queried every transaction below from the chain
+and read the final state live. Balances are
+acme-supplies.testnet `ft_balance_of`, read before and after each
+call by the runner.
+
+Test vault (`cynex-testvault.cynexmaster.testnet`), policy
+`p6-001`: before, spent 1000, reserved 0, funded 10000, headroom
+9000; acme 977004100.
+
+| scenario | obligation | proposed recipient | proposed amount | tx hash | reason code | state after | balance before | balance after | moved |
+|---|---|---|---|---|---|---|---|---|---|
+| recipient substitution | p6-obl-001 | unregistered-xyz.testnet | 1000 | 9K7iyNAhZtxtkyffV4YTk731y6kdacGau8MGL6UL3KDR | ERR_RECIPIENT_SUBSTITUTION | READY | 977004100 | 977004100 | 0 |
+| terms mismatch | p6-obl-002 | acme-supplies.testnet | 1001 | GBM6FNb2q6iNtBmFXioupJbL3ZfuygySfPsr78X75AC2 | ERR_TERMS_MISMATCH | READY | 977004100 | 977004100 | 0 |
+| nonce happy path | p6-obl-006 | acme-supplies.testnet | 1000 | 5Spykc2QWqbJcywxui1NnBUibrE9vsosyv5bexBFYgE1 | SETTLED | PAID | 977004100 | 977005100 | 1000 |
+| nonce replay | p6-obl-006 | acme-supplies.testnet | 1000 | CNm7sQ9K1kbkbE8HQe4bveyW1WZjNc8GhFJzNd8aVCJE | ERR_NONCE_ALREADY_CONSUMED | PAID | 977005100 | 977005100 | 0 |
+| budget exceeded | p6-obl-004 | acme-supplies.testnet | 9001 | 9YQSJH6dbvnuTVinLxGW77CtFqoRmxLCiKkoLs18cEvE | ERR_BUDGET_EXCEEDED | READY | 977005100 | 977005100 | 0 |
+
+After: policy `p6-001` spent 2000, reserved 0, funded 10000,
+headroom 8000, invariant ok; `p6-obl-006` PAID.
+
+Production (`cynex-vault.cynexmaster.testnet`), rejections only,
+no `--allow-production-settle`: before, policy-001 spent
+975001000, `p5-prod-001` spent 0, acme 977005100.
+
+| scenario | obligation | proposed recipient | proposed amount | tx hash | reason code | state after | balance before | balance after | moved |
+|---|---|---|---|---|---|---|---|---|---|
+| recipient substitution | p6-prod-001 | unregistered-xyz.testnet | 1000 | Ax4Ay47y7akf7YvS7ipfhpwJHWgN1JLUt3VvzjCBUjUJ | ERR_RECIPIENT_SUBSTITUTION | READY | 977005100 | 977005100 | 0 |
+| terms mismatch | p6-prod-002 | acme-supplies.testnet | 1001 | A951vTsZvrNz1UpsPYyGjewD537Fo1NsGzM65G4bMXiQ | ERR_TERMS_MISMATCH | READY | 977005100 | 977005100 | 0 |
+| nonce replay | obl-verify-demo | acme-supplies.testnet | 1000 | 94Qpj2AwoQCqWAk6dPJXe87BVXrFjLL8z6Vu1jWTzgCT | ERR_NONCE_ALREADY_CONSUMED | PAID | 977005100 | 977005100 | 0 |
+| budget exceeded | p6-prod-003 | acme-supplies.testnet | 1001 | 3mFru84wQ3MpH8xCrGZi7iHgBsQYW6BfuELKUAShWXyh | ERR_BUDGET_EXCEEDED | READY | 977005100 | 977005100 | 0 |
+
+After: policy-001 spent 975001000, `p5-prod-001` spent 0,
+verify-live 8 receipts, all true; acme 977005100, unchanged by
+the production run. No tokens moved on production.
+
+Executor live, same audit: a valid wrong-recipient settle via
+POST `/settle` on `p6-obl-001`, tx
+7Amj8cteMVq4oait1rNKhZgDuXNCGayzgsVnRxE91LtD,
+`ERR_RECIPIENT_SUBSTITUTION`, READY, 977005100 to 977005100,
+moved 0. Playground blocked case via the executor on
+`p6-audit-001` (wrong payee), tx
+85WaijMc3MHBDFFrYRFsGD2EoEP1SEqgRbs9BJF3hxUb,
+`ERR_RECIPIENT_SUBSTITUTION`, READY, moved 0. Playground settled
+case via the executor on `p6-audit-001` (exact terms), tx
+Ff6Djco5kZBhyXjrbpDWQfYDiRcAzSt5XU9wKSETKXb6, SETTLED, PAID,
+977005100 to 977006100, moved 1000 exactly; replay tx
+CDPLEdLtM6z1r1xGPtf5L1mBoKGCMP9kVHnzeeMA7kdC,
+`ERR_NONCE_ALREADY_CONSUMED`, stayed PAID, moved 0.
+`p6-audit-001` was created for the playground happy path
+(create pHDeFpbNzqy2DJWruF9YW1tXknMy3vxt4Yu4ALRkyGw, request
+F19Eeq8htyztLCxhpvpytHGAzUdvrBGGBdacdj3qarq, submit ALLOWED
+AA2t2h7XJfSU7w9pcFGcis9Q99Ax7q9ra9MNzi9LGg59, nonce 7, amount
+1000, acme-supplies.testnet).
+
+Final live state after the audit (read by Lane B): acme
+977006100, up 2000 from 977004100, 1000 from the runner happy
+path on `p6-obl-006` and 1000 from the playground happy path on
+`p6-audit-001`. Policy `p6-001` spent 3000. Production receipts
+8, all true.

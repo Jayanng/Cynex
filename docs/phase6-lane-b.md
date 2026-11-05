@@ -93,16 +93,21 @@ obligations):
   spent 0: `p6-prod-001` (recipient substitution),
   `p6-prod-002` (terms mismatch, propose 1001),
   `p6-prod-003` (budget exceeded, recorded 1001),
-  `p6-prod-004` and `p6-prod-005` (spares), `obl-verify-demo`
+  `p6-prod-004` (expired-only: READY on chain, 90-second expiry
+  now passed, proposing the recorded terms fails
+  `ERR_OBLIGATION_EXPIRED`, not a generic spare),
+  `p6-prod-005` (spare), `obl-verify-demo`
   (PAID, nonce replay). No happy-path settle runs on
   production.
 - Test vault, policy `p6-001`, limit 10000, funded 10000,
-  spent 1000: `p6-obl-001` (recipient substitution),
+  spent 3000: `p6-obl-001` (recipient substitution),
   `p6-obl-002` (terms mismatch), `p6-obl-003` (PAID, nonce
   replay), `p6-obl-004` (budget exceeded, recorded 9001),
   `p6-obl-005` (expired, propose the recorded terms),
   `p6-obl-006` (happy path, then nonce replay; consumed by
-  the first correct settle).
+  the first correct settle). The audit settled `p6-audit-001`
+  (fresh, created for the playground happy path, nonce 7) the
+  same way, so `p6-001` spent is now 3000 and both are PAID.
 
 How a judge runs the cases: pick the test vault, read the
 live state (no transaction), then fire a settle. A wrong
@@ -173,25 +178,21 @@ default.
 
 ## Honest gaps
 
-- The runner's live end-to-end run has not happened yet. It
-  needs the agent key, which is held by Lane A; there are no
-  key files on the Lane B machine, and no key is in the repo,
-  the PR, or any file sent. The end-to-end run is the section
-  2.6 audit step, on the test vault first, then production
-  for the rejections only. The transcript file records Lane
-  A's six verified proof transactions as the baseline until
-  the runner's run appends its own rows. The dry-run output
-  (exact calls, no transactions sent) is the pre-audit
-  evidence that the runner is wired correctly.
-- The playground happy path needs a fresh test-vault demo
-  obligation after the runner consumes `p6-obl-006`: it is
-  the only settleable test-vault obligation (the others are
-  the attack proofs, expired, or already PAID). Ask the owner
-  for one fresh READY obligation on policy `p6-001` (amount
-  1000, acme-supplies.testnet) reserved for the playground
-  happy path. Until then, the settled case is proven by the
-  runner's nonce scenario (its first step is a correct
-  settle), and the playground shows the blocked cases.
+- The runner's live end-to-end run happened in the section
+  2.6 audit on 2026-11-05 (PR #7, head 4416385): test vault,
+  all four scenarios plus the happy path, and production,
+  rejections only. Every transaction was re-queried from
+  chain by Lane B and is recorded in the transcript file.
+  No live attack transaction was sent from Lane B; the run
+  was the audit step, with the agent key held by Lane A.
+- The playground happy path was proven live in the audit
+  through the executor on a fresh owner-created obligation
+  `p6-audit-001` (nonce 7, settled, then replay blocked).
+  Both settleable test-vault obligations are now PAID
+  (`p6-obl-006` and `p6-audit-001`), so the next playground
+  happy-path demo again needs one fresh owner-created READY
+  obligation on policy `p6-001` (amount 1000,
+  acme-supplies.testnet).
 - The frozen playground case needs the owner to freeze
   policy `p6-001` during the demo; the policy is not frozen
   now, so it cannot be demonstrated until then.
