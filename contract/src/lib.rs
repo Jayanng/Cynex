@@ -148,6 +148,13 @@ const SETTLE_GAS_HEADROOM_YOCTO: u128 = 10_000_000_000_000_000_000_000;
 const TRANSFER_TIMEOUT_NS: u64 = 600_000_000_000;
 const EVIDENCE_TIMEOUT_NS: u64 = 3_600_000_000_000;
 
+// Phase 9, layer 1: the largest evidence blob the vault will hash
+// on-chain for a PREIMAGE obligation. The bytes arrive as a JSON
+// number array, so a larger cap would bloat the call arguments.
+// Oversized evidence keeps the TRUSTED_RELAYER path. The bytes are
+// hashed and dropped, never stored.
+const MAX_PREIMAGE_BYTES: usize = 65_536;
+
 #[allow(clippy::too_many_arguments)]
 // Frozen receipt hash takes 8 fields by definition, in a fixed order.
 fn receipt_hash(
@@ -693,6 +700,14 @@ impl Contract {
             .cloned()
             .unwrap_or_else(|| env::panic_str("ERR_OBLIGATION_MISSING"));
         require!(obligation.state == "EVIDENCE_PENDING", "ERR_INVALID_STATE");
+        // Phase 9, layer 1: a PREIMAGE obligation is verified only by its
+        // bytes, never by a verifier's hex proof. Routing it through this
+        // path would let a compromised verifier mark it READY without any
+        // bytes being hashed.
+        require!(
+            obligation.evidence_type != "PREIMAGE",
+            "ERR_EVIDENCE_MISMATCH"
+        );
         require!(
             obligation.pending_request_id.as_deref() == Some(request_id.as_str()),
             "ERR_EVIDENCE_MISMATCH"
@@ -755,6 +770,88 @@ impl Contract {
         // Pending evidence fields are cleared on a decided obligation,
         // matching mark_evidence_timeout, so no stale request, digest,
         // or request time remains after the verdict lands.
+        obligation.pending_request_id = None;
+        obligation.pending_digest = None;
+        obligation.evidence_requested_at_ns = None;
+        self.obligations.insert(obligation_id, obligation);
+    }
+
+    // Phase 9, layer 1: bounded on-chain evidence check. Anyone may call
+    // this, the caller is a courier, not a judge. The vault hashes the
+    // submitted bytes itself with env::sha256 and compares the result to
+    // the digest the owner committed at create_obligation. A lying courier
+    // is caught on-chain: a hash mismatch changes no state. Only
+    // obligations whose evidence_type is "PREIMAGE" accept raw bytes, and
+    // only while the evidence request is outstanding. The bytes are hashed
+    // and dropped, never stored, so this adds no storage. A hash match is
+    // the verdict, the obligation becomes READY.
+    pub fn submit_evidence_preimage(
+        &mut self,
+        request_id: String,
+        obligation_id: String,
+        evidence: Vec<u8>,
+    ) {
+        let mut obligation = self
+            .obligations
+            .get(&obligation_id)
+            .cloned()
+            .unwrap_or_else(|| env::panic_str("ERR_OBLIGATION_MISSING"));
+        require!(obligation.state == "EVIDENCE_PENDING", "ERR_INVALID_STATE");
+        require!(
+            obligation.evidence_type == "PREIMAGE",
+            "ERR_EVIDENCE_MISMATCH"
+        );
+        require!(
+            evidence.len() <= MAX_PREIMAGE_BYTES,
+            "ERR_EVIDENCE_TOO_LARGE"
+        );
+        require!(
+            obligation.pending_request_id.as_deref() == Some(request_id.as_str()),
+            "ERR_EVIDENCE_MISMATCH"
+        );
+        let policy = self
+            .policies
+            .get(&obligation.policy_id)
+            .cloned()
+            .unwrap_or_else(|| env::panic_str("ERR_POLICY_MISSING"));
+        let digest = settlement_digest(
+            "testnet",
+            env::current_account_id().as_str(),
+            &obligation.policy_id,
+            obligation.policy_version,
+            &obligation_id,
+            policy.token_id.as_str(),
+            obligation.recipient.as_str(),
+            obligation.amount,
+            &obligation.evidence_type,
+            &obligation.evidence_hash,
+            obligation.nonce,
+            obligation.expires_at_ns,
+        );
+        require!(
+            obligation.pending_digest == Some(digest),
+            "ERR_EVIDENCE_MISMATCH"
+        );
+        require!(
+            env::block_timestamp() <= obligation.expires_at_ns,
+            "ERR_EVIDENCE_EXPIRED"
+        );
+        // Evidence timeout, same rule as submit_evidence: a result arriving
+        // after EVIDENCE_TIMEOUT_NS from the request is expired, and a
+        // missing request time fails closed.
+        let requested = obligation
+            .evidence_requested_at_ns
+            .unwrap_or_else(|| env::panic_str("ERR_INVALID_STATE"));
+        require!(
+            env::block_timestamp() <= requested.saturating_add(EVIDENCE_TIMEOUT_NS),
+            "ERR_EVIDENCE_EXPIRED"
+        );
+        let computed = env::sha256(&evidence);
+        require!(
+            computed.as_slice() == obligation.evidence_hash.as_slice(),
+            "ERR_EVIDENCE_MISMATCH"
+        );
+        obligation.state = "READY".to_string();
         obligation.pending_request_id = None;
         obligation.pending_digest = None;
         obligation.evidence_requested_at_ns = None;
@@ -2828,5 +2925,256 @@ mod tests {
                 .saturating_add(SETTLE_GAS_HEADROOM_YOCTO)
         );
         assert_eq!(FT_TRANSFER_DEPOSIT_YOCTO, 1);
+    }
+
+    // Phase 9 layer 1 test helper: a policy plus an obligation whose
+    // committed digest is the SHA-256 of the given bytes, already moved to
+    // EVIDENCE_PENDING by request_evidence. The digest is computed with
+    // the same host function the contract uses, so the test proves the
+    // match, not a hardcoded value.
+    fn preimage_setup(evidence: &[u8], evidence_type: &str) -> Contract {
+        preimage_setup_at(evidence, evidence_type, 9999999999999999999)
+    }
+
+    fn preimage_setup_at(evidence: &[u8], evidence_type: &str, expires_at_ns: u64) -> Contract {
+        let mut c = setup_owner();
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        let digest_vec = env::sha256(evidence);
+        let mut digest = [0u8; 32];
+        digest.copy_from_slice(&digest_vec);
+        c.create_obligation(
+            "obl-001".to_string(),
+            "policy-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            250000,
+            evidence_type.to_string(),
+            digest,
+            expires_at_ns,
+            1,
+        );
+        c.request_evidence("obl-001".to_string());
+        c
+    }
+
+    fn as_other() {
+        let mut ctx = VMContextBuilder::new();
+        ctx.predecessor_account_id(other());
+        ctx.current_account_id("cynex-vault.testnet".parse().unwrap());
+        testing_env!(ctx.build());
+    }
+
+    fn set_time_and_caller(predecessor: AccountId, block_timestamp: u64) {
+        let mut ctx = VMContextBuilder::new();
+        ctx.predecessor_account_id(predecessor);
+        ctx.current_account_id("cynex-vault.testnet".parse().unwrap());
+        ctx.block_timestamp(block_timestamp);
+        testing_env!(ctx.build());
+    }
+
+    #[test]
+    fn submit_evidence_preimage_match_goes_ready() {
+        let evidence = b"delivery-note-001:obl-001:250000".to_vec();
+        let mut c = preimage_setup(&evidence, "PREIMAGE");
+        // A stranger, not the owner and not an allowlisted verifier, is
+        // the courier. That is the point of layer 1: permissionless.
+        as_other();
+        c.submit_evidence_preimage("obl-001-1".to_string(), "obl-001".to_string(), evidence);
+        let o = c.get_obligation("obl-001".to_string()).unwrap();
+        assert_eq!(o.state, "READY");
+        assert_eq!(o.pending_request_id, None);
+        assert_eq!(o.pending_digest, None);
+        assert_eq!(o.evidence_requested_at_ns, None);
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_EVIDENCE_MISMATCH")]
+    fn submit_evidence_preimage_mismatch_rejects() {
+        let evidence = b"delivery-note-001:obl-001:250000".to_vec();
+        let mut c = preimage_setup(&evidence, "PREIMAGE");
+        as_other();
+        c.submit_evidence_preimage(
+            "obl-001-1".to_string(),
+            "obl-001".to_string(),
+            b"tampered-bytes".to_vec(),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_EVIDENCE_TOO_LARGE")]
+    fn submit_evidence_preimage_oversized_rejects() {
+        let evidence = b"delivery-note-001:obl-001:250000".to_vec();
+        let mut c = preimage_setup(&evidence, "PREIMAGE");
+        as_other();
+        c.submit_evidence_preimage(
+            "obl-001-1".to_string(),
+            "obl-001".to_string(),
+            vec![0u8; MAX_PREIMAGE_BYTES + 1],
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_EVIDENCE_MISMATCH")]
+    fn submit_evidence_preimage_wrong_type_rejects() {
+        let evidence = b"delivery-note-001:obl-001:250000".to_vec();
+        let mut c = preimage_setup(&evidence, "delivery-note");
+        as_other();
+        c.submit_evidence_preimage("obl-001-1".to_string(), "obl-001".to_string(), evidence);
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_EVIDENCE_MISMATCH")]
+    fn submit_evidence_preimage_wrong_request_rejects() {
+        let evidence = b"delivery-note-001:obl-001:250000".to_vec();
+        let mut c = preimage_setup(&evidence, "PREIMAGE");
+        as_other();
+        c.submit_evidence_preimage("obl-001-999".to_string(), "obl-001".to_string(), evidence);
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_INVALID_STATE")]
+    fn submit_evidence_preimage_second_submit_rejects() {
+        let evidence = b"delivery-note-001:obl-001:250000".to_vec();
+        let mut c = preimage_setup(&evidence, "PREIMAGE");
+        as_other();
+        c.submit_evidence_preimage(
+            "obl-001-1".to_string(),
+            "obl-001".to_string(),
+            evidence.clone(),
+        );
+        c.submit_evidence_preimage("obl-001-1".to_string(), "obl-001".to_string(), evidence);
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_EVIDENCE_MISMATCH")]
+    fn submit_evidence_rejects_preimage_type() {
+        let evidence = b"delivery-note-001:obl-001:250000".to_vec();
+        let mut c = preimage_setup(&evidence, "PREIMAGE");
+        // The owner is an allowlisted verifier here and the proof is the
+        // correct digest, so the only reason this must fail is the type:
+        // a PREIMAGE obligation is verified by bytes only.
+        c.add_verifier(owner());
+        c.submit_evidence(
+            "obl-001-1".to_string(),
+            "obl-001".to_string(),
+            "ALLOWED".to_string(),
+            "09f787d3967dd0aa7d0d9ec569ef7bd65af66bd44a9f98a8aea4e0174414a2c6".to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_EVIDENCE_EXPIRED")]
+    fn submit_evidence_preimage_expired_rejects() {
+        let evidence = b"delivery-note-001:obl-001:250000".to_vec();
+        let mut c = preimage_setup_at(&evidence, "PREIMAGE", 1000);
+        // Move the clock past the obligation's expiry. The evidence
+        // timeout (1 hour from the request at timestamp 0) has not
+        // passed, so only the expiry guard fires.
+        set_time_and_caller(other(), 2000);
+        c.submit_evidence_preimage("obl-001-1".to_string(), "obl-001".to_string(), evidence);
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_EVIDENCE_EXPIRED")]
+    fn submit_evidence_preimage_evidence_timeout_rejects() {
+        let evidence = b"delivery-note-001:obl-001:250000".to_vec();
+        let mut c = preimage_setup(&evidence, "PREIMAGE");
+        // The request was made at timestamp 0. Move the clock one
+        // nanosecond past the 1 hour evidence timeout; the obligation
+        // itself is far from expiry, so only the timeout guard fires.
+        set_time_and_caller(other(), EVIDENCE_TIMEOUT_NS + 1);
+        c.submit_evidence_preimage("obl-001-1".to_string(), "obl-001".to_string(), evidence);
+    }
+
+    #[test]
+    fn submit_evidence_preimage_at_evidence_timeout_boundary_accepts() {
+        let evidence = b"delivery-note-001:obl-001:250000".to_vec();
+        let mut c = preimage_setup(&evidence, "PREIMAGE");
+        // The request was made at timestamp 0. At exactly requested plus
+        // EVIDENCE_TIMEOUT_NS the submit still accepts; one nanosecond
+        // later it rejects (see the timeout test above).
+        set_time_and_caller(other(), EVIDENCE_TIMEOUT_NS);
+        c.submit_evidence_preimage("obl-001-1".to_string(), "obl-001".to_string(), evidence);
+        let o = c.get_obligation("obl-001".to_string()).unwrap();
+        assert_eq!(o.state, "READY");
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_OBLIGATION_MISSING")]
+    fn submit_evidence_preimage_missing_obligation_rejects() {
+        let evidence = b"delivery-note-001:obl-001:250000".to_vec();
+        let mut c = preimage_setup(&evidence, "PREIMAGE");
+        as_other();
+        c.submit_evidence_preimage(
+            "obl-001-1".to_string(),
+            "no-such-obligation".to_string(),
+            evidence,
+        );
+    }
+
+    #[test]
+    fn submit_evidence_preimage_at_cap_goes_ready() {
+        let evidence = vec![7u8; MAX_PREIMAGE_BYTES];
+        let mut c = preimage_setup(&evidence, "PREIMAGE");
+        as_other();
+        c.submit_evidence_preimage("obl-001-1".to_string(), "obl-001".to_string(), evidence);
+        let o = c.get_obligation("obl-001".to_string()).unwrap();
+        assert_eq!(o.state, "READY");
+    }
+
+    #[test]
+    fn submit_evidence_preimage_mismatch_leaves_state() {
+        let evidence = b"delivery-note-001:obl-001:250000".to_vec();
+        let mut c = preimage_setup(&evidence, "PREIMAGE");
+        as_other();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            c.submit_evidence_preimage(
+                "obl-001-1".to_string(),
+                "obl-001".to_string(),
+                b"tampered-bytes".to_vec(),
+            );
+        }));
+        assert!(result.is_err());
+        // A failed submit changes no state: the obligation is still
+        // pending with its request, digest, and request time intact.
+        let o = c.get_obligation("obl-001".to_string()).unwrap();
+        assert_eq!(o.state, "EVIDENCE_PENDING");
+        assert_eq!(o.pending_request_id, Some("obl-001-1".to_string()));
+        assert!(o.pending_digest.is_some());
+        assert!(o.evidence_requested_at_ns.is_some());
+    }
+
+    #[test]
+    fn submit_evidence_preimage_known_answer_vector() {
+        // The digest is a hardcoded known answer, not computed by the
+        // helper: SHA-256 of "delivery-note-001:obl-001:250000" is
+        // 09f787d3967dd0aa7d0d9ec569ef7bd65af66bd44a9f98a8aea4e0174414a2c6.
+        // If the host function ever diverged from standard SHA-256, this
+        // test fails while the helper-based tests would pass.
+        let evidence = b"delivery-note-001:obl-001:250000".to_vec();
+        let mut c = setup_owner();
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        c.create_obligation(
+            "obl-001".to_string(),
+            "policy-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            250000,
+            "PREIMAGE".to_string(),
+            hex32("09f787d3967dd0aa7d0d9ec569ef7bd65af66bd44a9f98a8aea4e0174414a2c6"),
+            9999999999999999999,
+            1,
+        );
+        c.request_evidence("obl-001".to_string());
+        as_other();
+        c.submit_evidence_preimage("obl-001-1".to_string(), "obl-001".to_string(), evidence);
+        let o = c.get_obligation("obl-001".to_string()).unwrap();
+        assert_eq!(o.state, "READY");
     }
 }
