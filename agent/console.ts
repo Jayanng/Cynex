@@ -49,6 +49,15 @@
  * CYNEX_ARTIFACT_FILE; without it the live run aborts before
  * submit_evidence (fail closed, no READY by default).
  *
+ * Reputation gate (Phase 7): before the agent settles, the
+ * console checks the recipient's reputation (services/reputation)
+ * and applies the wrapper gate. BLOCK refuses with no settle.
+ * WARN escalates to the owner: no settle unless
+ * CYNEX_APPROVE_WARN=1 is set. Snapshots come from
+ * CYNEX_SNAPSHOT_DIR (unset means no snapshots on record, the
+ * age signal is unavailable, never fabricated); a blocklist
+ * URL comes from CYNEX_BLOCKLIST_URL (unset means unavailable).
+ *
  * Deployed-contract note, flagged for audit, not hidden:
  * the frozen contract-api.md create_obligation signature
  * has no nonce (nonce generated at creation), while the
@@ -58,7 +67,9 @@
 import { readFileSync } from "node:fs";
 import { JsonRpcProvider, Account, KeyPairSigner } from "near-api-js";
 import type { KeyPairString } from "near-api-js";
-import { buildSettle } from "./wrapper.js";
+import { buildSettle, gateSettleOnReputation } from "./wrapper.js";
+import { evaluateCounterparty, formatReport } from "../services/reputation/reputation.js";
+import { makeLiveSources } from "../services/reputation/live-sources.js";
 import { verifyArtifact, TRUST_MODE } from "../services/verifier/verifier.js";
 import { CynexClient, TESTNET_RPC_URL } from "../frontend/src/cynex/client.js";
 import type { Obligation } from "../frontend/src/cynex/schema.js";
@@ -406,6 +417,23 @@ async function liveRun(): Promise<number> {
   const tokenId = String(policyRow.token_id);
   const beforeBalance = await tokenBalance(provider, tokenId, input.recipient);
   console.log("recipient ft_balance_of before settle: " + beforeBalance.toString());
+  const reputationSources = makeLiveSources({
+    vaultId,
+    rpcUrl: TESTNET_RPC_URL,
+    snapshotDir: process.env.CYNEX_SNAPSHOT_DIR ?? "",
+    blocklistUrl: process.env.CYNEX_BLOCKLIST_URL,
+  });
+  const reputationReport = await evaluateCounterparty(input.recipient, reputationSources);
+  for (const line of formatReport(reputationReport)) {
+    console.log(line);
+  }
+  const reputationGate = gateSettleOnReputation(reputationReport, {
+    approveWarn: process.env.CYNEX_APPROVE_WARN === "1",
+  });
+  console.log("reputation gate: " + reputationGate.decision + ": " + reputationGate.reason);
+  if (reputationGate.decision !== "proceed") {
+    return 1;
+  }
   const settle = buildSettle({
     obligation_id: input.obligation_id,
     proposed_recipient: input.recipient,

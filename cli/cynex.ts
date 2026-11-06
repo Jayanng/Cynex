@@ -71,8 +71,25 @@
  *     Appends the run to the transcript file (default
  *     docs/phase6-attack-transcript.md). Exit 0 when every
  *     scenario produced its expected code, 1 otherwise.
+ *   reputation <vaultId> <accountId> [--snapshots <dir>] [--blocklist-url <url>]
+ *     Reads the counterparty's reputation live (services/reputation):
+ *     account existence plus current code hash from the RPC, first
+ *     seen from the snapshot files in <dir> (default
+ *     demo/reputation-snapshots), prior vault interactions from the
+ *     contract receipts view, and a blocklist only when
+ *     --blocklist-url names one. Every line shows a real source and
+ *     timestamp; a signal that cannot be sourced is shown as
+ *     unavailable, never fabricated. Exit 0 when the check ran and
+ *     printed a report (any verdict); 1 when the check itself failed.
+ *   reputation-snapshot <accountId...> [--snapshots <dir>] [--rpc <url>]
+ *     Takes a reputation snapshot of each listed account: a live
+ *     view_account read plus the final block height and timestamp,
+ *     written to <dir>/<UTC time>.json (default
+ *     demo/reputation-snapshots). The snapshot is the provenance
+ *     for the account-age signal. Exit 0 on success, 1 on an RPC
+ *     failure, 2 on usage.
  */
-import { readFileSync, appendFileSync } from "node:fs";
+import { readFileSync, appendFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { receiptHash, GENESIS_PREV_HASH } from "../frontend/src/cynex/receipt.js";
 import { toHex } from "../frontend/src/cynex/api.js";
 import { CynexClient, TESTNET_RPC_URL } from "../frontend/src/cynex/client.js";
@@ -84,6 +101,10 @@ import { JsonRpcProvider, Account, KeyPairSigner } from "near-api-js";
 import type { KeyPairString } from "near-api-js";
 import { SETTLE_CALL_GAS, txHashOf, txHashFromError } from "../agent/console.js";
 import { buildSettle } from "../agent/wrapper.js";
+import { evaluateCounterparty, formatReport } from "../services/reputation/reputation.js";
+import { makeLiveSources, takeLiveSnapshot } from "../services/reputation/live-sources.js";
+import { takeSnapshot, snapshotFileName } from "../services/reputation/snapshot.js";
+import type { SnapshotAccount } from "../services/reputation/snapshot.js";
 import {
   ATTACK_EVIDENCE_REF,
   ATTACK_SCENARIOS,
@@ -812,6 +833,70 @@ async function attackCmd(argv: string[]): Promise<number> {
 }
 
 
+function flagValue(argv: string[], name: string): string | undefined {
+  const i = argv.indexOf(name);
+  if (i === -1 || i + 1 >= argv.length) {
+    return undefined;
+  }
+  return argv[i + 1];
+}
+
+async function reputationCmd(vaultId: string, accountId: string, rest: string[]): Promise<number> {
+  const sources = makeLiveSources({
+    vaultId,
+    rpcUrl: TESTNET_RPC_URL,
+    snapshotDir: flagValue(rest, "--snapshots") ?? "demo/reputation-snapshots",
+    blocklistUrl: flagValue(rest, "--blocklist-url"),
+  });
+  const report = await evaluateCounterparty(accountId, sources);
+  for (const line of formatReport(report)) {
+    console.log(line);
+  }
+  return 0;
+}
+
+async function reputationSnapshotCmd(args: string[]): Promise<number> {
+  const dir = flagValue(args, "--snapshots") ?? "demo/reputation-snapshots";
+  const rpcUrl = flagValue(args, "--rpc") ?? TESTNET_RPC_URL;
+  const accountIds: string[] = [];
+  for (let i = 0; i < args.length; i += 1) {
+    const a = args[i];
+    if (a === "--snapshots" || a === "--rpc") {
+      i += 1;
+      continue;
+    }
+    if (a !== undefined) {
+      accountIds.push(a);
+    }
+  }
+  if (accountIds.length === 0) {
+    console.log("usage: cynex reputation-snapshot <accountId...> [--snapshots <dir>] [--rpc <url>]");
+    return 2;
+  }
+  const fetchedAt = new Date().toISOString();
+  const accounts: SnapshotAccount[] = [];
+  for (const accountId of accountIds) {
+    const snap = await takeLiveSnapshot(rpcUrl, accountId, fetch);
+    accounts.push({
+      account_id: accountId,
+      exists: snap.exists,
+      code_hash: snap.codeHash,
+      block_height: snap.blockHeight,
+      block_timestamp: snap.blockTimestamp,
+      fetched_at: new Date().toISOString(),
+    });
+    console.log(
+      "snapshot " + accountId + ": " + (snap.exists ? "exists" : "not found") + " block " + snap.blockHeight,
+    );
+  }
+  const file = takeSnapshot(accounts, "lane-b", rpcUrl, fetchedAt);
+  mkdirSync(dir, { recursive: true });
+  const path = dir + "/" + snapshotFileName(fetchedAt);
+  writeFileSync(path, JSON.stringify(file, null, 2) + "\n");
+  console.log("snapshot written: " + path);
+  return 0;
+}
+
 async function main(argv: string[]): Promise<number> {
   const [command, arg] = argv;
   if (command === "verify-receipts" && arg) {
@@ -846,6 +931,17 @@ async function main(argv: string[]): Promise<number> {
   if (command === "attack" && arg) {
     return attackCmd(argv.slice(1));
   }
+  if (command === "reputation" && arg) {
+    const reputationAccountId = argv[2];
+    if (reputationAccountId === undefined) {
+      console.log("usage: cynex reputation <vaultId> <accountId> [--snapshots <dir>] [--blocklist-url <url>]");
+      return 2;
+    }
+    return reputationCmd(arg, reputationAccountId, argv.slice(3));
+  }
+  if (command === "reputation-snapshot" && arg) {
+    return reputationSnapshotCmd(argv.slice(1));
+  }
   console.log("usage: cynex verify-receipts <receipts.json>");
   console.log("usage: cynex verify-live <vaultId>");
   console.log("usage: cynex playground <vaultId> <obligationId...>");
@@ -853,6 +949,8 @@ async function main(argv: string[]): Promise<number> {
   console.log("usage: cynex verify-artifact <vaultId> <obligationId> <artifactFile>");
   console.log("usage: cynex attack-one <vaultId> <obligationId> <proposedRecipient> <proposedAmount> <evidenceRef> [--dry-run]");
   console.log("usage: cynex attack <vaultId> <scenariosFile> [--only <scenario>] [--dry-run] [--allow-production-settle] [--transcript <file>]");
+  console.log("usage: cynex reputation <vaultId> <accountId> [--snapshots <dir>] [--blocklist-url <url>]");
+  console.log("usage: cynex reputation-snapshot <accountId...> [--snapshots <dir>] [--rpc <url>]");
   return 2;
 }
 

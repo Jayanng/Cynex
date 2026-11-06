@@ -1,0 +1,39 @@
+{
+  "taken_by": "lane-b",
+  "source_rpc": "https://test.rpc.fastnear.com",
+  "fetched_at": "2026-11-06T05:30:24.518Z",
+  "accounts": [
+    {
+      "account_id": "acme-supplies.testnet",
+      "exists": false,
+      "code_hash": null,
+      "block_height": 276445950,
+      "block_timestamp": 1793943022611540000,
+      "fetched_at": "2026-11-06T05:30:25.154Z"
+    },
+    {
+      "account_id": "cynex-vault.cynexmaster.testnet",
+      "exists": true,
+      "code_hash": "G3Mt2gKs94C61Se4oLWvMUgR2Bfv2djdFQLz4TVrDH3E",
+      "block_height": 276445951,
+      "block_timestamp": 1793943023514238200,
+      "fetched_at": "2026-11-06T05:30:25.757Z"
+    },
+    {
+      "account_id": "cynex-agent.cynexmaster.testnet",
+      "exists": true,
+      "code_hash": "11111111111111111111111111111111",
+      "block_height": 276445952,
+      "block_timestamp": 1793943024164381400,
+      "fetched_at": "2026-11-06T05:30:26.372Z"
+    },
+    {
+      "account_id": "unregistered-xyz.testnet",
+      "exists": false,
+      "code_hash": null,
+      "block_height": 276445953,
+      "block_timestamp": 1793943024524769500,
+      "fetched_at": "2026-11-06T05:30:26.960Z"
+    }
+  ]
+}
