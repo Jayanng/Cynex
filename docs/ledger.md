@@ -191,7 +191,11 @@ Sign-off: rastadev (Lane B), 2026-11-05
 
 ## Phase 7: Reputation signals, real and scoped
 
-Status: Phase 7 not closed. Lane B signed 2026-11-06; Lane A signature and merge remain outstanding. There is no contract change in Phase 7, so there is no contract-api corrections draft.
+Status: Phase 7 CLOSED 2026-11-06. Lane B signed 2026-11-06 in b8d78dd; Lane A signed 2026-11-06; no contract change, so no corrections draft; lane-b merged fast-forward to b8d78dd; Master pushed.
+
+Sign-off: Johnson (Lane A), 2026-11-06
+
+Lane A close note: section 2.6 audit PASS 2026-11-06, 24 itemized checks, no blocking findings, Jest 95/95, conformance 6/6. Console gate proven live on the test vault both ways: escalate without approval on p7-audit-004 (no settle attempted, stayed READY), PAID with owner approval on p7-audit-005 (settle 7HHtxoHX7bvYpRmdm5pyhwhBWWRiCUHiGPMDye8F1oKh, agent balance 0 to 100, receipt index 7). The acme finding, verified live on three RPC endpoints: acme-supplies.testnet does not exist on chain, yet holds 977006100 in token balance across 8 receipts, because settle uses plain ft_transfer; future demo settles should use a recipient account that exists. Production final state at close, read live: policy-001 spent 975001000, reserved 0, funded 1000000000, frozen false, headroom 24999000; receipts 0 to 7, eight total, all true; acme 977006100.
 
 Evidence:
 - Lane B: lane-b 28c6edf (reputation engine, snapshots, wrapper gate). PR 8 open, head 28c6edf.
