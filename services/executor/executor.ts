@@ -32,7 +32,8 @@
  *     key is never on the executor host. Owner actions in the
  *     UI go through a wallet adapter, not through /settle.
  *
- * Reads (GET /read) are public view calls: they need no key
+ * Reads (GET /read, GET /receipts) are public view calls:
+ * they need no key
  * and no session. The page itself (GET /) contains no secret;
  * only /settle is protected.
  *
@@ -288,6 +289,62 @@ export function createExecutorServer(config: ExecutorConfig): ReturnType<typeof 
     });
   });
 
+  /**
+   * One page of receipts through the raw RPC, keeping the
+   * u64/u128 fields exact. The contract returns prev_hash
+   * as a byte array; it is hexed here, and index, amount,
+   * and timestamp are returned as decimal strings so the
+   * browser never rounds them (see the CLI parseReceiptsRaw
+   * comment for why the quoting step exists).
+   */
+  async function fetchReceiptsPage(
+    vaultId: string,
+    start: number,
+    limit: number,
+  ): Promise<Record<string, unknown>[]> {
+    const argsBase64 = Buffer.from(JSON.stringify({ start, limit })).toString("base64");
+    const res = await fetch(TESTNET_RPC_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "cynex-executor-receipts",
+        method: "query",
+        params: {
+          request_type: "call_function",
+          account_id: vaultId,
+          method_name: "receipts",
+          args_base64: argsBase64,
+          finality: "final",
+        },
+      }),
+    });
+    const data = (await res.json()) as { error?: unknown; result?: { result?: number[] } };
+    if (data.error) {
+      throw new Error("receipts view failed: " + JSON.stringify(data.error));
+    }
+    const raw = Buffer.from(data.result?.result ?? []).toString("utf-8");
+    const quoted = raw.replace(/"(index|amount|timestamp)":\s*(-?\d+)/g, '"$1":"$2"');
+    const rows = JSON.parse(quoted) as Record<string, unknown>[];
+    return rows.map((row) => {
+      const prevHash = row.prev_hash;
+      const prevHex =
+        typeof prevHash === "string"
+          ? String(prevHash).toLowerCase()
+          : Buffer.from(prevHash as number[]).toString("hex");
+      return {
+        index: String(row.index),
+        prev_hash: prevHex,
+        obligation_id: String(row.obligation_id),
+        recipient: String(row.recipient),
+        amount: String(row.amount),
+        token_id: String(row.token_id),
+        timestamp: String(row.timestamp),
+        tx_ref: String(row.tx_ref ?? ""),
+      };
+    });
+  }
+
   async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const url = new URL(request.url ?? "/", "http://127.0.0.1");
     if (request.method === "GET" && url.pathname === "/") {
@@ -337,6 +394,28 @@ export function createExecutorServer(config: ExecutorConfig): ReturnType<typeof 
         balance = String(value);
       }
       sendJson(response, 200, { obligation, policy, recipientBalance: balance });
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/receipts") {
+      const vaultId = url.searchParams.get("vaultId") ?? "";
+      if (!isValidAccountId(vaultId)) {
+        sendJson(response, 400, { error: "vaultId is required and must be a valid account id" });
+        return;
+      }
+      const all: Record<string, unknown>[] = [];
+      let start = 0;
+      for (;;) {
+        const page = await fetchReceiptsPage(vaultId, start, 100);
+        if (page.length === 0) {
+          break;
+        }
+        all.push(...page);
+        start += page.length;
+        if (page.length < 100) {
+          break;
+        }
+      }
+      sendJson(response, 200, { receipts: all });
       return;
     }
     if (request.method === "POST" && url.pathname === "/auth") {
