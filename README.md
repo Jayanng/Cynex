@@ -16,8 +16,11 @@ Integrity is on-chain and trustless: for small evidence the vault hashes
 the artifact bytes itself and compares them to the digest committed at
 authorization, so a lying courier is caught by the contract. Provenance
 comes from a TEE: an OutLayer guest fetches the evidence from its claimed
-source inside an attested enclave and hashes it there, so the quote binds
-what ran, what went in, and what came out. A VRF signature anchors each
+source inside an attested enclave and hashes it there. The per-execution
+TDX quote binds what ran, what went in, and what came out, and anyone
+can verify it through OutLayer's attestation endpoint; the vault itself
+does not verify the quote on-chain, it checks the guest-reported digest
+and source plus the VRF signature. A VRF signature anchors each
 execution to its request on-chain. Semantics are bound at authorization:
 the digest, the recipient, the amount, and the budget are fixed by the
 human before the agent ever acts. What no layer proves is that the bytes
@@ -91,7 +94,9 @@ of the other two.
 **Layer 2, TEE provenance.** An OutLayer guest runs inside an Intel TDX
 enclave, fetches the evidence from its claimed source, computes SHA-256,
 and returns the digest plus the source. The per-execution TDX quote
-binds the guest code hash, the input hash, and the output hash. This
+binds the guest code hash, the input hash, and the output hash, and
+anyone can verify it through OutLayer's attestation endpoint; the vault
+itself does not verify the quote on-chain. This
 answers the question layer 1 cannot: a digest proves which bytes were
 checked, not where they came from.
 
