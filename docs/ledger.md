@@ -208,3 +208,58 @@ Evidence:
 - Checks on lane-b 28c6edf, run by Adejoke at build time: repo-root typecheck clean, frontend typecheck clean, scaffold typecheck clean (strict), conformance 6/6, Jest 95/95 (10 suites), playground, budget, and verify-live regressions unchanged (8 receipts all true), attack runner dry-run on both vaults exit 0.
 
 Sign-off: rastadev (Lane B), 2026-11-06
+
+
+## Phase 9: Three-layer verification (on-chain preimage, TEE provenance, VRF anchor)
+
+Status: Phase 9 NOT closed. Lane A shipped and proven live; Lane B
+acceptance audit PASSED 2026-11-06 and Johnson signed the Lane B
+acceptance below. Still pending before close: the joint fresh-clone
+reproduction, and Adejoke's own Lane B sign. Phase 8 ledger entry is
+also still missing; see the Phase 8 note in the plan.
+
+Evidence:
+- Lane A: Master 42c9bf6 (layer 1, bounded on-chain preimage evidence,
+  69 tests), bbc8464 (layers 2 and 3, TEE provenance via OutLayer
+  Project flow plus VRF anchor, 94 tests), f7fb83a (README TDX quote
+  fix from the Sol full-audit finding). Code hash
+  7PBw1x6HbH3Eu2dWrTKjEEfxdJnAfFPwPJS5vZMM5zRC on both vaults.
+  Reviews: Argon, GLM, DeepSeek GATE PASS (0 blocking); Sol full-audit
+  GATE PASS (0 blocking, 2 non-blocking PARTIALs, README quote fixed).
+  Fresh near-agent-skills check PASS (39 items). Live proof on the test
+  vault (layer 1 happy and negative, TEE request 10640 READY with a
+  real TDX quote) and on production (layer 1 happy and negative, TEE
+  request 10705 READY, no funds moved, no settle called).
+- Lane B: lane-b 638695e, PR #9 open, 11 files, 1258 insertions, 92
+  deletions (console wiring for PREIMAGE and TEE, cynex-verify --csv,
+  playground polish, README reproduction steps, docs/phase9-lane-b.md).
+- Lane B acceptance audit, section 2.6, 2026-11-06: PASS. Proven live
+  on the test vault by the auditor, not by the delivery: PREIMAGE
+  obligation laneb-audit-preimage-001 went READY via
+  submit_evidence_preimage (tx
+  8npcKTg97FcyGYs75X7jAEYR1eoYSAVPZPunqeNUADY); TEE obligation
+  laneb-audit-tee-001 went READY via request_tee_verification (tx
+  bn4FepHMcPQdnkEy3HHwE2kURbrBFaCALb4zTnoFzB5, 300 TGas, poll attempt
+  2). Both confirmed READY on chain, policy p6-001 unchanged (spent
+  3100, reserved 0, funded 10000), no funds moved. cynex-verify --csv
+  proven live on production: 8 receipts, all verified_ok=true,
+  identical to verify-live, header exactly the frozen columns. Jest
+  119/119 in 12 suites (baseline 95/95 in 10 on Master), scaffold and
+  frontend typecheck clean, conformance 6/6. Two PARTIAL issues,
+  neither a defect in the delivered wiring: npm run jest needs
+  NODE_PATH set in a fresh checkout (pre-existing quirk, Master also
+  fails 1 suite without it), and the console settle step could not be
+  exercised on the test vault because the agent scoped key is bound to
+  the production vault. The audit record is held outside the repo at
+  cynex-system/phase9-lane-b-section26-audit.md.
+- Live state at Lane B acceptance: production policy-001 spent
+  975001000, reserved 0, funded 1000000000, frozen false, receipts 8,
+  agent ft_balance_of 100, acme-supplies.testnet 977006100 (does not
+  exist on chain, see the Phase 7 acme finding, never settle to it).
+  Three production proof obligations unsettled (p9-prod-preimage-001
+  READY, p9-prod-preimage-002 EVIDENCE_PENDING, p9-prod-tee-001
+  READY, 100 units each); two audit obligations on the test vault
+  unsettled (laneb-audit-preimage-001 READY, laneb-audit-tee-001
+  READY, 100 units each). What to do with them is Johnson's decision.
+
+Sign-off: Johnson (Lane B acceptance audit, section 2.6), 2026-11-06
