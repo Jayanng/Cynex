@@ -293,3 +293,121 @@ Evidence:
 Sign-off: Johnson (Lane B acceptance audit, section 2.6), 2026-11-06
 
 Sign-off: rastadev (Lane B), 2026-11-06
+## Judge's audit fixes (2026-11-06)
+
+Status: all 11 TRUE findings from the judge's audit fixed, reviewed, committed
+as 6b40576, deployed to the test vault and proven live, deployed to production
+and proven live. Phase 9 is not closed by this entry: the joint fresh-clone
+reproduction is still outstanding.
+
+Fixes (contract/src/lib.rs, docs/contract-api.md, docs/threat-model.md,
+README.md; 4 files, 1272 insertions, 119 deletions): - Reconciler can no
+longer resolve to any outcome: the READY/CANCELLED arm of resolve_settlement
+is owner-only, and a READY-resolved obligation is marked in a resolved-ready
+LookupMap (prefix b"y") so it can never settle again. The owner must verify on
+chain that the transfer failed before resolving READY or CANCELLED. - Shared
+transfer-timeout guard require_transfer_timeout_elapsed() for
+cancel_obligation and resolve_settlement from RECONCILIATION_REQUIRED. -
+MAX_TRANSFER_ATTEMPTS = 3: after three confirmed transfer failures the
+obligation escalates to RECONCILIATION_REQUIRED, retaining reservation,
+in_flight, dispatch time, and token lock. No public resume. -
+request_tee_verification checks native_headroom_yocto() (liquid headroom, not
+total balance) and uses the frozen ERR_VAULT_STORAGE_EXHAUSTED. - TEE guest
+version pinned: version_key
+8abfe08bc62919dd3f0aea2c2ea5dbe91d5484c14d6a55289053dce1d0387a6f, the live
+active guest version. TDX quote verified off chain, VRF signature is the
+on-chain anchor (the contract runtime has no quote verification primitive). -
+set_reconciler takes Option<AccountId> (a string deserializes to Some, null
+clears); request_evidence rejects a frozen policy (ERR_POLICY_FROZEN) and an
+expired obligation (ERR_OBLIGATION_EXPIRED). - Expired-obligation checks in
+submit_evidence, submit_evidence_preimage, and request_tee_verification report
+ERR_OBLIGATION_EXPIRED, not ERR_EVIDENCE_EXPIRED. - submit_evidence uses a
+positive match on VERIFIER_EVIDENCE_TYPE ("delivery-note"); anything else
+rejects with ERR_EVIDENCE_MISMATCH. - Over-limit funding refused in full in
+ft_on_transfer only (checked_add, full amount returned unused,
+ERR_BUDGET_EXCEEDED logged); deliberately not in assert_policy_invariant, so
+freeze and unfreeze still work on an already over-funded policy. - Owner-only
+cancel from BLOCKED and WARN_PENDING, with an explicit require!(!in_flight). -
+create_obligation fail-fast validation: amount > 0 (ERR_TERMS_MISMATCH),
+expires_at_ns in the future (ERR_OBLIGATION_EXPIRED), evidence_type in
+PREIMAGE, TEE, delivery-note (ERR_EVIDENCE_MISMATCH). - on_transfer_complete
+is categorically non-panicking: reservation arithmetic and the invariant check
+return early without writing state on inconsistency. The sha256 expect sites
+and the receipt log unwrap() now use unwrap_or_default. No Borsh layout
+change: the marker is an on-demand LookupMap, the Contract struct is
+unchanged, no migration needed.
+
+Reviews (all before commit, GMI only): Gemini 4 Argon GATE PASS (0 blocking),
+DeepSeek V4.1 Flash GATE PASS (0 blocking), GLM-5.3 Flash GATE PASS (0
+blocking, on a minimal prompt after four empty outputs on larger prompts; its
+five UNPROVEN items were all verified FALSE against the code). Sol gate 1 GATE
+FAIL with 0 blocking (scope: full callback body and verbatim docs not
+supplied). Sol gate 2: findings 1-11 FIXED, 1 blocking (callback could panic,
+pre-existing code). Sol gate 3, focused on the callback fix: GATE PASS (0
+blocking). Near-agent-skills check PASS, 0 blocking (skills at cb32b6a). Build
+green: fmt, clippy --all-targets -D warnings, cargo test --lib, 125 tests
+passed.
+
+Live proof, test vault (cynex-testvault.cynexmaster.testnet), 2026-11-06: -
+Wasm: cargo near build non-reproducible-wasm, 257840 bytes, SHA-256
+c188fa1ef7c18d1666f5e6e5e1d817bc0c3e5b56ecbae0c7d927afb38ed2acc0, base58
+E2Uq5FzNcfGuDHQfqTGx6Rqd41ZwsBDXtYVx6bhQoFd1. Deploy tx
+DdLzsaZqwyS6yd1rNKVLY6ekpHCZLSjcJ6Boi6HPJ3r8 (first attempt tx
+3ZvK8ijZXhXNev2PWbb113LqwSmSdfu2jtEoZPZoMLqy failed ActorNoPermission, signed
+by the owner key instead of the test vault key; retried with the correct key).
+Code hash 7PBw1x6H to E2Uq5FzNcfGuDHQfqTGx6Rqd41ZwsBDXtYVx6bhQoFd1. - PREIMAGE
+happy: fj-pre-001 (100 units, nonce 101) CREATED to EVIDENCE_PENDING to READY
+(create tx 9k14Xy2eBtkUMmPu1JzJeGYCoGRTVqgzP1wBV499yyKv, request tx
+56U4yweaxUyxqd8qKDJjb19nCTzRKdG9WJf3ZCVZo3uT, submit tx
+Cq2M6kK4GjpwGXsxEoRZBdZQtNBBhjrszYfJaHxn4cW4, 1.80 TGas). PREIMAGE negative:
+fj-pre-002 wrong bytes rejected with ERR_EVIDENCE_MISMATCH, state unchanged
+EVIDENCE_PENDING (the failed submit tx hash was not captured by the helper). -
+TEE full path: fj-tee-001 (100 units, nonce 103) to READY, OutLayer request
+11176, guest version 8abfe08b, evidence URL
+https://raw.githubusercontent.com/near/agent-skills/cb32b6a/README.md (SHA-256
+26d42adb722f5ef9a11238e7f15f780b01abca9507be3457e7727beb4e295b0b), VRF
+signature verified on chain by the callback and off chain against the testnet
+VRF public key. Request tx 9nG7v6gi3n9X57tmmX7jP56tuUf71JCZtkNctoZLGLi8, 300
+TGas, charged 0.00113 NEAR, refunded 0.00887 NEAR. - Settle: fj-pre-001 to
+PAID with the owner key, tx DMWtguEdvNZej8P3VR8569UQ73aAzmLRLupMMbXHinFV, 100
+TGas. Policy p6-001 spent 3300 to 3400, reserved 0, funded 10000, receipts 10
+to 11, agent token balance 500 to 600. - Reconciler cannot resolve: resolve as
+reconciler rejected with ERR_NOT_OWNER, state unchanged
+RECONCILIATION_REQUIRED. Retry escalation: fj-retry-001 (recipient
+fj-unregistered.testnet) failed 3 settles, then RECONCILIATION_REQUIRED with
+reserved 100 retained and the token lock held (a settle probe on fj-tee-001
+rejected with ERR_TOKEN_IN_FLIGHT). Cancel after timeout: tx
+8cAdzXbiUn71Mid7Xns4ZYhbcQq7PvTHfACm9hCdCk9s, CANCELLED, reserved 100 to 0.
+Over-limit funding: 1 unit past a 1000 limit refunded in full, funded stayed
+1000. Cancel from BLOCKED (fj-block-001) and WARN_PENDING (fj-warn-001): both
+CANCELLED. TEE balance check unit-proven only.
+
+Live proof, production (cynex-vault.cynexmaster.testnet), 2026-11-06: - Same
+wasm, SHA-256 verified before deploy, no rebuild. Deploy tx
+Ba8uDygsaACrGS9mMtjjiuCoTdNmy34gLdmKBm7PwJUr, signed with the production vault
+key. Code hash 7PBw1x6H to E2Uq5FzNcfGuDHQfqTGx6Rqd41ZwsBDXtYVx6bhQoFd1,
+exactly matching the test vault deploy. - PREIMAGE happy: fj-prod-pre-001 (100
+units, p5-prod-001) to READY (create tx
+AYcRupfRuivR1huANhbJGUBhNQzzFCteEZjHhgzAusY6, request tx
+6ZSgPEpeyuTKCWzJ1AGKdjTGMz2kM5jrgHV7PhcoJWJJ, submit tx
+7uMWKD6iYPXkiQT8FXfPGo8rooJzhxEUjTYk8eR8htih). PREIMAGE negative:
+fj-prod-pre-002 wrong bytes rejected with ERR_EVIDENCE_MISMATCH, state stayed
+EVIDENCE_PENDING (failed tx Fq6kNMGLvFGQ4TYurRhCPbSmMwRbrf747y8hKfxrzvfU). -
+TEE full path: fj-prod-tee-001 to READY, OutLayer request 11190, guest version
+8abfe08b, VRF verified on chain by the callback. Request tx
+6sHmmcpxnEJAyg7CVbqYn74947ax2Qd1ozgQFjBjN11X, 300 TGas. - Settle with the
+AGENT scoped key: fj-prod-pre-001 to PAID, tx
+CShdVDWT7kg4HyKEEriPivBiBfnRpKch1KtC74ZUv46J, 100 TGas, receipt index 10.
+Policy p5-prod-001 spent 200 to 300, reserved 0, funded 1000, receipts 10 to
+11, agent token balance 600 to 700. - Over-limit funding: 100 units past the
+1000 limit refunded in full (tx GrckusPzden4if26ML8qVekuzpZUzGVZko6QpnhxXRGA),
+funded stayed 1000. Reconciler cannot resolve: fj-prod-recon-001 escalated
+after 3 failed settles, resolve as reconciler rejected with ERR_NOT_OWNER (tx
+32JeyWNZ6NbK8b2YmendqEfd92XwnX2GLn8L4ig5o9a5), owner cancelled it afterwards
+(tx 7J5NBZAN74MYRixTWwZWPWWH9sBHEkd1XzwDQ4aCiSxq), reserved back to 0. - Final
+production state: p5-prod-001 spent 300, reserved 0, funded 1000, frozen
+false, reconciler null; policy-001 unchanged (spent 975001000, reserved 0,
+funded 1000000000); receipts 11; agent balance 700. fj-prod-pre-002 stays
+EVIDENCE_PENDING and fj-prod-tee-001 stays READY (unsettled, per scope);
+neither holds a reservation or funds. The dead Phase 9 production obligations
+(p9-prod-preimage-001, p9-prod-tee-001, READY but EXPIRED) were not touched.
