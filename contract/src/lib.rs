@@ -103,7 +103,13 @@ fn next_tee_request_counter() -> u64 {
 // source (layer 2 provenance), and the VRF signature verifies against
 // the published key with the alpha bound to this request (layer 3
 // anchor). Returns false on any failure; the caller leaves the
-// obligation pending.
+// obligation pending. The per-execution TDX quote is not verified here:
+// the contract runtime has no quote verification primitive, so the
+// quote is verified off-chain (the attestation endpoint serves real
+// quotes, verified live for requests 10522 and 10640 with matching
+// input and output hashes) and the VRF signature is the on-chain
+// anchor. The guest build itself is pinned by version_key in the
+// request, so the quote and the VRF both describe the same pinned code.
 fn verify_tee_output(obligation: &Obligation, tee: &TeeRequest, value: &serde_json::Value) -> bool {
     let digest_hex = match value.get("digest").and_then(|v| v.as_str()) {
         Some(s) => s,
@@ -264,9 +270,11 @@ pub fn settlement_digest(
     buf.extend_from_slice(evidence_hash);
     append_u64(&mut buf, nonce);
     append_u64(&mut buf, expiry);
-    env::sha256(&buf)
-        .try_into()
-        .expect("sha256 must be 32 bytes")
+    // sha256 always returns 32 bytes, so the default is unreachable.
+    // unwrap_or_default instead of expect keeps every caller, including
+    // the transfer callback, categorically free of panics.
+    let hash: [u8; 32] = env::sha256(&buf).try_into().unwrap_or_default();
+    hash
 }
 
 const FT_TRANSFER_GAS: Gas = Gas::from_tgas(30);
@@ -288,6 +296,15 @@ const SETTLE_GAS_HEADROOM_YOCTO: u128 = 10_000_000_000_000_000_000_000;
 // chain itself has passed the deadline, never by a caller claiming time passed.
 const TRANSFER_TIMEOUT_NS: u64 = 600_000_000_000;
 const EVIDENCE_TIMEOUT_NS: u64 = 3_600_000_000_000;
+// Cap on confirmed failed transfer dispatches per obligation. After
+// this many failures the obligation escalates to
+// RECONCILIATION_REQUIRED instead of returning to READY, so a
+// compromised agent cannot loop settle on an unregistered recipient
+// and burn the vault's native headroom. The human owner then decides:
+// resolve, cancel, or a fresh obligation. The cap counts dispatches
+// (transfer_attempt), and a confirmed failure is the callback Err
+// path, which proves the transfer did not land.
+const MAX_TRANSFER_ATTEMPTS: u64 = 3;
 
 // Phase 9, layer 1: the largest evidence blob the vault will hash
 // on-chain for a PREIMAGE obligation. The bytes arrive as a JSON
@@ -295,12 +312,25 @@ const EVIDENCE_TIMEOUT_NS: u64 = 3_600_000_000_000;
 // Oversized evidence keeps the TRUSTED_RELAYER path. The bytes are
 // hashed and dropped, never stored.
 const MAX_PREIMAGE_BYTES: usize = 65_536;
+// The only evidence type verified by the allowlisted verifier path
+// (submit_evidence, TRUSTED_RELAYER). PREIMAGE and TEE each have their
+// own verification path and are rejected there. Any other string is not
+// a known type and fails closed at creation.
+const VERIFIER_EVIDENCE_TYPE: &str = "delivery-note";
 
 // Phase 9, layers 2 and 3: OutLayer TEE verification, testnet only. The
 // vault calls the OutLayer contract to run the verifier guest in the TEE,
 // and the guest output returns through a private callback.
 const OUTLAYER_CONTRACT: &str = "outlayer.testnet";
 const OUTLAYER_PROJECT_ID: &str = "cynexmaster.testnet/cynex-verifier";
+// The pinned guest version for the project above: the active version's
+// full wasm hash, confirmed live on testnet (list_versions on
+// outlayer.testnet, is_active true). Pinning it means an execution runs
+// exactly this guest build, never whatever version is active later. A
+// new guest build needs a new pinned hash here, plus a redeploy: the
+// pin is the point, it must not silently follow.
+const OUTLAYER_VERSION_KEY: &str =
+    "8abfe08bc62919dd3f0aea2c2ea5dbe91d5484c14d6a55289053dce1d0387a6f";
 // Attached deposit for request_execution. A small execution costs about
 // 0.001 to 0.002 NEAR; the excess is refunded to the vault.
 const TEE_REQUEST_DEPOSIT_YOCTO: u128 = 10_000_000_000_000_000_000_000;
@@ -336,9 +366,11 @@ fn receipt_hash(
     append_string(&mut buf, token_id);
     append_u64(&mut buf, timestamp);
     append_string(&mut buf, tx_ref);
-    env::sha256(&buf)
-        .try_into()
-        .expect("sha256 must be 32 bytes")
+    // sha256 always returns 32 bytes, so the default is unreachable.
+    // unwrap_or_default instead of expect keeps every caller, including
+    // the transfer callback, categorically free of panics.
+    let hash: [u8; 32] = env::sha256(&buf).try_into().unwrap_or_default();
+    hash
 }
 
 fn native_headroom_yocto() -> u128 {
@@ -359,6 +391,22 @@ fn settle_storage_requirement_yocto() -> u128 {
         .saturating_add(SETTLE_GAS_HEADROOM_YOCTO)
 }
 
+// Shared guard for the two ways out of RECONCILIATION_REQUIRED:
+// resolve_settlement and cancel_obligation. The transfer may still be
+// in flight until TRANSFER_TIMEOUT_NS has passed since dispatch, so
+// neither path may release the reservation or the token lock early.
+// One function, so the two paths cannot drift apart again.
+fn require_transfer_timeout_elapsed(obligation: &Obligation) {
+    require!(obligation.in_flight, "ERR_INVALID_STATE");
+    let dispatched = obligation
+        .transfer_dispatched_at_ns
+        .unwrap_or_else(|| env::panic_str("ERR_INVALID_STATE"));
+    require!(
+        env::block_timestamp() >= dispatched.saturating_add(TRANSFER_TIMEOUT_NS),
+        "ERR_TIMEOUT_NOT_REACHED"
+    );
+}
+
 fn assert_policy_invariant(policy: &Policy) {
     // Phase 4: token ledger invariant, checked after every policy balance
     // change, before the policy is written back. Token units only, never
@@ -375,6 +423,33 @@ fn assert_policy_invariant(policy: &Policy) {
     require!(policy.reserved <= policy.limit, "ERR_BUDGET_EXCEEDED");
     require!(total <= policy.limit, "ERR_BUDGET_EXCEEDED");
     require!(total <= policy.funded, "ERR_BUDGET_EXCEEDED");
+}
+
+// Obligations whose ambiguous transfer was human-resolved to READY.
+// resolve_settlement to READY attests the transfer failed, but the
+// contract cannot verify that on chain: a transfer that actually
+// succeeded while its callback was lost would be paid twice if the
+// obligation settled again. So a READY-resolved obligation never
+// settles again; a genuine retry needs a fresh obligation with a fresh
+// nonce. The set lives under its own trie prefix, like the receipt and
+// token-lock maps, so the Contract struct is unchanged and no migration
+// is needed. This is separate from the callback failure path: a
+// callback Err proves the transfer failed, so that READY return stays
+// retryable up to MAX_TRANSFER_ATTEMPTS.
+fn resolved_ready_map() -> LookupMap<String, bool> {
+    LookupMap::new(b"y")
+}
+
+fn mark_resolved_ready(obligation_id: &str) {
+    let mut map = resolved_ready_map();
+    map.insert(obligation_id.to_string(), true);
+}
+
+fn was_resolved_ready(obligation_id: &str) -> bool {
+    resolved_ready_map()
+        .get(&obligation_id.to_string())
+        .copied()
+        .unwrap_or(false)
 }
 
 // Per-token in-flight lock, Phase 3. The map lives under prefix b"i", created
@@ -422,6 +497,37 @@ pub struct Contract {
     pub obligations: LookupMap<String, Obligation>,
     pub receipt_index: u64,
     pub last_receipt_hash: [u8; 32],
+}
+
+// The OutLayer request_execution arguments for a TEE verification.
+// Split out so unit tests can check the pinned version without
+// driving a promise: request_tee_verification returns a Promise,
+// whose arguments are not inspectable in a unit test.
+fn outlayer_request_args(evidence_url: &str, seed: &str) -> Vec<u8> {
+    let input = serde_json::to_string(&serde_json::json!({
+        "url": evidence_url,
+        "seed": seed,
+    }))
+    .unwrap();
+    serde_json::to_vec(&serde_json::json!({
+        "source": {
+            "Project": {
+                "project_id": OUTLAYER_PROJECT_ID,
+                "version_key": OUTLAYER_VERSION_KEY,
+            }
+        },
+        "resource_limits": {
+            "max_instructions": 1_000_000_000u64,
+            "max_memory_mb": 128u32,
+            "max_execution_seconds": 60u64,
+        },
+        "input_data": input,
+        "secrets_ref": null,
+        "response_format": "Json",
+        "payer_account_id": null,
+        "params": null,
+    }))
+    .unwrap()
 }
 
 #[near]
@@ -506,6 +612,23 @@ impl Contract {
         // under the 512-byte storage reserve: 64-char ID, 64-char recipient,
         // 64-char token, 44-char tx_ref gives at most 316 bytes.
         require!(obligation_id.len() <= 64, "ERR_OBLIGATION_ID_TOO_LONG");
+        // Fail fast on terms that can never settle: a zero amount, an
+        // already-expired obligation, or an unknown evidence type.
+        // Settle enforces the same rules, but rejecting here keeps a
+        // bad obligation out of storage entirely. All three use frozen
+        // error codes; the frozen reason-code list itself is unchanged.
+        require!(amount > 0, "ERR_TERMS_MISMATCH");
+        // Creation needs a strictly future expiry; use sites are inclusive at the deadline (block_timestamp() <= expires_at_ns).
+        require!(
+            expires_at_ns > env::block_timestamp(),
+            "ERR_OBLIGATION_EXPIRED"
+        );
+        require!(
+            evidence_type == "PREIMAGE"
+                || evidence_type == "TEE"
+                || evidence_type == VERIFIER_EVIDENCE_TYPE,
+            "ERR_EVIDENCE_MISMATCH"
+        );
         let obligation = Obligation {
             obligation_id: obligation_id.clone(),
             policy_id,
@@ -551,14 +674,19 @@ impl Contract {
         self.policies.insert(policy_id, policy);
     }
 
-    pub fn set_reconciler(&mut self, policy_id: String, reconciler: AccountId) {
+    // Owner only. Passing None clears the reconciler back to owner-only
+    // resolution. The parameter is Option, not a separate remove method,
+    // because the JSON interface stays backward compatible: an existing
+    // caller passing an account id still deserializes to Some, and null
+    // clears. It does not bump version and does not change terms.
+    pub fn set_reconciler(&mut self, policy_id: String, reconciler: Option<AccountId>) {
         self.assert_owner();
         let mut policy = self
             .policies
             .get(&policy_id)
             .cloned()
             .unwrap_or_else(|| env::panic_str("ERR_POLICY_MISSING"));
-        policy.reconciler = Some(reconciler);
+        policy.reconciler = reconciler;
         assert_policy_invariant(&policy);
         self.policies.insert(policy_id, policy);
     }
@@ -572,7 +700,13 @@ impl Contract {
         // making the obligation terminal, so it can never settle again.
         // Cancelling from TRANSFER_PENDING is still forbidden: a transfer
         // already dispatched cannot be un-booked by a cancel, it must go
-        // through the callback or through reconciliation.
+        // through the callback or through reconciliation. Cancelling from
+        // reconciliation now enforces the same transfer timeout as
+        // resolve_settlement, through the shared guard, so an early cancel
+        // cannot release a reservation while the transfer might still land.
+        // BLOCKED and WARN_PENDING are cancellable too: neither holds a
+        // reservation or a token lock, so cancel just moves the obligation
+        // to terminal CANCELLED.
         self.assert_owner();
         let mut obligation = self
             .obligations
@@ -580,10 +714,23 @@ impl Contract {
             .cloned()
             .unwrap_or_else(|| env::panic_str("ERR_OBLIGATION_MISSING"));
         require!(
-            obligation.state == "CREATED" || obligation.state == "RECONCILIATION_REQUIRED",
+            obligation.state == "CREATED"
+                || obligation.state == "RECONCILIATION_REQUIRED"
+                || obligation.state == "BLOCKED"
+                || obligation.state == "WARN_PENDING",
             "ERR_INVALID_STATE"
         );
+        if obligation.state == "BLOCKED" || obligation.state == "WARN_PENDING" {
+            // Neither state holds a reservation or a token lock, so
+            // in_flight must already be false here. Make that explicit
+            // in code instead of relying on the invariant alone.
+            require!(!obligation.in_flight, "ERR_INVALID_STATE");
+        }
         if obligation.state == "RECONCILIATION_REQUIRED" {
+            // Same timeout guard as resolve_settlement, shared so the
+            // two paths cannot drift apart: the transfer may still be
+            // in flight until TRANSFER_TIMEOUT_NS has passed.
+            require_transfer_timeout_elapsed(&obligation);
             let mut policy = self
                 .policies
                 .get(&obligation.policy_id)
@@ -694,9 +841,19 @@ impl Contract {
         // owner must first have done a live chain read showing the recipient
         // actually received the amount; that read is a required human step,
         // not a contract check, and the recorded hash lets anyone audit it.
-        // PAID is owner only, never the reconciler. READY and CANCELLED are
-        // owner or reconciler. Failure alone never cancels: CANCELLED here
-        // is an explicit human resolution, not an automatic failure outcome.
+        // All three outcomes are owner only, never the reconciler.
+        // READY and CANCELLED attest the payment did or did not happen,
+        // which has the same financial impact as booking PAID, so the
+        // reconciler cannot make that attestation. The owner must verify
+        // on-chain that the transfer failed before resolving READY or
+        // CANCELLED: the contract cannot verify a transaction hash
+        // alone, and a READY resolution on a transfer that actually
+        // succeeded would release the reservation while the recipient
+        // already holds the tokens. A READY-resolved obligation never
+        // settles again, so a wrong READY cannot dispatch a second
+        // payment; a genuine retry needs a fresh obligation. Failure
+        // alone never cancels: CANCELLED here is an explicit human
+        // resolution, not an automatic failure outcome.
         let mut obligation = self
             .obligations
             .get(&obligation_id)
@@ -711,14 +868,7 @@ impl Contract {
             obligation.state == "RECONCILIATION_REQUIRED",
             "ERR_INVALID_STATE"
         );
-        require!(obligation.in_flight, "ERR_INVALID_STATE");
-        let dispatched = obligation
-            .transfer_dispatched_at_ns
-            .unwrap_or_else(|| env::panic_str("ERR_INVALID_STATE"));
-        require!(
-            env::block_timestamp() >= dispatched.saturating_add(TRANSFER_TIMEOUT_NS),
-            "ERR_TIMEOUT_NOT_REACHED"
-        );
+        require_transfer_timeout_elapsed(&obligation);
         match outcome.as_str() {
             "PAID" => {
                 self.assert_owner();
@@ -747,11 +897,18 @@ impl Contract {
                 self.obligations.insert(obligation_id, obligation);
             }
             "READY" | "CANCELLED" => {
-                self.assert_owner_or_reconciler(&policy);
+                self.assert_owner();
                 policy.reserved = policy
                     .reserved
                     .checked_sub(obligation.amount)
                     .unwrap_or_else(|| env::panic_str("ERR_BUDGET_EXCEEDED"));
+                // A READY resolution never settles again: the first
+                // dispatch is marked consumed, so a later settle
+                // rejects instead of dispatching a second payment.
+                // CANCELLED is terminal already and needs no marker.
+                if outcome == "READY" {
+                    mark_resolved_ready(&obligation_id);
+                }
                 obligation.state = outcome;
                 obligation.in_flight = false;
                 obligation.transfer_dispatched_at_ns = None;
@@ -789,6 +946,11 @@ impl Contract {
             .get(&obligation.policy_id)
             .cloned()
             .unwrap_or_else(|| env::panic_str("ERR_POLICY_MISSING"));
+        require!(!policy.frozen, "ERR_POLICY_FROZEN");
+        require!(
+            env::block_timestamp() <= obligation.expires_at_ns,
+            "ERR_OBLIGATION_EXPIRED"
+        );
         let digest = settlement_digest(
             "testnet",
             env::current_account_id().as_str(),
@@ -869,8 +1031,12 @@ impl Contract {
         // by its bytes, and a TEE obligation only by the TEE guest plus
         // VRF. Routing either through this path would let a compromised
         // verifier mark it READY without the real check.
+        // Fail closed on the evidence type: only the known verifier
+        // type reaches the verifier path. A negative match would let any
+        // unknown string, including a typo, fall through to the weaker
+        // verifier echo.
         require!(
-            obligation.evidence_type != "PREIMAGE" && obligation.evidence_type != "TEE",
+            obligation.evidence_type == VERIFIER_EVIDENCE_TYPE,
             "ERR_EVIDENCE_MISMATCH"
         );
         require!(
@@ -908,7 +1074,7 @@ impl Contract {
         );
         require!(
             env::block_timestamp() <= obligation.expires_at_ns,
-            "ERR_EVIDENCE_EXPIRED"
+            "ERR_OBLIGATION_EXPIRED"
         );
         // Evidence timeout, Phase 5: a verifier result arriving after
         // EVIDENCE_TIMEOUT_NS from the request is expired, even if the
@@ -999,7 +1165,7 @@ impl Contract {
         );
         require!(
             env::block_timestamp() <= obligation.expires_at_ns,
-            "ERR_EVIDENCE_EXPIRED"
+            "ERR_OBLIGATION_EXPIRED"
         );
         // Evidence timeout, same rule as submit_evidence: a result arriving
         // after EVIDENCE_TIMEOUT_NS from the request is expired, and a
@@ -1044,7 +1210,7 @@ impl Contract {
         require!(obligation.state == "EVIDENCE_PENDING", "ERR_INVALID_STATE");
         require!(obligation.evidence_type == "TEE", "ERR_EVIDENCE_MISMATCH");
         let now = env::block_timestamp();
-        require!(now <= obligation.expires_at_ns, "ERR_EVIDENCE_EXPIRED");
+        require!(now <= obligation.expires_at_ns, "ERR_OBLIGATION_EXPIRED");
         match obligation.evidence_requested_at_ns {
             Some(requested_at) => require!(
                 now <= requested_at.saturating_add(EVIDENCE_TIMEOUT_NS),
@@ -1052,15 +1218,26 @@ impl Contract {
             ),
             None => env::panic_str("ERR_INVALID_STATE"),
         }
+        // A frozen policy files no new TEE request: the vault would
+        // pay the OutLayer deposit for it. Matches request_evidence.
+        let policy = self
+            .policies
+            .get(&obligation.policy_id)
+            .cloned()
+            .unwrap_or_else(|| env::panic_str("ERR_POLICY_MISSING"));
+        require!(!policy.frozen, "ERR_POLICY_FROZEN");
         let mut requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
         // One TEE request at a time per obligation. A second request while
         // one is pending would leave two callbacks racing for it.
         require!(requests.get(&obligation_id).is_none(), "ERR_INVALID_STATE");
-        // The vault pays for the execution. Fail closed if it cannot.
+        // The vault pays for the execution. Fail closed if it cannot:
+        // the check uses liquid headroom, balance minus storage already
+        // used, not total balance, so a vault whose balance is mostly
+        // storage-locked cannot file a request it cannot pay the state
+        // for. The frozen storage code applies, not a generic balance code.
         require!(
-            env::account_balance().as_yoctonear()
-                >= TEE_REQUEST_DEPOSIT_YOCTO + SETTLE_GAS_HEADROOM_YOCTO,
-            "ERR_INSUFFICIENT_BALANCE"
+            native_headroom_yocto() >= TEE_REQUEST_DEPOSIT_YOCTO + SETTLE_GAS_HEADROOM_YOCTO,
+            "ERR_VAULT_STORAGE_EXHAUSTED"
         );
         // Seed is unique per request and bound to the committed
         // digest. The counter makes a retry use a fresh seed even
@@ -1071,9 +1248,13 @@ impl Contract {
         // vault committed to, so a signature from a different
         // obligation or a different digest cannot be reused here.
         // The VRF still does not prove the guest fetched the bytes;
-        // that rests on the guest being our code, bound by the
-        // Project version, and on the per-execution TDX quote, which
-        // the attestation endpoint does not serve yet.
+        // that rests on the guest being our code, pinned by
+        // version_key to one exact build below, and on the
+        // per-execution TDX quote, which is verified off-chain: the
+        // attestation endpoint serves real quotes, verified live for
+        // requests 10522 and 10640 with matching input and output
+        // hashes. The contract runtime has no TDX quote verification
+        // primitive, so the VRF signature is the on-chain anchor.
         let counter = next_tee_request_counter();
         let seed = format!(
             "{}-{}-{}-{}",
@@ -1092,30 +1273,7 @@ impl Contract {
                 sender: env::signer_account_id(),
             },
         );
-        let input = serde_json::to_string(&serde_json::json!({
-            "url": evidence_url,
-            "seed": seed,
-        }))
-        .unwrap();
-        let args = serde_json::to_vec(&serde_json::json!({
-            "source": {
-                "Project": {
-                    "project_id": OUTLAYER_PROJECT_ID,
-                    "version_key": null,
-                }
-            },
-            "resource_limits": {
-                "max_instructions": 1_000_000_000u64,
-                "max_memory_mb": 128u32,
-                "max_execution_seconds": 60u64,
-            },
-            "input_data": input,
-            "secrets_ref": null,
-            "response_format": "Json",
-            "payer_account_id": null,
-            "params": null,
-        }))
-        .unwrap();
+        let args = outlayer_request_args(&evidence_url, &seed);
         Promise::new(OUTLAYER_CONTRACT.parse().unwrap())
             .function_call(
                 "request_execution".to_string(),
@@ -1229,10 +1387,27 @@ impl Contract {
         if policy.token_id != token_id {
             return amount;
         }
-        policy.funded = policy
-            .funded
-            .checked_add(amount.0)
-            .unwrap_or_else(|| env::panic_str("ERR_BUDGET_EXCEEDED"));
+        // Over-budget funding is refused, not credited: the excess
+        // would be inert (settle caps by limit) but locked, with no
+        // withdrawal path. The full amount is returned unused, matching
+        // this method's frozen convention for rejected funding, and the
+        // rejection is logged with the frozen budget code. The check
+        // lives here, at the funding entry point, and deliberately not
+        // in assert_policy_invariant: the invariant also runs in
+        // freeze_policy and unfreeze_policy, and an already over-funded
+        // policy must still be freezable, the freeze brake must never
+        // be bricked by a funding check.
+        // checked_add, not saturating_add, for the guard itself: with
+        // limit at u128::MAX a saturating sum would pass the guard and
+        // the update below would panic instead of refunding.
+        let new_funded = match policy.funded.checked_add(amount.0) {
+            Some(v) if v <= policy.limit => v,
+            _ => {
+                env::log_str("ERR_BUDGET_EXCEEDED");
+                return amount;
+            }
+        };
+        policy.funded = new_funded;
         assert_policy_invariant(&policy);
         self.policies.insert(policy_id, policy);
         U128(0)
@@ -1269,6 +1444,17 @@ impl Contract {
         require!(!obligation.in_flight, "ERR_NONCE_ALREADY_CONSUMED");
         require!(obligation.state != "PAID", "ERR_NONCE_ALREADY_CONSUMED");
         require!(obligation.state == "READY", "ERR_INVALID_STATE");
+        // A READY-resolved obligation never dispatches again: its first
+        // transfer was resolved by a human after an ambiguous outcome,
+        // and a second dispatch could pay twice. See
+        // mark_resolved_ready. A READY return from the callback failure
+        // path is different, the callback proved the transfer failed,
+        // so that path stays retryable up to MAX_TRANSFER_ATTEMPTS and
+        // is not marked.
+        require!(
+            !was_resolved_ready(&obligation_id),
+            "ERR_NONCE_ALREADY_CONSUMED"
+        );
         require!(
             obligation.recipient == proposed_recipient,
             "ERR_RECIPIENT_SUBSTITUTION"
@@ -1398,7 +1584,7 @@ impl Contract {
             receipt.timestamp,
             &receipt.tx_ref,
         );
-        env::log_str(&format!("EVENT_JSON:{}", serde_json::to_string(&serde_json::json!({"standard": "nep297", "version": "1.0.0", "event": "receipt", "data": [{"index": receipt.index, "obligation_id": &receipt.obligation_id, "recipient": &receipt.recipient, "amount": receipt.amount.to_string(), "token_id": &receipt.token_id, "timestamp": receipt.timestamp, "prev_hash": receipt.prev_hash.iter().map(|b| format!("{:02x}", b)).collect::<String>(), "tx_ref": &receipt.tx_ref}]})).unwrap()));
+        env::log_str(&format!("EVENT_JSON:{}", serde_json::to_string(&serde_json::json!({"standard": "nep297", "version": "1.0.0", "event": "receipt", "data": [{"index": receipt.index, "obligation_id": &receipt.obligation_id, "recipient": &receipt.recipient, "amount": receipt.amount.to_string(), "token_id": &receipt.token_id, "timestamp": receipt.timestamp, "prev_hash": receipt.prev_hash.iter().map(|b| format!("{:02x}", b)).collect::<String>(), "tx_ref": &receipt.tx_ref}]})).unwrap_or_default()));
         let mut map: LookupMap<u64, Receipt> = LookupMap::new(b"r");
         map.insert(index, receipt);
         map.flush();
@@ -1438,19 +1624,39 @@ impl Contract {
                 // never un-book a transfer already in flight: there is no
                 // frozen check on this path, by design, so a success always
                 // finalizes to PAID even if the policy was frozen meanwhile.
-                policy.reserved = policy
-                    .reserved
-                    .checked_sub(obligation.amount)
-                    .unwrap_or_else(|| env::panic_str("ERR_BUDGET_EXCEEDED"));
-                policy.spent = policy
-                    .spent
-                    .checked_add(obligation.amount)
-                    .unwrap_or_else(|| env::panic_str("ERR_BUDGET_EXCEEDED"));
+                // Callbacks must not panic: on any inconsistency the
+                // callback returns without writing anything, leaving the
+                // obligation TRANSFER_PENDING with in_flight true so the
+                // owner can still mark it for reconciliation after the
+                // transfer timeout. Unreachable from valid state: settle
+                // reserves exactly the amount, and no other path releases
+                // the reservation while TRANSFER_PENDING.
+                policy.reserved = match policy.reserved.checked_sub(obligation.amount) {
+                    Some(v) => v,
+                    None => return,
+                };
+                policy.spent = match policy.spent.checked_add(obligation.amount) {
+                    Some(v) => v,
+                    None => return,
+                };
+                // Same condition as assert_policy_invariant, without the
+                // panic: spent and reserved within limit, and their total
+                // within limit and funded.
+                let total = match policy.spent.checked_add(policy.reserved) {
+                    Some(v) => v,
+                    None => return,
+                };
+                if policy.spent > policy.limit
+                    || policy.reserved > policy.limit
+                    || total > policy.limit
+                    || total > policy.funded
+                {
+                    return;
+                }
                 obligation.state = "PAID".to_string();
                 obligation.in_flight = false;
                 obligation.transfer_dispatched_at_ns = None;
                 clear_token_lock(&policy.token_id);
-                assert_policy_invariant(&policy);
                 self.append_receipt(
                     &obligation_id,
                     &obligation.recipient,
@@ -1476,15 +1682,45 @@ impl Contract {
                     self.obligations.insert(obligation_id, obligation);
                     return;
                 }
-                policy.reserved = policy
-                    .reserved
-                    .checked_sub(obligation.amount)
-                    .unwrap_or_else(|| env::panic_str("ERR_BUDGET_EXCEEDED"));
+                if obligation.transfer_attempt >= MAX_TRANSFER_ATTEMPTS {
+                    // Repeated confirmed failures: the transfer keeps
+                    // failing, for example an unregistered recipient,
+                    // so returning to READY would let the agent loop
+                    // settle and burn native headroom on every attempt.
+                    // Escalate to human reconciliation instead, keeping
+                    // the reservation, in_flight, dispatch time, and
+                    // token lock, exactly like the frozen path. No
+                    // automatic retry and no public resume: the owner
+                    // resolves or cancels after the transfer timeout.
+                    obligation.state = "RECONCILIATION_REQUIRED".to_string();
+                    self.obligations.insert(obligation_id, obligation);
+                    return;
+                }
+                // Fail closed, same as the Ok arm: return without
+                // writing anything, so the obligation stays TRANSFER_PENDING
+                // with in_flight true for owner reconciliation.
+                policy.reserved = match policy.reserved.checked_sub(obligation.amount) {
+                    Some(v) => v,
+                    None => return,
+                };
+                // Same condition as assert_policy_invariant, without the
+                // panic: spent is unchanged on this path, only the released
+                // reservation moves the total.
+                let total = match policy.spent.checked_add(policy.reserved) {
+                    Some(v) => v,
+                    None => return,
+                };
+                if policy.spent > policy.limit
+                    || policy.reserved > policy.limit
+                    || total > policy.limit
+                    || total > policy.funded
+                {
+                    return;
+                }
                 obligation.state = "READY".to_string();
                 obligation.in_flight = false;
                 obligation.transfer_dispatched_at_ns = None;
                 clear_token_lock(&policy.token_id);
-                assert_policy_invariant(&policy);
                 self.policies.insert(obligation.policy_id.clone(), policy);
                 self.obligations.insert(obligation_id, obligation);
             }
@@ -1641,7 +1877,7 @@ mod tests {
         c.create_policy(
             "policy-001".to_string(),
             "usdc.fakes.testnet".parse().unwrap(),
-            1000000,
+            1000000000,
         );
         // Predecessor must be the token contract for a valid funding call.
         let mut ctx = VMContextBuilder::new();
@@ -1860,6 +2096,122 @@ mod tests {
         assert!(!o.in_flight);
         assert_eq!(c.get_policy("policy-001".to_string()).unwrap().reserved, 0);
         assert_eq!(c.receipts(0, 10).len(), 0);
+    }
+
+    // Drive an obligation to TRANSFER_PENDING with in_flight true, the
+    // state on_transfer_complete expects. Used by the fail-closed
+    // callback tests below.
+    fn setup_in_flight_obligation(c: &mut Contract) {
+        setup_ready_obligation(c, "obl-001", 250000);
+        agent_ctx();
+        let _ = c.settle(
+            "obl-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            U128(250000),
+            "evidence-ref".to_string(),
+        );
+        let o = c.get_obligation("obl-001".to_string()).unwrap();
+        assert_eq!(o.state, "TRANSFER_PENDING");
+        assert!(o.in_flight);
+    }
+
+    // Sol re-gate: the callback must not panic when the reservation
+    // arithmetic fails. Unreachable from valid state, so the inconsistency
+    // is built by hand: the obligation amount is raised above the reserved
+    // amount after settle. The callback returns without writing anything,
+    // so the owner can still reconcile the obligation after the timeout.
+    #[test]
+    fn callback_ok_budget_inconsistency_returns_without_writing() {
+        let mut c = setup_owner();
+        setup_in_flight_obligation(&mut c);
+        let mut o = c.get_obligation("obl-001".to_string()).unwrap();
+        o.amount = 250001;
+        c.obligations.insert("obl-001".to_string(), o);
+        c.on_transfer_complete("obl-001".to_string(), 1, Ok(()));
+        let o = c.get_obligation("obl-001".to_string()).unwrap();
+        assert_eq!(o.state, "TRANSFER_PENDING");
+        assert!(o.in_flight);
+        assert!(o.transfer_dispatched_at_ns.is_some());
+        let p = c.get_policy("policy-001".to_string()).unwrap();
+        assert_eq!(p.reserved, 250000);
+        assert_eq!(p.spent, 0);
+        assert_eq!(c.receipts(0, 10).len(), 0);
+        assert!(is_token_locked(
+            &"usdc.fakes.testnet".parse::<AccountId>().unwrap()
+        ));
+    }
+
+    // Same hand-built inconsistency on the retryable Err path, with the
+    // policy not frozen and attempt 1 below MAX_TRANSFER_ATTEMPTS, so the
+    // arithmetic is the path that would have run.
+    #[test]
+    fn callback_err_budget_inconsistency_returns_without_writing() {
+        let mut c = setup_owner();
+        setup_in_flight_obligation(&mut c);
+        let mut o = c.get_obligation("obl-001".to_string()).unwrap();
+        o.amount = 250001;
+        c.obligations.insert("obl-001".to_string(), o);
+        c.on_transfer_complete("obl-001".to_string(), 1, Err(PromiseError::Failed));
+        let o = c.get_obligation("obl-001".to_string()).unwrap();
+        assert_eq!(o.state, "TRANSFER_PENDING");
+        assert!(o.in_flight);
+        assert!(o.transfer_dispatched_at_ns.is_some());
+        let p = c.get_policy("policy-001".to_string()).unwrap();
+        assert_eq!(p.reserved, 250000);
+        assert_eq!(p.spent, 0);
+        assert_eq!(c.receipts(0, 10).len(), 0);
+        assert!(is_token_locked(
+            &"usdc.fakes.testnet".parse::<AccountId>().unwrap()
+        ));
+    }
+
+    // The invariant check is separately reachable by hand-built state:
+    // the arithmetic itself succeeds, but the policy was already
+    // inconsistent before the callback. Here spent is raised so that
+    // spent plus amount exceeds the 1000000 limit on the Ok path.
+    #[test]
+    fn callback_ok_invariant_inconsistency_returns_without_writing() {
+        let mut c = setup_owner();
+        setup_in_flight_obligation(&mut c);
+        let mut p = c.get_policy("policy-001".to_string()).unwrap();
+        p.spent = 900000;
+        c.policies.insert("policy-001".to_string(), p);
+        c.on_transfer_complete("obl-001".to_string(), 1, Ok(()));
+        let o = c.get_obligation("obl-001".to_string()).unwrap();
+        assert_eq!(o.state, "TRANSFER_PENDING");
+        assert!(o.in_flight);
+        assert!(o.transfer_dispatched_at_ns.is_some());
+        let p = c.get_policy("policy-001".to_string()).unwrap();
+        assert_eq!(p.reserved, 250000);
+        assert_eq!(p.spent, 900000);
+        assert_eq!(c.receipts(0, 10).len(), 0);
+        assert!(is_token_locked(
+            &"usdc.fakes.testnet".parse::<AccountId>().unwrap()
+        ));
+    }
+
+    // Same invariant failure on the retryable Err path: spent alone
+    // already exceeds the limit, so the released reservation cannot
+    // bring the total back inside it.
+    #[test]
+    fn callback_err_invariant_inconsistency_returns_without_writing() {
+        let mut c = setup_owner();
+        setup_in_flight_obligation(&mut c);
+        let mut p = c.get_policy("policy-001".to_string()).unwrap();
+        p.spent = 1100000;
+        c.policies.insert("policy-001".to_string(), p);
+        c.on_transfer_complete("obl-001".to_string(), 1, Err(PromiseError::Failed));
+        let o = c.get_obligation("obl-001".to_string()).unwrap();
+        assert_eq!(o.state, "TRANSFER_PENDING");
+        assert!(o.in_flight);
+        assert!(o.transfer_dispatched_at_ns.is_some());
+        let p = c.get_policy("policy-001".to_string()).unwrap();
+        assert_eq!(p.reserved, 250000);
+        assert_eq!(p.spent, 1100000);
+        assert_eq!(c.receipts(0, 10).len(), 0);
+        assert!(is_token_locked(
+            &"usdc.fakes.testnet".parse::<AccountId>().unwrap()
+        ));
     }
 
     fn setup_ready_with_amount(
@@ -2712,18 +3064,10 @@ mod tests {
         assert!(!o.in_flight);
         assert_eq!(c.get_policy("policy-001".to_string()).unwrap().reserved, 0);
         assert_eq!(c.receipts(0, 10).len(), 0);
-        // Token lock released: the obligation can settle again.
-        agent_ctx();
-        let _ = c.settle(
-            "obl-001".to_string(),
-            "acme-supplies.testnet".parse().unwrap(),
-            U128(250000),
-            "x".to_string(),
-        );
-        assert_eq!(
-            c.get_obligation("obl-001".to_string()).unwrap().state,
-            "TRANSFER_PENDING"
-        );
+        // Token lock released, but the obligation can never settle
+        // again: a READY resolution marks the first dispatch consumed,
+        // so a second settle rejects. See
+        // resolve_settlement_ready_cannot_settle_again.
     }
 
     #[test]
@@ -2754,7 +3098,7 @@ mod tests {
         owner_ctx_at(TRANSFER_TIMEOUT_NS);
         c.set_reconciler(
             "policy-001".to_string(),
-            "reconciler.testnet".parse().unwrap(),
+            Some("reconciler.testnet".parse().unwrap()),
         );
         c.mark_reconciliation_required("obl-001".to_string());
         let mut ctx = VMContextBuilder::new();
@@ -2769,14 +3113,18 @@ mod tests {
         );
     }
 
+    // Finding 1: the reconciler can still mark a timeout, but resolving
+    // to READY is owner only now, so the reconciler guard panics with
+    // ERR_NOT_OWNER, not the reconciler guard.
     #[test]
-    fn reconciler_can_mark_and_resolve_to_ready() {
+    #[should_panic(expected = "ERR_NOT_OWNER")]
+    fn reconciler_cannot_resolve_to_ready() {
         let mut c = setup_owner();
         setup_transfer_pending(&mut c, "obl-001", 250000);
         owner_ctx_at(TRANSFER_TIMEOUT_NS);
         c.set_reconciler(
             "policy-001".to_string(),
-            "reconciler.testnet".parse().unwrap(),
+            Some("reconciler.testnet".parse().unwrap()),
         );
         let mut ctx = VMContextBuilder::new();
         ctx.predecessor_account_id("reconciler.testnet".parse().unwrap());
@@ -2785,10 +3133,6 @@ mod tests {
         testing_env!(ctx.build());
         c.mark_reconciliation_required("obl-001".to_string());
         c.resolve_settlement("obl-001".to_string(), "READY".to_string(), "".to_string());
-        assert_eq!(
-            c.get_obligation("obl-001".to_string()).unwrap().state,
-            "READY"
-        );
     }
 
     #[test]
@@ -3419,7 +3763,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "ERR_EVIDENCE_EXPIRED")]
+    #[should_panic(expected = "ERR_OBLIGATION_EXPIRED")]
     fn submit_evidence_preimage_expired_rejects() {
         let evidence = b"delivery-note-001:obl-001:250000".to_vec();
         let mut c = preimage_setup_at(&evidence, "PREIMAGE", 1000);
@@ -3855,7 +4199,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "ERR_EVIDENCE_EXPIRED")]
+    #[should_panic(expected = "ERR_OBLIGATION_EXPIRED")]
     fn request_tee_verification_rejects_after_expiry() {
         let mut c = tee_setup_for("cynexmaster.testnet", "test-seed");
         // The obligation expires at 1e15; move past it and retry.
@@ -3897,11 +4241,12 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "ERR_INSUFFICIENT_BALANCE")]
+    #[should_panic(expected = "ERR_VAULT_STORAGE_EXHAUSTED")]
     fn request_tee_verification_rejects_insufficient_balance() {
         // Build a TEE obligation in EVIDENCE_PENDING with no TeeRequest
         // record yet, and a zero vault balance. The only reason the
-        // request must fail is the balance.
+        // request must fail is the headroom check: zero balance means
+        // zero liquid headroom.
         let mut ctx = VMContextBuilder::new();
         ctx.predecessor_account_id(owner());
         ctx.current_account_id("cynex-vault.testnet".parse().unwrap());
@@ -4094,5 +4439,813 @@ mod tests {
         assert_eq!(o.evidence_requested_at_ns, None);
         let requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
         assert!(requests.get(&"test-seed".to_string()).is_none());
+    }
+
+    // Finding 1: a reconciler can no longer resolve to CANCELLED either.
+    #[test]
+    #[should_panic(expected = "ERR_NOT_OWNER")]
+    fn reconciler_cannot_resolve_to_cancelled() {
+        let mut c = setup_owner();
+        setup_transfer_pending(&mut c, "obl-001", 250000);
+        owner_ctx_at(TRANSFER_TIMEOUT_NS);
+        c.set_reconciler(
+            "policy-001".to_string(),
+            Some("reconciler.testnet".parse().unwrap()),
+        );
+        let mut ctx = VMContextBuilder::new();
+        ctx.predecessor_account_id("reconciler.testnet".parse().unwrap());
+        ctx.current_account_id("cynex-vault.testnet".parse().unwrap());
+        ctx.block_timestamp(TRANSFER_TIMEOUT_NS);
+        testing_env!(ctx.build());
+        c.mark_reconciliation_required("obl-001".to_string());
+        c.resolve_settlement(
+            "obl-001".to_string(),
+            "CANCELLED".to_string(),
+            "".to_string(),
+        );
+    }
+
+    // Finding 1: a READY-resolved obligation never dispatches again.
+    #[test]
+    #[should_panic(expected = "ERR_NONCE_ALREADY_CONSUMED")]
+    fn resolve_settlement_ready_cannot_settle_again() {
+        let mut c = setup_owner();
+        setup_transfer_pending(&mut c, "obl-001", 250000);
+        owner_ctx_at(TRANSFER_TIMEOUT_NS);
+        c.mark_reconciliation_required("obl-001".to_string());
+        owner_ctx_at(TRANSFER_TIMEOUT_NS);
+        c.resolve_settlement("obl-001".to_string(), "READY".to_string(), "".to_string());
+        assert_eq!(
+            c.get_obligation("obl-001".to_string()).unwrap().state,
+            "READY"
+        );
+        // The first dispatch is marked consumed, so this rejects
+        // instead of dispatching a second payment.
+        agent_ctx();
+        let _ = c.settle(
+            "obl-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            U128(250000),
+            "x".to_string(),
+        );
+    }
+
+    // Finding 1, via the three-failure escalation path: a READY-resolved
+    // obligation never dispatches again, even when it reached
+    // reconciliation through repeated confirmed failures rather than
+    // through mark_reconciliation_required.
+    #[test]
+    #[should_panic(expected = "ERR_NONCE_ALREADY_CONSUMED")]
+    fn escalated_obligation_resolve_ready_cannot_settle_again() {
+        let mut c = setup_owner();
+        setup_ready_with_amount(&mut c, "obl-001", 250000, 1000000, 1000000);
+        for attempt in 1..=3u64 {
+            agent_ctx();
+            let _ = c.settle(
+                "obl-001".to_string(),
+                "acme-supplies.testnet".parse().unwrap(),
+                U128(250000),
+                "x".to_string(),
+            );
+            c.on_transfer_complete("obl-001".to_string(), attempt, Err(PromiseError::Failed));
+        }
+        let o = c.get_obligation("obl-001".to_string()).unwrap();
+        assert_eq!(o.state, "RECONCILIATION_REQUIRED");
+        assert!(o.in_flight);
+        // Dispatch was at block timestamp 0, so the transfer timeout
+        // is reached at TRANSFER_TIMEOUT_NS exactly.
+        owner_ctx_at(TRANSFER_TIMEOUT_NS);
+        c.resolve_settlement("obl-001".to_string(), "READY".to_string(), "".to_string());
+        assert_eq!(
+            c.get_obligation("obl-001".to_string()).unwrap().state,
+            "READY"
+        );
+        // The first dispatch is marked consumed, so this rejects
+        // instead of dispatching a second payment.
+        agent_ctx();
+        let _ = c.settle(
+            "obl-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            U128(250000),
+            "x".to_string(),
+        );
+    }
+
+    // Finding 2: cancel from reconciliation before the transfer timeout
+    // is rejected, even when the obligation entered reconciliation early
+    // through the frozen-policy callback path.
+    #[test]
+    #[should_panic(expected = "ERR_TIMEOUT_NOT_REACHED")]
+    fn cancel_obligation_from_reconciliation_before_timeout_rejects() {
+        let mut c = setup_owner();
+        setup_transfer_pending(&mut c, "obl-001", 250000);
+        owner_ctx_at(0);
+        c.freeze_policy("policy-001".to_string());
+        c.on_transfer_complete("obl-001".to_string(), 1, Err(PromiseError::Failed));
+        assert_eq!(
+            c.get_obligation("obl-001".to_string()).unwrap().state,
+            "RECONCILIATION_REQUIRED"
+        );
+        // Dispatch was at timestamp 0, so the timeout is not reached
+        // until TRANSFER_TIMEOUT_NS.
+        owner_ctx_at(TRANSFER_TIMEOUT_NS - 1);
+        c.cancel_obligation("obl-001".to_string());
+    }
+
+    // Finding 3: after three confirmed failures the obligation escalates
+    // to human reconciliation instead of returning to READY.
+    #[test]
+    fn failed_transfer_escalates_to_reconciliation_after_three_attempts() {
+        let mut c = setup_owner();
+        setup_ready_with_amount(&mut c, "obl-001", 250000, 1000000, 1000000);
+        for attempt in 1..=3u64 {
+            agent_ctx();
+            let _ = c.settle(
+                "obl-001".to_string(),
+                "acme-supplies.testnet".parse().unwrap(),
+                U128(250000),
+                "x".to_string(),
+            );
+            let o = c.get_obligation("obl-001".to_string()).unwrap();
+            assert_eq!(o.state, "TRANSFER_PENDING");
+            assert_eq!(o.transfer_attempt, attempt);
+            c.on_transfer_complete("obl-001".to_string(), attempt, Err(PromiseError::Failed));
+            let o = c.get_obligation("obl-001".to_string()).unwrap();
+            if attempt < 3 {
+                assert_eq!(o.state, "READY");
+                assert!(!o.in_flight);
+            } else {
+                assert_eq!(o.state, "RECONCILIATION_REQUIRED");
+                assert!(o.in_flight);
+                assert_eq!(o.transfer_attempt, 3);
+                assert_eq!(
+                    c.get_policy("policy-001".to_string()).unwrap().reserved,
+                    250000
+                );
+                // Dispatch time is retained at escalation, so the timeout
+                // guard in resolve_settlement and cancel_obligation can
+                // still check it, and the per-token lock is still held,
+                // so no second obligation for this token can dispatch
+                // while the escalated transfer is unresolved.
+                assert!(o.transfer_dispatched_at_ns.is_some());
+                assert!(is_token_locked(&"usdc.fakes.testnet".parse().unwrap()));
+            }
+        }
+        // The escalated obligation is resolvable, not a dead end:
+        // past the transfer timeout the owner can resolve it READY.
+        owner_ctx_at(TRANSFER_TIMEOUT_NS);
+        c.resolve_settlement("obl-001".to_string(), "READY".to_string(), "".to_string());
+        let o = c.get_obligation("obl-001".to_string()).unwrap();
+        assert_eq!(o.state, "READY");
+        assert!(!o.in_flight);
+        assert_eq!(c.get_policy("policy-001".to_string()).unwrap().reserved, 0);
+    }
+
+    // Same escalation as above, but the owner cancels the escalated
+    // obligation after the timeout instead of resolving it.
+    #[test]
+    fn escalated_obligation_can_be_cancelled_after_timeout() {
+        let mut c = setup_owner();
+        setup_ready_with_amount(&mut c, "obl-001", 250000, 1000000, 1000000);
+        for attempt in 1..=3u64 {
+            agent_ctx();
+            let _ = c.settle(
+                "obl-001".to_string(),
+                "acme-supplies.testnet".parse().unwrap(),
+                U128(250000),
+                "x".to_string(),
+            );
+            c.on_transfer_complete("obl-001".to_string(), attempt, Err(PromiseError::Failed));
+        }
+        let o = c.get_obligation("obl-001".to_string()).unwrap();
+        assert_eq!(o.state, "RECONCILIATION_REQUIRED");
+        assert!(o.in_flight);
+        owner_ctx_at(TRANSFER_TIMEOUT_NS);
+        c.cancel_obligation("obl-001".to_string());
+        let o = c.get_obligation("obl-001".to_string()).unwrap();
+        assert_eq!(o.state, "CANCELLED");
+        assert!(!o.in_flight);
+        assert_eq!(c.get_policy("policy-001".to_string()).unwrap().reserved, 0);
+    }
+
+    // Finding 4: total balance above the threshold but liquid headroom
+    // below it must still reject. Storage usage of 100,000,000 bytes
+    // locks far more than the 10 NEAR balance at any realistic storage
+    // byte cost, so headroom is zero while the old total-balance check
+    // would have passed. The setup stops at EVIDENCE_PENDING on
+    // purpose: tee_setup_for files the request itself, so it cannot
+    // build this case.
+    #[test]
+    #[should_panic(expected = "ERR_VAULT_STORAGE_EXHAUSTED")]
+    fn request_tee_verification_rejects_low_liquid_headroom() {
+        let mut ctx = VMContextBuilder::new();
+        ctx.predecessor_account_id(owner());
+        ctx.signer_account_id("cynexmaster.testnet".parse().unwrap());
+        ctx.current_account_id("cynex-vault.testnet".parse().unwrap());
+        ctx.account_balance(NearToken::from_yoctonear(
+            10_000_000_000_000_000_000_000_000,
+        ));
+        ctx.block_timestamp(1000);
+        ctx.storage_usage(100_000_000);
+        testing_env!(ctx.build());
+        let mut c = Contract::init(owner());
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        c.create_obligation(
+            "obl-001".to_string(),
+            "policy-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            250000,
+            "TEE".to_string(),
+            hex32("528f5c78da9fd97698f20eb21a5e405aa9aa6aec54ee17218b1060549e3725b6"),
+            1_000_000_000_000_000,
+            1,
+        );
+        c.request_evidence("obl-001".to_string());
+        let _ = c.request_tee_verification(
+            "obl-001".to_string(),
+            "https://example.com/evidence.bin".to_string(),
+        );
+    }
+
+    // Finding 5: the OutLayer request pins the exact guest version.
+    #[test]
+    fn outlayer_request_args_pins_version_key() {
+        let args = outlayer_request_args("https://example.com/evidence.bin", "obl-001-1-0-ab12");
+        let value: serde_json::Value = serde_json::from_slice(&args).unwrap();
+        assert_eq!(
+            value["source"]["Project"]["project_id"].as_str(),
+            Some(OUTLAYER_PROJECT_ID)
+        );
+        assert_eq!(
+            value["source"]["Project"]["version_key"].as_str(),
+            Some(OUTLAYER_VERSION_KEY)
+        );
+        assert_eq!(
+            value["source"]["Project"]["version_key"].as_str(),
+            Some("8abfe08bc62919dd3f0aea2c2ea5dbe91d5484c14d6a55289053dce1d0387a6f")
+        );
+    }
+
+    // Finding 6: passing None to set_reconciler clears the role back to
+    // owner-only resolution.
+    #[test]
+    fn set_reconciler_none_clears_reconciler() {
+        let mut c = setup_owner();
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        c.set_reconciler(
+            "policy-001".to_string(),
+            Some("reconciler.testnet".parse().unwrap()),
+        );
+        assert_eq!(
+            c.get_policy("policy-001".to_string()).unwrap().reconciler,
+            Some("reconciler.testnet".parse().unwrap())
+        );
+        c.set_reconciler("policy-001".to_string(), None);
+        assert_eq!(
+            c.get_policy("policy-001".to_string()).unwrap().reconciler,
+            None
+        );
+    }
+
+    // Finding 6: passing Some to set_reconciler stores the account, and
+    // passing None after that clears it again. The round trip proves
+    // the Option<AccountId> JSON shape: an account id deserializes to
+    // Some, null clears.
+    #[test]
+    fn set_reconciler_some_round_trip() {
+        let mut c = setup_owner();
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        c.set_reconciler(
+            "policy-001".to_string(),
+            Some("reconciler.testnet".parse().unwrap()),
+        );
+        assert_eq!(
+            c.get_policy("policy-001".to_string()).unwrap().reconciler,
+            Some("reconciler.testnet".parse().unwrap())
+        );
+        c.set_reconciler("policy-001".to_string(), None);
+        assert_eq!(
+            c.get_policy("policy-001".to_string()).unwrap().reconciler,
+            None
+        );
+    }
+
+    // Finding 6: the set_reconciler JSON wire shape is an account id
+    // string or null. The method takes Option<AccountId>, so a JSON
+    // string deserializes to Some and null deserializes to None.
+    #[test]
+    fn set_reconciler_option_account_id_json_shape() {
+        let from_string: Option<AccountId> =
+            serde_json::from_str("\"reconciler.testnet\"").unwrap();
+        assert_eq!(from_string, Some("reconciler.testnet".parse().unwrap()));
+        let from_null: Option<AccountId> = serde_json::from_str("null").unwrap();
+        assert_eq!(from_null, None);
+        let some: Option<AccountId> = Some("reconciler.testnet".parse().unwrap());
+        assert_eq!(
+            serde_json::to_string(&some).unwrap(),
+            "\"reconciler.testnet\""
+        );
+        let none: Option<AccountId> = None;
+        assert_eq!(serde_json::to_string(&none).unwrap(), "null");
+    }
+
+    // Finding 6: request_evidence on a frozen policy rejects.
+    #[test]
+    #[should_panic(expected = "ERR_POLICY_FROZEN")]
+    fn request_evidence_rejects_frozen_policy() {
+        let mut c = setup_owner();
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        c.create_obligation(
+            "obl-001".to_string(),
+            "policy-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            250000,
+            "delivery-note".to_string(),
+            hex32("686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38"),
+            9999999999999999999,
+            1,
+        );
+        c.freeze_policy("policy-001".to_string());
+        c.request_evidence("obl-001".to_string());
+    }
+
+    // request_tee_verification on a frozen policy rejects, matching
+    // request_evidence, so no vault-funded OutLayer deposit is filed.
+    #[test]
+    #[should_panic(expected = "ERR_POLICY_FROZEN")]
+    fn request_tee_verification_rejects_frozen_policy() {
+        let mut ctx = VMContextBuilder::new();
+        ctx.predecessor_account_id(owner());
+        ctx.signer_account_id("cynexmaster.testnet".parse().unwrap());
+        ctx.current_account_id("cynex-vault.testnet".parse().unwrap());
+        ctx.account_balance(NearToken::from_yoctonear(
+            10_000_000_000_000_000_000_000_000,
+        ));
+        ctx.block_timestamp(1000);
+        testing_env!(ctx.build());
+        let mut c = Contract::init(owner());
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        c.create_obligation(
+            "obl-001".to_string(),
+            "policy-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            250000,
+            "TEE".to_string(),
+            hex32("528f5c78da9fd97698f20eb21a5e405aa9aa6aec54ee17218b1060549e3725b6"),
+            1_000_000_000_000_000,
+            1,
+        );
+        c.request_evidence("obl-001".to_string());
+        c.freeze_policy("policy-001".to_string());
+        let _ = c.request_tee_verification(
+            "obl-001".to_string(),
+            "https://example.com/evidence.bin".to_string(),
+        );
+    }
+
+    // Finding 6: request_evidence on an already-expired obligation rejects.
+    #[test]
+    #[should_panic(expected = "ERR_OBLIGATION_EXPIRED")]
+    fn request_evidence_rejects_expired_obligation() {
+        let mut c = setup_owner();
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        c.create_obligation(
+            "obl-001".to_string(),
+            "policy-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            250000,
+            "delivery-note".to_string(),
+            hex32("686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38"),
+            1000,
+            1,
+        );
+        owner_ctx_at(2000);
+        c.request_evidence("obl-001".to_string());
+    }
+
+    // Finding 7: an expired obligation reports ERR_OBLIGATION_EXPIRED
+    // from submit_evidence, while an unexpired obligation past its
+    // evidence window still reports ERR_EVIDENCE_EXPIRED (covered by
+    // submit_evidence_after_evidence_timeout_rejects).
+    #[test]
+    #[should_panic(expected = "ERR_OBLIGATION_EXPIRED")]
+    fn submit_evidence_expired_obligation_reports_obligation_expired() {
+        let mut c = setup_owner();
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        owner_ctx_at(0);
+        c.create_obligation(
+            "obl-001".to_string(),
+            "policy-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            250000,
+            "delivery-note".to_string(),
+            hex32("686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38"),
+            1000,
+            1,
+        );
+        c.request_evidence("obl-001".to_string());
+        c.add_verifier(owner());
+        // Past the obligation expiry, inside the 1 hour evidence window,
+        // so only the expiry guard fires.
+        owner_ctx_at(2000);
+        c.submit_evidence(
+            "obl-001-1".to_string(),
+            "obl-001".to_string(),
+            "ALLOWED".to_string(),
+            "686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38".to_string(),
+        );
+    }
+
+    // Finding 8: an obligation with an unknown evidence type is rejected
+    // by submit_evidence instead of falling through to the verifier path.
+    // Built by direct insert, because create_obligation now whitelists
+    // evidence types: the positive match here is defense in depth for
+    // any obligation that reaches EVIDENCE_PENDING with an unknown type.
+    #[test]
+    #[should_panic(expected = "ERR_EVIDENCE_MISMATCH")]
+    fn submit_evidence_rejects_unknown_evidence_type() {
+        let mut c = setup_owner();
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        let obligation = Obligation {
+            obligation_id: "obl-001".to_string(),
+            policy_id: "policy-001".to_string(),
+            policy_version: 1,
+            recipient: "acme-supplies.testnet".parse().unwrap(),
+            amount: 250000,
+            evidence_type: "unknown-type".to_string(),
+            evidence_hash: hex32(
+                "686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38",
+            ),
+            expires_at_ns: 9999999999999999999,
+            nonce: 1,
+            state: "CREATED".to_string(),
+            in_flight: false,
+            transfer_attempt: 0,
+            transfer_dispatched_at_ns: None,
+            pending_request_id: None,
+            pending_digest: None,
+            evidence_requested_at_ns: None,
+        };
+        c.obligations.insert("obl-001".to_string(), obligation);
+        c.request_evidence("obl-001".to_string());
+        c.add_verifier(owner());
+        c.submit_evidence(
+            "obl-001-1".to_string(),
+            "obl-001".to_string(),
+            "ALLOWED".to_string(),
+            "686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38".to_string(),
+        );
+    }
+
+    // Finding 9: funding beyond the policy limit is refused in full.
+    #[test]
+    fn ft_on_transfer_rejects_over_limit_funding() {
+        let mut c = setup_owner();
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        let mut ctx = VMContextBuilder::new();
+        ctx.predecessor_account_id("usdc.fakes.testnet".parse().unwrap());
+        ctx.current_account_id("cynex-vault.testnet".parse().unwrap());
+        testing_env!(ctx.build());
+        let unused = c.ft_on_transfer(
+            "cynexmaster.testnet".parse().unwrap(),
+            U128(800000),
+            "{\"fund_policy\": \"policy-001\"}".to_string(),
+        );
+        assert_eq!(unused.0, 0);
+        let refunded = c.ft_on_transfer(
+            "cynexmaster.testnet".parse().unwrap(),
+            U128(300000),
+            "{\"fund_policy\": \"policy-001\"}".to_string(),
+        );
+        assert_eq!(refunded.0, 300000);
+        assert_eq!(
+            c.get_policy("policy-001".to_string()).unwrap().funded,
+            800000
+        );
+    }
+
+    // Finding 9: funding exactly to the limit still succeeds.
+    #[test]
+    fn ft_on_transfer_funding_exactly_to_limit_succeeds() {
+        let mut c = setup_owner();
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        let mut ctx = VMContextBuilder::new();
+        ctx.predecessor_account_id("usdc.fakes.testnet".parse().unwrap());
+        ctx.current_account_id("cynex-vault.testnet".parse().unwrap());
+        testing_env!(ctx.build());
+        let unused = c.ft_on_transfer(
+            "cynexmaster.testnet".parse().unwrap(),
+            U128(1000000),
+            "{\"fund_policy\": \"policy-001\"}".to_string(),
+        );
+        assert_eq!(unused.0, 0);
+        assert_eq!(
+            c.get_policy("policy-001".to_string()).unwrap().funded,
+            1000000
+        );
+    }
+
+    // A funded plus amount overflow with limit at u128::MAX refunds
+    // the full amount instead of panicking in ft_on_transfer.
+    #[test]
+    fn ft_on_transfer_overflow_refunds_instead_of_panicking() {
+        let mut c = setup_owner();
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            u128::MAX,
+        );
+        let mut ctx = VMContextBuilder::new();
+        ctx.predecessor_account_id("usdc.fakes.testnet".parse().unwrap());
+        ctx.current_account_id("cynex-vault.testnet".parse().unwrap());
+        testing_env!(ctx.build());
+        let unused = c.ft_on_transfer(
+            "cynexmaster.testnet".parse().unwrap(),
+            U128(u128::MAX - 10),
+            "{\"fund_policy\": \"policy-001\"}".to_string(),
+        );
+        assert_eq!(unused.0, 0);
+        let refunded = c.ft_on_transfer(
+            "cynexmaster.testnet".parse().unwrap(),
+            U128(20),
+            "{\"fund_policy\": \"policy-001\"}".to_string(),
+        );
+        assert_eq!(refunded.0, 20);
+        assert_eq!(
+            c.get_policy("policy-001".to_string()).unwrap().funded,
+            u128::MAX - 10
+        );
+    }
+
+    // Finding 9: the freeze brake still works on an already over-funded
+    // policy, because the funded limit is enforced at ft_on_transfer
+    // only, never in assert_policy_invariant.
+    #[test]
+    fn freeze_policy_still_works_on_over_funded_policy() {
+        let mut c = setup_owner();
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        let mut policy = c.get_policy("policy-001".to_string()).unwrap();
+        policy.funded = 1500000;
+        c.policies.insert("policy-001".to_string(), policy);
+        c.freeze_policy("policy-001".to_string());
+        assert!(c.get_policy("policy-001".to_string()).unwrap().frozen);
+        c.unfreeze_policy("policy-001".to_string());
+        assert!(!c.get_policy("policy-001".to_string()).unwrap().frozen);
+    }
+
+    // Finding 10: the owner can cancel from BLOCKED. No reservation or
+    // token lock exists in that state, so cancel just retires it.
+    #[test]
+    fn cancel_obligation_from_blocked() {
+        let mut c = setup_owner();
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        c.create_obligation(
+            "obl-001".to_string(),
+            "policy-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            250000,
+            "delivery-note".to_string(),
+            hex32("686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38"),
+            9999999999999999999,
+            1,
+        );
+        c.request_evidence("obl-001".to_string());
+        c.add_verifier(owner());
+        c.submit_evidence(
+            "obl-001-1".to_string(),
+            "obl-001".to_string(),
+            "BLOCK".to_string(),
+            "686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38".to_string(),
+        );
+        assert_eq!(
+            c.get_obligation("obl-001".to_string()).unwrap().state,
+            "BLOCKED"
+        );
+        c.cancel_obligation("obl-001".to_string());
+        assert_eq!(
+            c.get_obligation("obl-001".to_string()).unwrap().state,
+            "CANCELLED"
+        );
+    }
+
+    // Finding 10: the owner can cancel from WARN_PENDING.
+    #[test]
+    fn cancel_obligation_from_warn_pending() {
+        let mut c = setup_owner();
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        c.create_obligation(
+            "obl-001".to_string(),
+            "policy-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            250000,
+            "delivery-note".to_string(),
+            hex32("686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38"),
+            9999999999999999999,
+            1,
+        );
+        c.request_evidence("obl-001".to_string());
+        c.add_verifier(owner());
+        c.submit_evidence(
+            "obl-001-1".to_string(),
+            "obl-001".to_string(),
+            "WARN".to_string(),
+            "686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38".to_string(),
+        );
+        assert_eq!(
+            c.get_obligation("obl-001".to_string()).unwrap().state,
+            "WARN_PENDING"
+        );
+        c.cancel_obligation("obl-001".to_string());
+        assert_eq!(
+            c.get_obligation("obl-001".to_string()).unwrap().state,
+            "CANCELLED"
+        );
+    }
+
+    // Defense in depth: a BLOCKED obligation with in_flight true
+    // cannot occur through the normal flow, so the state is built by
+    // hand here. Cancel must reject it instead of silently retiring
+    // an obligation that still claims to be in flight.
+    #[test]
+    #[should_panic(expected = "ERR_INVALID_STATE")]
+    fn cancel_obligation_from_blocked_with_in_flight_rejects() {
+        let mut c = setup_owner();
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        c.create_obligation(
+            "obl-001".to_string(),
+            "policy-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            250000,
+            "delivery-note".to_string(),
+            hex32("686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38"),
+            9999999999999999999,
+            1,
+        );
+        c.request_evidence("obl-001".to_string());
+        c.add_verifier(owner());
+        c.submit_evidence(
+            "obl-001-1".to_string(),
+            "obl-001".to_string(),
+            "BLOCK".to_string(),
+            "686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38".to_string(),
+        );
+        assert_eq!(
+            c.get_obligation("obl-001".to_string()).unwrap().state,
+            "BLOCKED"
+        );
+        let mut o = c.get_obligation("obl-001".to_string()).unwrap();
+        o.in_flight = true;
+        c.obligations.insert("obl-001".to_string(), o);
+        c.cancel_obligation("obl-001".to_string());
+    }
+
+    // Finding 11: create_obligation rejects a zero amount.
+    #[test]
+    #[should_panic(expected = "ERR_TERMS_MISMATCH")]
+    fn create_obligation_rejects_zero_amount() {
+        let mut c = setup_owner();
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        c.create_obligation(
+            "obl-001".to_string(),
+            "policy-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            0,
+            "delivery-note".to_string(),
+            hex32("686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38"),
+            9999999999999999999,
+            1,
+        );
+    }
+
+    // Finding 11: create_obligation rejects an already-expired obligation.
+    #[test]
+    #[should_panic(expected = "ERR_OBLIGATION_EXPIRED")]
+    fn create_obligation_rejects_expired_obligation() {
+        let mut c = setup_owner();
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        c.create_obligation(
+            "obl-001".to_string(),
+            "policy-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            250000,
+            "delivery-note".to_string(),
+            hex32("686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38"),
+            0,
+            1,
+        );
+    }
+
+    // Finding 11: create_obligation rejects an unknown evidence type.
+    #[test]
+    #[should_panic(expected = "ERR_EVIDENCE_MISMATCH")]
+    fn create_obligation_rejects_unknown_evidence_type() {
+        let mut c = setup_owner();
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        c.create_obligation(
+            "obl-001".to_string(),
+            "policy-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            250000,
+            "preimage".to_string(),
+            hex32("686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38"),
+            9999999999999999999,
+            1,
+        );
+    }
+
+    // Finding 11: all three known evidence types are accepted.
+    #[test]
+    fn create_obligation_accepts_all_three_evidence_types() {
+        let mut c = setup_owner();
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        for (id, evidence_type) in [
+            ("obl-preimage", "PREIMAGE"),
+            ("obl-tee", "TEE"),
+            ("obl-verifier", "delivery-note"),
+        ] {
+            c.create_obligation(
+                id.to_string(),
+                "policy-001".to_string(),
+                "acme-supplies.testnet".parse().unwrap(),
+                250000,
+                evidence_type.to_string(),
+                hex32("686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38"),
+                9999999999999999999,
+                1,
+            );
+            assert_eq!(c.get_obligation(id.to_string()).unwrap().state, "CREATED");
+        }
     }
 }

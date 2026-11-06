@@ -48,8 +48,8 @@ spent 975,001,000, reserved 0, frozen false, 8 receipts. The token is
    with a pending request id and a settlement digest bound to the exact
    terms.
 3. Evidence is verified. See the three layers below. A pass moves the
-   obligation to READY. A block moves it to BLOCKED. A warn moves it to
-   WARN_PENDING and needs the owner's explicit approval.
+   obligation to READY. A block moves it to BLOCKED, which the owner can cancel. A warn moves it to
+   WARN_PENDING and needs the owner's explicit approval, or the owner can cancel it.
 4. The agent settles with its scoped key. The vault checks the recipient,
    the amount, the nonce, and the budget, then pays through the token
    contract and writes a receipt chained to the previous receipt hash.
