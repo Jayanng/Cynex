@@ -18,6 +18,17 @@
  *     token_id, timestamp, tx_ref, verified_ok. Exits non-zero
  *     on any chain break. This reads the live chain; it does
  *     not sign, fund, or settle anything.
+ *   verify --csv <vaultId>
+ *   verify --csv --file <receipts.json>
+ *     The canonical cynex-verify entry point (plan section
+ *     3.1.10). Live mode reads the vault receipts and prints
+ *     the same frozen CSV as verify-live; file mode replays
+ *     a receipts JSON file and prints the same CSV instead of
+ *     the per-index lines verify-receipts prints. Exits
+ *     non-zero on any chain break. Receipts carry no
+ *     evidence_type, so the chain check and the CSV cover
+ *     PREIMAGE and TEE settlements exactly like the verifier
+ *     path; the tamper-detection test proves it.
  *   playground <vaultId> <obligationId...>
  *     Reads each listed obligation and its policy live from the
  *     contract (no signing, no transactions) and prints the Phase 3
@@ -198,6 +209,35 @@ export function verifyLiveChain(receipts: Receipt[]): { receipt: Receipt; verifi
   return out;
 }
 
+export const CSV_COLUMNS = "index,prev_hash,obligation_id,recipient,amount,token_id,timestamp,tx_ref,verified_ok";
+
+/**
+ * The accountant view as CSV lines: the frozen header, then
+ * one row per receipt with the frozen columns. No receipt is
+ * trusted from its own verified_ok field; verified_ok here
+ * is the recomputed chain result for that row.
+ */
+export function toCsvRows(results: { receipt: Receipt; verified_ok: boolean }[]): string[] {
+  const lines: string[] = [CSV_COLUMNS];
+  for (const r of results) {
+    const x = r.receipt;
+    lines.push(
+      [
+        x.index.toString(),
+        x.prev_hash,
+        x.obligation_id,
+        x.recipient,
+        x.amount.toString(),
+        x.token_id,
+        x.timestamp.toString(),
+        x.tx_ref,
+        String(r.verified_ok),
+      ].join(","),
+    );
+  }
+  return lines;
+}
+
 
 /**
  * Parse a raw receipts JSON string with exact u64 values.
@@ -256,24 +296,34 @@ async function verifyLive(vaultId: string): Promise<number> {
     }
   }
   const results = verifyLiveChain(all);
-  console.log("index,prev_hash,obligation_id,recipient,amount,token_id,timestamp,tx_ref,verified_ok");
-  for (const r of results) {
-    const x = r.receipt;
-    console.log(
-      [
-        x.index.toString(),
-        x.prev_hash,
-        x.obligation_id,
-        x.recipient,
-        x.amount.toString(),
-        x.token_id,
-        x.timestamp.toString(),
-        x.tx_ref,
-        r.verified_ok,
-      ].join(","),
-    );
+  for (const line of toCsvRows(results)) {
+    console.log(line);
   }
   return results.every((r) => r.verified_ok) ? 0 : 1;
+}
+
+async function verifyCsv(args: string[]): Promise<number> {
+  if (args[0] !== "--csv") {
+    console.log("usage: cynex verify --csv <vaultId>");
+    console.log("usage: cynex verify --csv --file <receipts.json>");
+    return 2;
+  }
+  if (args[1] === "--file" && args[2] !== undefined) {
+    const rows = JSON.parse(readFileSync(args[2], "utf-8")) as ReceiptJson[];
+    const results = verifyReceiptChain(rows);
+    const receipts = rows.map(parseReceipt);
+    const lines = toCsvRows(receipts.map((receipt, i) => ({ receipt, verified_ok: results[i]?.verified_ok ?? false })));
+    for (const line of lines) {
+      console.log(line);
+    }
+    return results.every((r) => r.verified_ok) ? 0 : 1;
+  }
+  if (args[1] !== undefined && args[1] !== "--file") {
+    return verifyLive(args[1]);
+  }
+  console.log("usage: cynex verify --csv <vaultId>");
+  console.log("usage: cynex verify --csv --file <receipts.json>");
+  return 2;
 }
 
 function verifyFile(file: string): number {
@@ -899,6 +949,9 @@ async function reputationSnapshotCmd(args: string[]): Promise<number> {
 
 async function main(argv: string[]): Promise<number> {
   const [command, arg] = argv;
+  if (command === "verify") {
+    return verifyCsv(argv.slice(1));
+  }
   if (command === "verify-receipts" && arg) {
     return verifyFile(arg);
   }
@@ -942,6 +995,8 @@ async function main(argv: string[]): Promise<number> {
   if (command === "reputation-snapshot" && arg) {
     return reputationSnapshotCmd(argv.slice(1));
   }
+  console.log("usage: cynex verify --csv <vaultId>");
+  console.log("usage: cynex verify --csv --file <receipts.json>");
   console.log("usage: cynex verify-receipts <receipts.json>");
   console.log("usage: cynex verify-live <vaultId>");
   console.log("usage: cynex playground <vaultId> <obligationId...>");

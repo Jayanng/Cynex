@@ -210,3 +210,57 @@ describe("executor HTTP layer", function () {
     }
   }, 30000);
 });
+
+describe("executor GET /receipts", function () {
+  it("returns the live receipts with exact u64 fields as strings", async function () {
+    const dir = mkdtempSync(join(tmpdir(), "cynex-executor-receipts-"));
+    mkdirSync(join(dir, "frontend"), { recursive: true });
+    mkdirSync(join(dir, "demo"), { recursive: true });
+    writeFileSync(join(dir, "frontend", "playground.html"), "<html>playground</html>");
+    writeFileSync(join(dir, "demo", "playground-obligations.json"), JSON.stringify({ obligations: [] }));
+    const stub = join(dir, "stub-cli.mjs");
+    writeFileSync(stub, "console.log('stub');\n");
+    const server = createExecutorServer({
+      token: "test-token",
+      host: "127.0.0.1",
+      port: 0,
+      cliPath: stub,
+      repoRoot: dir,
+    });
+    await new Promise<void>(function (resolve) {
+      server.listen(0, "127.0.0.1", function () {
+        resolve();
+      });
+    });
+    const port = (server.address() as { port: number }).port;
+    const base = "http://127.0.0.1:" + String(port);
+    try {
+      const bad = await fetch(base + "/receipts?vaultId=Bad Vault!");
+      expect(bad.status).toBe(400);
+      const res = await fetch(base + "/receipts?vaultId=cynex-vault.cynexmaster.testnet");
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as { receipts: Record<string, unknown>[] };
+      expect(Array.isArray(data.receipts)).toBe(true);
+      expect(data.receipts.length).toBeGreaterThanOrEqual(8);
+      for (const [i, row] of data.receipts.entries()) {
+        expect(row.index).toBe(String(i));
+        expect(typeof row.amount).toBe("string");
+        expect(typeof row.timestamp).toBe("string");
+        expect(typeof row.prev_hash).toBe("string");
+        expect(String(row.prev_hash)).toMatch(/^[0-9a-f]{64}$/);
+        expect(typeof row.obligation_id).toBe("string");
+        expect(typeof row.recipient).toBe("string");
+        expect(typeof row.token_id).toBe("string");
+        expect(typeof row.tx_ref).toBe("string");
+        expect(BigInt(String(row.timestamp))).toBeGreaterThan(2n ** 53n);
+      }
+      expect(data.receipts[0]?.prev_hash).toBe("00".repeat(32));
+    } finally {
+      await new Promise<void>(function (resolve) {
+        server.close(function () {
+          resolve();
+        });
+      });
+    }
+  }, 30000);
+});

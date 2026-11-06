@@ -164,13 +164,25 @@ npm run typecheck
 npm run jest
 ```
 
-Console, from the repo root: compile the TypeScript with the frontend
+Console, from `frontend/`: compile the TypeScript with the frontend
 `tsc` binary, then run the console with the environment below. The
-console creates the obligation, requests evidence, runs the real verifier
-check, submits the evidence, and settles with the agent's scoped key,
-reading the obligation and the recipient balance back from chain after
-each step. The settle transaction print is not the proof; the PAID read
-and the balance delta are.
+console creates the obligation, requests evidence, verifies the
+evidence, and settles with the agent's scoped key, reading the
+obligation and the recipient balance back from chain after each step.
+The settle transaction print is not the proof; the PAID read and the
+balance delta are. The evidence step branches on the obligation's
+evidence_type: PREIMAGE submits the artifact bytes on chain with
+`submit_evidence_preimage` (no verifier key needed, and no verifier
+check can substitute for it); TEE files a `request_tee_verification`
+with the evidence URL from the obligation file's `evidence_ref` and
+polls until the obligation is READY or the evidence window closes;
+any other type runs the real verifier check and submits the signed
+evidence. Evidence over 64 KiB falls back to the verifier path.
+
+```sh
+npx tsc --outDir dist-test --rootDir .. --module NodeNext --moduleResolution NodeNext --target ES2022 --strict --skipLibCheck --esModuleInterop --lib es2022,dom --typeRoots ./node_modules/@types ../agent/console.ts ../cli/cynex.ts ../services/verifier/verifier.ts ../services/verifier/verify.test.ts ../services/executor/executor.ts ../services/executor/executor.test.ts ../services/console/console.test.ts ../services/reputation/reputation.ts ../services/reputation/snapshot.ts ../services/reputation/live-sources.ts
+node dist-test/agent/console.js
+```
 
 ```sh
 CYNEX_VAULT=cynex-vault.cynexmaster.testnet
@@ -183,6 +195,13 @@ CYNEX_VERIFIER_KEY_FILE=<bare verifier key file, outside the repo>
 CYNEX_OBLIGATION_FILE=<obligation JSON file>
 CYNEX_ARTIFACT_FILE=<evidence artifact file>
 ```
+
+`CYNEX_VERIFIER` and `CYNEX_VERIFIER_KEY_FILE` are only needed on the
+verifier path. A PREIMAGE obligation needs no verifier key at all,
+and a TEE obligation needs the evidence URL, not a verifier key: the
+console reads it from the obligation file's `evidence_ref`, which
+must be an http(s) URL. The verifier key is also unused by the
+playground and by the attack runner, which stays ungated.
 
 Key files hold a bare KeyPairString, the private key string alone, never
 a JSON credential file. They are never printed and never committed. The

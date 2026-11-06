@@ -8,13 +8,20 @@
  *   2. owner request_evidence
  *   3. read the obligation back, take pending_request_id
  *      from chain, never from a local computation
- *   4. real verifier check: SHA-256 over the artifact bytes
- *      from CYNEX_ARTIFACT_FILE, compared to the hash on
- *      chain, bound to the settlement digest and the pending
- *      request; abort on BLOCK, do not submit
- *   5. verifier submit_evidence with request_id equal to
- *      pending_request_id, result ALLOWED, proof equal to
- *      the obligation evidence_hash hex
+ *   4. evidence, branched on the obligation evidence_type:
+ *      PREIMAGE: local SHA-256 pre-check over the artifact
+ *      bytes from CYNEX_ARTIFACT_FILE (must match the hash
+ *      on chain, bound to the settlement digest and the
+ *      pending request; abort on mismatch), then
+ *      submit_evidence_preimage with the raw bytes as a
+ *      JSON number array. The caller is a courier, not a
+ *      judge; no verifier key is needed on this path.
+ *      TEE: request_tee_verification with the evidence URL
+ *      (the obligation file evidence_ref), owner only, 300
+ *      TGas prepaid, then poll until READY or the evidence
+ *      window closes. Anything else: the verifier
+ *      submit_evidence path, result ALLOWED, proof equal to
+ *      the obligation evidence_hash hex.
  *   6. read the obligation back; abort before settle
  *      unless the state is READY
  *   7. read the recipient ft_balance_of before settle
@@ -39,15 +46,19 @@
  * settlement and must never be reported as one.
  *
  * Live run: set CYNEX_VAULT, CYNEX_OWNER, CYNEX_AGENT,
- * CYNEX_VERIFIER, CYNEX_OWNER_KEY_FILE,
- * CYNEX_AGENT_KEY_FILE, CYNEX_VERIFIER_KEY_FILE, and
+ * CYNEX_OWNER_KEY_FILE, CYNEX_AGENT_KEY_FILE, and
  * CYNEX_OBLIGATION_FILE (JSON with obligation_id,
  * policy_id, recipient, amount as a decimal string,
  * evidence_type, evidence_hash as 64 hex characters,
  * expires_at_ns as a decimal string, nonce as a decimal
- * string, and evidence_ref). The artifact bytes come from
- * CYNEX_ARTIFACT_FILE; without it the live run aborts before
- * submit_evidence (fail closed, no READY by default).
+ * string, and evidence_ref). CYNEX_VERIFIER and
+ * CYNEX_VERIFIER_KEY_FILE are only needed when the
+ * obligation evidence_type uses the verifier path; the
+ * PREIMAGE and TEE paths do not use a verifier key. For a
+ * TEE obligation, evidence_ref is the evidence URL the
+ * guest fetches. The artifact bytes come from
+ * CYNEX_ARTIFACT_FILE; the PREIMAGE and verifier paths
+ * abort without it (fail closed, no READY by default).
  *
  * Reputation gate (Phase 7): before the agent settles, the
  * console checks the recipient's reputation (services/reputation)
@@ -63,6 +74,17 @@
  * has no nonce (nonce generated at creation), while the
  * deployed contract takes nonce as an input argument.
  * The console follows the deployed contract.
+ *
+ * Phase 9 note: the PREIMAGE and TEE method signatures
+ * here match the frozen docs/contract-api.md (lines 75-76,
+ * Phase 9, committed as 42c9bf6 and bbc8464, deployed at
+ * code hash 7PBw1x6HbH3Eu2dWrTKjEEfxdJnAfFPwPJS5vZMM5zRC
+ * on both vaults). The production proof obligations
+ * p9-prod-preimage-001 (READY), p9-prod-preimage-002
+ * (EVIDENCE_PENDING), and p9-prod-tee-001 (READY) exist
+ * with evidence types PREIMAGE and TEE. The section 2.6
+ * audit proves this wiring live; a wrong signature shows
+ * up there, not here.
  */
 import { readFileSync } from "node:fs";
 import { JsonRpcProvider, Account, KeyPairSigner } from "near-api-js";
@@ -144,11 +166,20 @@ export function consoleCalls(vaultId: string, input: ObligationFile): Record<str
     proposed_amount: BigInt(input.amount),
     evidence_ref: input.evidence_ref,
   });
+  const branch = evidenceBranch(input.evidence_type);
+  let evidenceCall: Record<string, unknown>;
+  if (branch === "PREIMAGE") {
+    evidenceCall = { account: "owner", contractId: vaultId, methodName: "submit_evidence_preimage", args: { request_id: "<pending_request_id read from chain>", obligation_id: input.obligation_id, evidence: "<artifact bytes from CYNEX_ARTIFACT_FILE as a JSON number array>" } };
+  } else if (branch === "TEE") {
+    evidenceCall = { account: "owner", contractId: vaultId, methodName: "request_tee_verification", args: { obligation_id: input.obligation_id, evidence_url: input.evidence_ref }, gas: "300 TGas" };
+  } else {
+    evidenceCall = { account: "verifier", contractId: vaultId, methodName: "submit_evidence", args: { request_id: "<pending_request_id read from chain>", obligation_id: input.obligation_id, result: "ALLOWED", proof: input.evidence_hash } };
+  }
   return [
     { account: "owner", contractId: vaultId, methodName: "create_obligation", args: create },
     { account: "owner", contractId: vaultId, methodName: "request_evidence", args: { obligation_id: input.obligation_id } },
     { account: "reader", contractId: vaultId, methodName: "get_obligation", args: { obligation_id: input.obligation_id } },
-    { account: "verifier", contractId: vaultId, methodName: "submit_evidence", args: { request_id: "<pending_request_id read from chain>", obligation_id: input.obligation_id, result: "ALLOWED", proof: input.evidence_hash } },
+    evidenceCall,
     { account: "reader", contractId: vaultId, methodName: "get_obligation", args: { obligation_id: input.obligation_id } },
     { account: "reader", contractId: "<token from policy>", methodName: "ft_balance_of", args: { account_id: input.recipient } },
     { account: "agent", contractId: vaultId, methodName: "settle", args: { ...settle, proposed_amount: settle.proposed_amount.toString() } },
@@ -248,6 +279,77 @@ export async function pollBalance(
   return null;
 }
 
+export type EvidenceBranch = "PREIMAGE" | "TEE" | "VERIFIER";
+
+/**
+ * Which evidence path an obligation uses. PREIMAGE and TEE
+ * are the Phase 9 layers; anything else keeps the verifier
+ * path (TRUSTED_RELAYER, and evidence over 64 KiB, which
+ * cannot go through the preimage cap).
+ */
+export function evidenceBranch(evidenceType: string): EvidenceBranch {
+  if (evidenceType === "PREIMAGE") {
+    return "PREIMAGE";
+  }
+  if (evidenceType === "TEE") {
+    return "TEE";
+  }
+  return "VERIFIER";
+}
+
+export function isHttpUrl(value: string): boolean {
+  if (value === "" || /\s/.test(value)) {
+    return false;
+  }
+  return value.startsWith("http://") || value.startsWith("https://");
+}
+
+/**
+ * Poll a TEE obligation until READY or the evidence window
+ * closes. The window is evidence_requested_at_ns plus
+ * EVIDENCE_TIMEOUT_NS (1 hour). The requested-at value comes
+ * from the chain row read through near-api-js, so a u64 over
+ * 2^53 is rounded by JSON.parse; the rounding is at most
+ * 256 ns against a 1 hour window, which is immaterial here.
+ * Returns the READY row, or null when the window closed or
+ * the poll ran out (the obligation stays EVIDENCE_PENDING
+ * and the owner can retry; never report a pending TEE as
+ * verified).
+ */
+export async function pollTee(
+  client: CynexClient,
+  obligationId: string,
+  maxAttempts = 120,
+  intervalMs = 5000,
+): Promise<unknown | null> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const row = await client.getObligation(obligationId);
+    if (row === null || row === undefined) {
+      console.log("poll tee attempt " + attempt + ": row not visible yet");
+    } else {
+      const state = obligationState(row);
+      const requestedAt = (row as Record<string, unknown>).evidence_requested_at_ns;
+      console.log("poll tee attempt " + attempt + ": state=" + state);
+      if (state === "READY") {
+        return row;
+      }
+      if (typeof requestedAt === "number") {
+        const windowEndNs = BigInt(requestedAt) + EVIDENCE_TIMEOUT_NS;
+        const nowNs = BigInt(Date.now()) * 1000000n;
+        if (nowNs > windowEndNs) {
+          console.log("poll tee: evidence window closed, obligation is " + state + ", not READY.");
+          return null;
+        }
+      }
+    }
+    if (attempt < maxAttempts) {
+      await sleepMs(intervalMs);
+    }
+  }
+  console.log("poll tee timeout after " + maxAttempts + " attempts; the TEE verification is still pending.");
+  return null;
+}
+
 // Gas for console change calls. near-api-js defaults to 30 TGas prepaid.
 // Settle attaches 30 TGas for ft_transfer plus 30 TGas for the callback,
 // plus about 2.6 TGas of its own execution measured in Phase 2, so 30 TGas
@@ -255,6 +357,19 @@ export async function pollBalance(
 // Lane A live settlements used 100 TGas for settle and succeeded.
 export const DEFAULT_CALL_GAS = 30000000000000n;
 export const SETTLE_CALL_GAS = 100000000000000n;
+// TEE verification prepaid gas. Measured live in Phase 9:
+// the outer call needs more than 150 TGas prepaid (100 TGas
+// to OutLayer plus 50 TGas to the callback plus the vault's
+// own execution). 100 TGas prepaid fails with "Exceeded the
+// prepaid gas". 300 TGas prepaid works; that is what the
+// live proof used, so the console attaches 300 TGas.
+export const TEE_CALL_GAS = 300000000000000n;
+// Preimage cap, enforced by the contract: evidence over
+// 64 KiB rejects ERR_EVIDENCE_TOO_LARGE. The console fails
+// closed before sending instead of paying for a rejection.
+export const PREIMAGE_MAX_BYTES = 65536;
+// Evidence timeout, frozen in the contract API: 1 hour.
+export const EVIDENCE_TIMEOUT_NS = 3600000000000n;
 
 export function txHashOf(outcome: unknown): string {
   const root = outcome as Record<string, unknown>;
@@ -301,11 +416,16 @@ async function liveRun(): Promise<number> {
   const obligationFile = process.env.CYNEX_OBLIGATION_FILE ?? "";
   const artifactFile = process.env.CYNEX_ARTIFACT_FILE ?? "";
   if (!obligationFile) {
-    console.log("usage: set CYNEX_VAULT, CYNEX_OWNER, CYNEX_AGENT, CYNEX_VERIFIER, CYNEX_OWNER_KEY_FILE, CYNEX_AGENT_KEY_FILE, CYNEX_VERIFIER_KEY_FILE, CYNEX_OBLIGATION_FILE, CYNEX_ARTIFACT_FILE");
+    console.log("usage: set CYNEX_VAULT, CYNEX_OWNER, CYNEX_AGENT, CYNEX_OWNER_KEY_FILE, CYNEX_AGENT_KEY_FILE, CYNEX_OBLIGATION_FILE, CYNEX_ARTIFACT_FILE (CYNEX_VERIFIER and CYNEX_VERIFIER_KEY_FILE only for the verifier evidence path)");
     return 2;
   }
   const input = JSON.parse(readFileSync(obligationFile, "utf-8")) as ObligationFile;
-  if (!vaultId || !ownerId || !agentId || !verifierId || !ownerKeyFile || !agentKeyFile || !verifierKeyFile) {
+  const branch = evidenceBranch(input.evidence_type);
+  const needsVerifier = branch === "VERIFIER";
+  const missingKeys =
+    !vaultId || !ownerId || !agentId || !ownerKeyFile || !agentKeyFile ||
+    (needsVerifier && (!verifierId || !verifierKeyFile));
+  if (missingKeys) {
     console.log("DRY-RUN: no keys supplied, no transaction was sent.");
     console.log("live run polls each chain read until the expected state appears or 120 seconds elapse.");
     for (const call of consoleCalls(vaultId || "<vault>", input)) {
@@ -316,9 +436,7 @@ async function liveRun(): Promise<number> {
   const provider = new JsonRpcProvider({ url: TESTNET_RPC_URL });
   const ownerKey = readFileSync(ownerKeyFile, "utf-8").trim();
   const agentKey = readFileSync(agentKeyFile, "utf-8").trim();
-  const verifierKey = readFileSync(verifierKeyFile, "utf-8").trim();
   const owner = new Account(ownerId, provider, KeyPairSigner.fromSecretKey(ownerKey as KeyPairString));
-  const verifier = new Account(verifierId, provider, KeyPairSigner.fromSecretKey(verifierKey as KeyPairString));
   const agent = new Account(agentId, provider, KeyPairSigner.fromSecretKey(agentKey as KeyPairString));
   const client = new CynexClient(vaultId);
   const create = createObligationArgs(input);
@@ -360,57 +478,95 @@ async function liveRun(): Promise<number> {
     console.log("ABORT: evidence_hash on chain does not match the obligation file, submit_evidence is not attempted.");
     return 1;
   }
-  if (artifactFile === "") {
-    console.log("ABORT: CYNEX_ARTIFACT_FILE is not set, the artifact bytes cannot be read, submit_evidence is not attempted.");
-    return 1;
+  let afterEvidence: unknown;
+  if (branch === "TEE") {
+    if (!isHttpUrl(input.evidence_ref)) {
+      console.log("ABORT: evidence_ref is not an http(s) evidence URL, request_tee_verification is not attempted: " + input.evidence_ref);
+      return 1;
+    }
+    const teeOutcome = await owner.callFunctionRaw({
+      contractId: vaultId,
+      methodName: "request_tee_verification",
+      args: { obligation_id: input.obligation_id, evidence_url: input.evidence_ref },
+      gas: TEE_CALL_GAS,
+    });
+    console.log("request_tee_verification tx hash: " + txHashOf(teeOutcome));
+    afterEvidence = await pollTee(client, input.obligation_id);
+    if (afterEvidence === null) {
+      console.log("ABORT: obligation did not become READY after request_tee_verification, settle is not attempted.");
+      return 1;
+    }
+    console.log("obligation after request_tee_verification: " + JSON.stringify(afterEvidence));
+  } else {
+    if (artifactFile === "") {
+      console.log("ABORT: CYNEX_ARTIFACT_FILE is not set, the artifact bytes cannot be read, evidence is not attempted.");
+      return 1;
+    }
+    let artifactBytes: Buffer;
+    try {
+      artifactBytes = readFileSync(artifactFile);
+    } catch (e) {
+      console.log("ABORT: artifact file unreadable, evidence is not attempted: " + String(e));
+      return 1;
+    }
+    if (branch === "PREIMAGE" && artifactBytes.length > PREIMAGE_MAX_BYTES) {
+      console.log("ABORT: artifact is " + artifactBytes.length + " bytes, over the 64 KiB preimage cap; a PREIMAGE obligation cannot be verified with this artifact, and the verifier path rejects PREIMAGE obligations, so the owner must create a new obligation with a different evidence type.");
+      return 1;
+    }
+    const evidenceObligation: Obligation = {
+      obligation_id: input.obligation_id,
+      policy_id: input.policy_id,
+      policy_version: BigInt(String(policyForEvidence.version)),
+      recipient: input.recipient,
+      amount: BigInt(input.amount),
+      evidence_type: input.evidence_type,
+      evidence_hash: chainEvidenceHash,
+      expires_at_ns: BigInt(input.expires_at_ns),
+      nonce: BigInt(input.nonce),
+      state: obligationState(afterRequest) as Obligation["state"],
+      in_flight: false,
+      transfer_attempt: BigInt(String((afterRequest as Record<string, unknown>).transfer_attempt)),
+      transfer_dispatched_at_ns: null,
+      pending_request_id: pendingRequestId,
+      pending_digest: chainPendingDigest,
+      evidence_requested_at_ns: null,
+    };
+    const nowNs = BigInt(Date.now()) * 1000000n;
+    const check = verifyArtifact(artifactBytes, evidenceObligation, String(policyForEvidence.token_id), vaultId, nowNs);
+    console.log("verifier " + TRUST_MODE + ": " + check.result + " reasons=" + check.reasons.join(",") + " digest=" + check.digest + " request_id=" + String(check.requestId));
+    if (check.result !== "ALLOWED") {
+      console.log("ABORT: verifier did not allow, evidence is not attempted.");
+      return 1;
+    }
+    const submitLabel = branch === "PREIMAGE" ? "submit_evidence_preimage" : "submit_evidence";
+    let submitOutcome: unknown;
+    if (branch === "PREIMAGE") {
+      submitOutcome = await owner.callFunctionRaw({
+        contractId: vaultId,
+        methodName: "submit_evidence_preimage",
+        args: { request_id: pendingRequestId, obligation_id: input.obligation_id, evidence: [...artifactBytes] },
+        gas: DEFAULT_CALL_GAS,
+      });
+    } else {
+      const verifierKey = readFileSync(verifierKeyFile, "utf-8").trim();
+      const verifier = new Account(verifierId, provider, KeyPairSigner.fromSecretKey(verifierKey as KeyPairString));
+      submitOutcome = await verifier.callFunctionRaw({
+        contractId: vaultId,
+        methodName: "submit_evidence",
+        args: { request_id: pendingRequestId, obligation_id: input.obligation_id, result: "ALLOWED", proof: check.evidenceHash },
+        gas: DEFAULT_CALL_GAS,
+      });
+    }
+    console.log(submitLabel + " tx hash: " + txHashOf(submitOutcome));
+    afterEvidence = await pollObligation(client, input.obligation_id, "obligation READY after " + submitLabel, "READY");
+    if (afterEvidence === null) {
+      console.log("ABORT: obligation did not become READY after " + submitLabel + ", settle is not attempted.");
+      return 1;
+    }
+    console.log("obligation after " + submitLabel + ": " + JSON.stringify(afterEvidence));
   }
-  let artifactBytes: Buffer;
-  try {
-    artifactBytes = readFileSync(artifactFile);
-  } catch (e) {
-    console.log("ABORT: artifact file unreadable, submit_evidence is not attempted: " + String(e));
-    return 1;
-  }
-  const evidenceObligation: Obligation = {
-    obligation_id: input.obligation_id,
-    policy_id: input.policy_id,
-    policy_version: BigInt(String(policyForEvidence.version)),
-    recipient: input.recipient,
-    amount: BigInt(input.amount),
-    evidence_type: input.evidence_type,
-    evidence_hash: chainEvidenceHash,
-    expires_at_ns: BigInt(input.expires_at_ns),
-    nonce: BigInt(input.nonce),
-    state: obligationState(afterRequest) as Obligation["state"],
-    in_flight: false,
-    transfer_attempt: BigInt(String((afterRequest as Record<string, unknown>).transfer_attempt)),
-    transfer_dispatched_at_ns: null,
-    pending_request_id: pendingRequestId,
-    pending_digest: chainPendingDigest,
-    evidence_requested_at_ns: null,
-  };
-  const nowNs = BigInt(Date.now()) * 1000000n;
-  const check = verifyArtifact(artifactBytes, evidenceObligation, String(policyForEvidence.token_id), vaultId, nowNs);
-  console.log("verifier " + TRUST_MODE + ": " + check.result + " reasons=" + check.reasons.join(",") + " digest=" + check.digest + " request_id=" + String(check.requestId));
-  if (check.result !== "ALLOWED") {
-    console.log("ABORT: verifier did not allow, submit_evidence is not attempted.");
-    return 1;
-  }
-  const submitOutcome = await verifier.callFunctionRaw({
-    contractId: vaultId,
-    methodName: "submit_evidence",
-    args: { request_id: pendingRequestId, obligation_id: input.obligation_id, result: "ALLOWED", proof: check.evidenceHash },
-    gas: DEFAULT_CALL_GAS,
-  });
-  console.log("submit_evidence tx hash: " + txHashOf(submitOutcome));
-  const afterEvidence = await pollObligation(client, input.obligation_id, "obligation READY after submit_evidence", "READY");
-  if (afterEvidence === null) {
-    console.log("ABORT: obligation did not become READY after submit_evidence, settle is not attempted.");
-    return 1;
-  }
-  console.log("obligation after submit_evidence: " + JSON.stringify(afterEvidence));
   if (obligationState(afterEvidence) !== "READY") {
-    console.log("ABORT: obligation is not READY after submit_evidence, settle is not attempted. State: " + obligationState(afterEvidence));
+    console.log("ABORT: obligation is not READY after evidence, settle is not attempted. State: " + obligationState(afterEvidence));
     return 1;
   }
   const policyRow = await client.getPolicy(input.policy_id) as Record<string, unknown>;

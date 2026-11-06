@@ -8,7 +8,16 @@ body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2em auto; p
 label { display: block; margin: 0.8em 0 0.2em; font-weight: bold; }
 input, select { width: 100%; padding: 0.4em; font-size: 1em; }
 button { margin-top: 1em; padding: 0.6em 1.2em; font-size: 1em; }
+button:disabled { opacity: 0.5; }
 pre { background: #f4f4f4; padding: 1em; white-space: pre-wrap; word-break: break-all; }
+table { border-collapse: collapse; width: 100%; margin-top: 1em; font-size: 0.9em; }
+th, td { border: 1px solid #ccc; padding: 0.4em; text-align: left; vertical-align: top; }
+th { background: #f4f4f4; }
+.card { border: 1px solid #888; padding: 1em; margin-top: 1em; }
+.card .verdict { font-weight: bold; font-size: 1.2em; }
+.card .row { display: flex; justify-content: space-between; gap: 1em; padding: 0.2em 0; }
+.card .row span:first-child { color: #555; }
+.failed { color: #a00; font-weight: bold; }
 .hint { color: #555; font-size: 0.9em; }
 </style>
 </head>
@@ -19,6 +28,10 @@ pre { background: #f4f4f4; padding: 1em; white-space: pre-wrap; word-break: brea
 <label for="token">Executor token</label>
 <input id="token" type="password" autocomplete="off" placeholder="operator token from CYNEX_EXECUTOR_TOKEN">
 <button id="authenticate" type="button">Authenticate</button>
+
+<h2>Test matrix</h2>
+<p class="hint">Every demo obligation, its evidence type, and the expected outcome. States are read live with the Read button; the matrix is the plan, not the proof. Proof obligations marked read-only are Johnson's Phase 9 records: they are shown and read live, but the playground cannot settle them.</p>
+<table id="test-matrix"></table>
 
 <label for="vault">Vault</label>
 <select id="vault"></select>
@@ -42,7 +55,19 @@ pre { background: #f4f4f4; padding: 1em; white-space: pre-wrap; word-break: brea
 <h2>Live read</h2>
 <pre id="live-read"></pre>
 <h2>Settle result</h2>
+<div id="result-card"></div>
 <pre id="result"></pre>
+
+<h2>Receipts: tamper-and-detect</h2>
+<p class="hint">The live receipt chain, read from the selected vault. Edit one amount in a local copy and verify it: the chain check recomputes every prev_hash link with the frozen receipt hash formula, in your browser. The tampered copy is local only; the live chain is never modified. A tamper is detected at the receipt after the tampered one; the last receipt has no next row yet, so it is only anchored when the next receipt arrives.</p>
+<button id="load-receipts" type="button">Load live receipts (no transaction)</button>
+<pre id="receipt-chain"></pre>
+<label for="tamper-index">Receipt index to tamper</label>
+<input id="tamper-index" type="text" value="1">
+<label for="tamper-amount">Tampered amount (base units)</label>
+<input id="tamper-amount" type="text" value="999">
+<button id="verify-tampered" type="button">Verify tampered copy</button>
+<pre id="tamper-result"></pre>
 
 <script type="module" src="/playground-client.js"></script>
 </body>
