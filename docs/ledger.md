@@ -243,9 +243,8 @@ Sign-off: Johnson, 2026-11-06
 
 Status: Phase 9 NOT closed. Lane A shipped and proven live; Lane B
 acceptance audit PASSED 2026-11-06 and Johnson signed the Lane B
-acceptance below. Still pending before close: the joint fresh-clone
-reproduction, and Adejoke's own Lane B sign. Phase 8 ledger entry is
-also still missing; see the Phase 8 note in the plan.
+acceptance below; Adejoke's Lane B sign is recorded below.
+Still pending before close: the joint fresh-clone reproduction.
 
 Evidence:
 - Lane A: Master 42c9bf6 (layer 1, bounded on-chain preimage evidence,
@@ -292,3 +291,5 @@ Evidence:
   READY, 100 units each). What to do with them is Johnson's decision.
 
 Sign-off: Johnson (Lane B acceptance audit, section 2.6), 2026-11-06
+
+Sign-off: rastadev (Lane B), 2026-11-06
