@@ -42,6 +42,147 @@ pub struct Obligation {
 
 #[near(serializers = [json, borsh])]
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TeeRequest {
+    pub obligation_id: String,
+    pub evidence_url: String,
+    pub seed: String,
+    pub requested_at_ns: u64,
+    pub sender: AccountId,
+}
+
+// Decode a hex string to bytes. Returns None on any bad input (odd
+// length, non-hex digit). Used to parse the guest's hex fields.
+fn hex_decode(s: &str) -> Option<Vec<u8>> {
+    let bytes = s.as_bytes();
+    if !bytes.len().is_multiple_of(2) {
+        return None;
+    }
+    let digit = |b: u8| match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    };
+    let mut out = Vec::with_capacity(bytes.len() / 2);
+    for pair in bytes.chunks_exact(2) {
+        let hi = digit(pair[0])?;
+        let lo = digit(pair[1])?;
+        out.push((hi << 4) | lo);
+    }
+    Some(out)
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for &b in bytes {
+        out.push(HEX[(b >> 4) as usize] as char);
+        out.push(HEX[(b & 0x0f) as usize] as char);
+    }
+    out
+}
+
+// A monotonically increasing counter for TEE requests, stored under
+// its own trie prefix so the Contract struct is unchanged and no
+// migration is needed. Each filed request takes the next value, so
+// two requests for the same obligation always derive different seeds
+// even when they land in the same block and share a timestamp.
+fn next_tee_request_counter() -> u64 {
+    let mut map: LookupMap<String, u64> = LookupMap::new(b"u");
+    let next = map
+        .get(&"tee_request_counter".to_string())
+        .copied()
+        .unwrap_or(0);
+    map.insert("tee_request_counter".to_string(), next + 1);
+    next
+}
+
+// Verify a TEE guest output against the obligation and the recorded
+// request. All three checks must pass: the digest matches the committed
+// evidence hash (layer 1 integrity), the guest fetched from the claimed
+// source (layer 2 provenance), and the VRF signature verifies against
+// the published key with the alpha bound to this request (layer 3
+// anchor). Returns false on any failure; the caller leaves the
+// obligation pending.
+fn verify_tee_output(obligation: &Obligation, tee: &TeeRequest, value: &serde_json::Value) -> bool {
+    let digest_hex = match value.get("digest").and_then(|v| v.as_str()) {
+        Some(s) => s,
+        None => return false,
+    };
+    let digest = match hex_decode(digest_hex) {
+        Some(b) if b.len() == 32 => b,
+        _ => return false,
+    };
+    if digest.as_slice() != obligation.evidence_hash.as_slice() {
+        return false;
+    }
+    let source = match value.get("source").and_then(|v| v.as_str()) {
+        Some(s) => s,
+        None => return false,
+    };
+    if source != tee.evidence_url {
+        return false;
+    }
+    let alpha = match value.get("vrf_alpha").and_then(|v| v.as_str()) {
+        Some(s) => s,
+        None => return false,
+    };
+    let signature_hex = match value.get("vrf_signature").and_then(|v| v.as_str()) {
+        Some(s) => s,
+        None => return false,
+    };
+    let output_hex = match value.get("vrf_output").and_then(|v| v.as_str()) {
+        Some(s) => s,
+        None => return false,
+    };
+    let signature_vec = match hex_decode(signature_hex) {
+        Some(b) if b.len() == 64 => b,
+        _ => return false,
+    };
+    let signature: [u8; 64] = match signature_vec.try_into() {
+        Ok(a) => a,
+        Err(_) => return false,
+    };
+    let output = match hex_decode(output_hex) {
+        Some(b) if b.len() == 32 => b,
+        _ => return false,
+    };
+    // The alpha is "vrf:{request_id}:{sender}:{seed}". Split into at
+    // most four parts so a seed containing ':' still parses. The sender
+    // is the transaction signer who filed the request (the owner), not
+    // the vault itself: OutLayer stores sender_id (signer) and
+    // predecessor_id (caller) separately and the VRF uses the signer,
+    // proven live on request 10522 where sender_id was
+    // cynexmaster.testnet and predecessor_id was the test vault. The
+    // seed must be the one recorded for this obligation. The request id
+    // is the one the guest reported; a wrong one fails the signature
+    // check below, because the host signed the real request id.
+    let parts: Vec<&str> = alpha.splitn(4, ':').collect();
+    if parts.len() != 4 || parts[0] != "vrf" {
+        return false;
+    }
+    if parts[1].parse::<u64>().is_err() {
+        return false;
+    }
+    if parts[2] != tee.sender.as_str() {
+        return false;
+    }
+    if parts[3] != tee.seed {
+        return false;
+    }
+    // The signature must verify against the published VRF key, and the
+    // output must be SHA-256 of the signature.
+    if !env::ed25519_verify(&signature, alpha.as_bytes(), &VRF_PUBLIC_KEY) {
+        return false;
+    }
+    if env::sha256(signature).as_slice() != output.as_slice() {
+        return false;
+    }
+    true
+}
+
+#[near(serializers = [json, borsh])]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Balance {
     pub spent: u128,
     pub reserved: u128,
@@ -154,6 +295,25 @@ const EVIDENCE_TIMEOUT_NS: u64 = 3_600_000_000_000;
 // Oversized evidence keeps the TRUSTED_RELAYER path. The bytes are
 // hashed and dropped, never stored.
 const MAX_PREIMAGE_BYTES: usize = 65_536;
+
+// Phase 9, layers 2 and 3: OutLayer TEE verification, testnet only. The
+// vault calls the OutLayer contract to run the verifier guest in the TEE,
+// and the guest output returns through a private callback.
+const OUTLAYER_CONTRACT: &str = "outlayer.testnet";
+const OUTLAYER_PROJECT_ID: &str = "cynexmaster.testnet/cynex-verifier";
+// Attached deposit for request_execution. A small execution costs about
+// 0.001 to 0.002 NEAR; the excess is refunded to the vault.
+const TEE_REQUEST_DEPOSIT_YOCTO: u128 = 10_000_000_000_000_000_000_000;
+const TEE_REQUEST_GAS: Gas = Gas::from_tgas(100);
+const TEE_CALLBACK_GAS: Gas = Gas::from_tgas(50);
+// The OutLayer VRF public key for TESTNET, published at
+// https://testnet-api.outlayer.ai/vrf/pubkey. Testnet and mainnet have
+// different keys; the mainnet key (api.outlayer.ai) does NOT verify a
+// testnet signature.
+const VRF_PUBLIC_KEY: [u8; 32] = [
+    192, 197, 174, 174, 22, 136, 194, 247, 204, 35, 80, 170, 225, 238, 60, 233, 110, 221, 192, 222,
+    132, 214, 120, 219, 135, 61, 228, 130, 104, 248, 207, 168,
+];
 
 #[allow(clippy::too_many_arguments)]
 // Frozen receipt hash takes 8 fields by definition, in a fixed order.
@@ -512,6 +672,11 @@ impl Contract {
         obligation.pending_request_id = None;
         obligation.pending_digest = None;
         obligation.evidence_requested_at_ns = None;
+        // A TEE request in flight is abandoned with the obligation. Drop
+        // its record so it does not leak and so a late callback finds
+        // nothing to resolve.
+        let mut requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
+        requests.remove(&obligation_id);
         self.obligations.insert(obligation_id, obligation);
     }
 
@@ -700,12 +865,12 @@ impl Contract {
             .cloned()
             .unwrap_or_else(|| env::panic_str("ERR_OBLIGATION_MISSING"));
         require!(obligation.state == "EVIDENCE_PENDING", "ERR_INVALID_STATE");
-        // Phase 9, layer 1: a PREIMAGE obligation is verified only by its
-        // bytes, never by a verifier's hex proof. Routing it through this
-        // path would let a compromised verifier mark it READY without any
-        // bytes being hashed.
+        // Phase 9, layers 1 and 2: a PREIMAGE obligation is verified only
+        // by its bytes, and a TEE obligation only by the TEE guest plus
+        // VRF. Routing either through this path would let a compromised
+        // verifier mark it READY without the real check.
         require!(
-            obligation.evidence_type != "PREIMAGE",
+            obligation.evidence_type != "PREIMAGE" && obligation.evidence_type != "TEE",
             "ERR_EVIDENCE_MISMATCH"
         );
         require!(
@@ -855,6 +1020,194 @@ impl Contract {
         obligation.pending_request_id = None;
         obligation.pending_digest = None;
         obligation.evidence_requested_at_ns = None;
+        self.obligations.insert(obligation_id, obligation);
+    }
+
+    // Phase 9, layer 2: ask the OutLayer TEE to verify evidence for an
+    // obligation. Owner only, because the call attaches NEAR for the
+    // execution and anyone could drain the vault by spamming it. The
+    // guest fetches the evidence from the given URL, hashes it, requests
+    // VRF randomness, and the result returns through on_tee_result. The
+    // obligation must already be EVIDENCE_PENDING with type TEE, inside
+    // its evidence window.
+    pub fn request_tee_verification(
+        &mut self,
+        obligation_id: String,
+        evidence_url: String,
+    ) -> Promise {
+        self.assert_owner();
+        let obligation = self
+            .obligations
+            .get(&obligation_id)
+            .cloned()
+            .unwrap_or_else(|| env::panic_str("ERR_OBLIGATION_MISSING"));
+        require!(obligation.state == "EVIDENCE_PENDING", "ERR_INVALID_STATE");
+        require!(obligation.evidence_type == "TEE", "ERR_EVIDENCE_MISMATCH");
+        let now = env::block_timestamp();
+        require!(now <= obligation.expires_at_ns, "ERR_EVIDENCE_EXPIRED");
+        match obligation.evidence_requested_at_ns {
+            Some(requested_at) => require!(
+                now <= requested_at.saturating_add(EVIDENCE_TIMEOUT_NS),
+                "ERR_EVIDENCE_EXPIRED"
+            ),
+            None => env::panic_str("ERR_INVALID_STATE"),
+        }
+        let mut requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
+        // One TEE request at a time per obligation. A second request while
+        // one is pending would leave two callbacks racing for it.
+        require!(requests.get(&obligation_id).is_none(), "ERR_INVALID_STATE");
+        // The vault pays for the execution. Fail closed if it cannot.
+        require!(
+            env::account_balance().as_yoctonear()
+                >= TEE_REQUEST_DEPOSIT_YOCTO + SETTLE_GAS_HEADROOM_YOCTO,
+            "ERR_INSUFFICIENT_BALANCE"
+        );
+        // Seed is unique per request and bound to the committed
+        // digest. The counter makes a retry use a fresh seed even
+        // when it lands in the same block and shares the timestamp,
+        // so a signature from an earlier execution (same obligation,
+        // same nonce) does not match the retry's recorded seed. The
+        // digest binds the VRF alpha to the specific evidence the
+        // vault committed to, so a signature from a different
+        // obligation or a different digest cannot be reused here.
+        // The VRF still does not prove the guest fetched the bytes;
+        // that rests on the guest being our code, bound by the
+        // Project version, and on the per-execution TDX quote, which
+        // the attestation endpoint does not serve yet.
+        let counter = next_tee_request_counter();
+        let seed = format!(
+            "{}-{}-{}-{}",
+            obligation_id,
+            obligation.nonce,
+            counter,
+            hex_encode(&obligation.evidence_hash)
+        );
+        requests.insert(
+            obligation_id.clone(),
+            TeeRequest {
+                obligation_id: obligation_id.clone(),
+                evidence_url: evidence_url.clone(),
+                seed: seed.clone(),
+                requested_at_ns: now,
+                sender: env::signer_account_id(),
+            },
+        );
+        let input = serde_json::to_string(&serde_json::json!({
+            "url": evidence_url,
+            "seed": seed,
+        }))
+        .unwrap();
+        let args = serde_json::to_vec(&serde_json::json!({
+            "source": {
+                "Project": {
+                    "project_id": OUTLAYER_PROJECT_ID,
+                    "version_key": null,
+                }
+            },
+            "resource_limits": {
+                "max_instructions": 1_000_000_000u64,
+                "max_memory_mb": 128u32,
+                "max_execution_seconds": 60u64,
+            },
+            "input_data": input,
+            "secrets_ref": null,
+            "response_format": "Json",
+            "payer_account_id": null,
+            "params": null,
+        }))
+        .unwrap();
+        Promise::new(OUTLAYER_CONTRACT.parse().unwrap())
+            .function_call(
+                "request_execution".to_string(),
+                args,
+                NearToken::from_yoctonear(TEE_REQUEST_DEPOSIT_YOCTO),
+                TEE_REQUEST_GAS,
+            )
+            .then(
+                Promise::new(env::current_account_id()).function_call(
+                    "on_tee_result".to_string(),
+                    serde_json::to_vec(&serde_json::json!({
+                        "obligation_id": obligation_id,
+                    }))
+                    .unwrap(),
+                    NearToken::from_yoctonear(0),
+                    TEE_CALLBACK_GAS,
+                ),
+            )
+    }
+
+    // Phase 9, layers 2 and 3: the OutLayer execution result, returned
+    // through the yield promise. The result is the guest output parsed as
+    // JSON (response_format Json), or null when the run failed. This is
+    // the frozen callback shape: Result<Output, PromiseError> where Output
+    // is the parsed output, never the ExecutionResponse. A failure here
+    // never panics and never books anything: the obligation stays
+    // EVIDENCE_PENDING, the request record is dropped so the owner can
+    // retry, and the timeout method cancels it if the window passes.
+    #[private]
+    pub fn on_tee_result(
+        &mut self,
+        obligation_id: String,
+        #[callback_result] result: Result<serde_json::Value, PromiseError>,
+    ) {
+        let mut requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
+        let mut obligation = match self.obligations.get(&obligation_id).cloned() {
+            Some(o) => o,
+            None => {
+                requests.remove(&obligation_id);
+                return;
+            }
+        };
+        let tee = match requests.get(&obligation_id) {
+            Some(t) => t,
+            None => return,
+        };
+        // A stale result, after the obligation moved on or the request was
+        // already resolved, changes nothing but drops the record, so the
+        // storage does not leak and a later request is not blocked.
+        if obligation.state != "EVIDENCE_PENDING" {
+            requests.remove(&obligation_id);
+            return;
+        }
+        // The TEE result is only usable inside the evidence window, the
+        // same window submit_evidence enforces.
+        let now = env::block_timestamp();
+        if now > obligation.expires_at_ns {
+            requests.remove(&obligation_id);
+            return;
+        }
+        match obligation.evidence_requested_at_ns {
+            Some(requested_at) => {
+                if now > requested_at.saturating_add(EVIDENCE_TIMEOUT_NS) {
+                    requests.remove(&obligation_id);
+                    return;
+                }
+            }
+            None => {
+                requests.remove(&obligation_id);
+                return;
+            }
+        }
+        let value = match result {
+            Ok(v) => v,
+            Err(_) => {
+                requests.remove(&obligation_id);
+                return;
+            }
+        };
+        if value.is_null() {
+            requests.remove(&obligation_id);
+            return;
+        }
+        if !verify_tee_output(&obligation, tee, &value) {
+            requests.remove(&obligation_id);
+            return;
+        }
+        obligation.state = "READY".to_string();
+        obligation.pending_request_id = None;
+        obligation.pending_digest = None;
+        obligation.evidence_requested_at_ns = None;
+        requests.remove(&obligation_id);
         self.obligations.insert(obligation_id, obligation);
     }
 
@@ -3176,5 +3529,570 @@ mod tests {
         c.submit_evidence_preimage("obl-001-1".to_string(), "obl-001".to_string(), evidence);
         let o = c.get_obligation("obl-001".to_string()).unwrap();
         assert_eq!(o.state, "READY");
+    }
+
+    // A TEE obligation, evidence requested, and a TEE request filed. The
+    // vault holds 10 NEAR in the mock so the deposit check passes. The
+    // evidence hash is the SHA-256 of the v1 guest file, the same file
+    // the live guest v2 run fetched (request 10384).
+    fn tee_setup_for(vault: &str, obligation_id: &str) -> Contract {
+        let mut ctx = VMContextBuilder::new();
+        ctx.predecessor_account_id(owner());
+        // The signer is cynexmaster.testnet, matching the live VRF
+        // output used by the live-values test: OutLayer uses the
+        // transaction signer as the VRF sender, not the vault.
+        ctx.signer_account_id("cynexmaster.testnet".parse().unwrap());
+        ctx.current_account_id(vault.parse().unwrap());
+        ctx.account_balance(NearToken::from_yoctonear(
+            10_000_000_000_000_000_000_000_000,
+        ));
+        ctx.block_timestamp(1000);
+        testing_env!(ctx.build());
+        let mut c = Contract::init(owner());
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        c.create_obligation(
+            obligation_id.to_string(),
+            "policy-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            250000,
+            "TEE".to_string(),
+            hex32("528f5c78da9fd97698f20eb21a5e405aa9aa6aec54ee17218b1060549e3725b6"),
+            1_000_000_000_000_000,
+            1,
+        );
+        c.request_evidence(obligation_id.to_string());
+        let _ = c.request_tee_verification(
+            obligation_id.to_string(),
+            "https://test.fastfs.io/cynexmaster.testnet/outlayer.testnet/528f5c78da9fd97698f20eb21a5e405aa9aa6aec54ee17218b1060549e3725b6.wasm"
+                .to_string(),
+        );
+        c
+    }
+
+    // Run the vault callback as the vault itself, which is what
+    // #[private] requires.
+    fn as_vault(vault: &str) {
+        let vault_id: AccountId = vault.parse().unwrap();
+        let mut ctx = VMContextBuilder::new();
+        ctx.predecessor_account_id(vault_id.clone());
+        ctx.current_account_id(vault_id);
+        ctx.block_timestamp(2000);
+        testing_env!(ctx.build());
+    }
+
+    // The exact output of the live guest v2 run, request 10459. The
+    // digest is the SHA-256 of the fetched file, the alpha is the
+    // three-part form the host builds, and the signature is the real
+    // keystore signature for it.
+    fn tee_output_json() -> serde_json::Value {
+        // Live output of OutLayer request 10459, run with the counter
+        // seed format (obligation id, nonce, counter, digest). The
+        // guest fetched the v1 FastFS file and hashed it, and the VRF
+        // alpha binds the request id, the transaction signer, and that seed.
+        serde_json::json!({
+            "digest": "528f5c78da9fd97698f20eb21a5e405aa9aa6aec54ee17218b1060549e3725b6",
+            "request_id": "10459",
+            "source": "https://test.fastfs.io/cynexmaster.testnet/outlayer.testnet/528f5c78da9fd97698f20eb21a5e405aa9aa6aec54ee17218b1060549e3725b6.wasm",
+            "vrf_alpha": "vrf:10459:cynexmaster.testnet:test-seed-1-0-528f5c78da9fd97698f20eb21a5e405aa9aa6aec54ee17218b1060549e3725b6",
+            "vrf_output": "f3a6e13835b866d19ce15cbe892c7a690c2f75ba4481b6314412a7adf713bde8",
+            "vrf_signature": "b103e1f0cf43b0216024ca27de9de18e41cf104c4d4852f4a995c1fc803655ac9271d9376034c633c73d5c03c360b93fa7a0966d19c7a5c8cf68db0fa43ed509"
+        })
+    }
+
+    #[test]
+    fn request_tee_verification_stores_request() {
+        let c = tee_setup_for("cynex-vault.testnet", "obl-001");
+        let requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
+        let tee = requests.get(&"obl-001".to_string()).unwrap();
+        assert_eq!(
+            tee.evidence_url,
+            "https://test.fastfs.io/cynexmaster.testnet/outlayer.testnet/528f5c78da9fd97698f20eb21a5e405aa9aa6aec54ee17218b1060549e3725b6.wasm"
+        );
+        // The seed is obligation id, nonce, the request counter,
+        // and the committed digest hex, so it is unique per request
+        // and bound to the evidence the vault committed to.
+        assert_eq!(
+            tee.seed,
+            "obl-001-1-0-528f5c78da9fd97698f20eb21a5e405aa9aa6aec54ee17218b1060549e3725b6"
+        );
+        let o = c.get_obligation("obl-001".to_string()).unwrap();
+        assert_eq!(o.state, "EVIDENCE_PENDING");
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_NOT_OWNER")]
+    fn request_tee_verification_rejects_non_owner() {
+        let mut c = tee_setup_for("cynex-vault.testnet", "obl-001");
+        as_other();
+        let _ = c.request_tee_verification(
+            "obl-001".to_string(),
+            "https://example.com/evidence.bin".to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_EVIDENCE_MISMATCH")]
+    fn request_tee_verification_rejects_non_tee() {
+        let evidence = b"delivery-note-001:obl-001:250000".to_vec();
+        let mut c = preimage_setup_at(&evidence, "PREIMAGE", 1_000_000_000_000_000);
+        let _ = c.request_tee_verification(
+            "obl-001".to_string(),
+            "https://example.com/evidence.bin".to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_INVALID_STATE")]
+    fn request_tee_verification_rejects_not_pending() {
+        let mut ctx = VMContextBuilder::new();
+        ctx.predecessor_account_id(owner());
+        ctx.current_account_id("cynex-vault.testnet".parse().unwrap());
+        ctx.account_balance(NearToken::from_yoctonear(
+            10_000_000_000_000_000_000_000_000,
+        ));
+        ctx.block_timestamp(1000);
+        testing_env!(ctx.build());
+        let mut c = Contract::init(owner());
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        c.create_obligation(
+            "obl-001".to_string(),
+            "policy-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            250000,
+            "TEE".to_string(),
+            hex32("528f5c78da9fd97698f20eb21a5e405aa9aa6aec54ee17218b1060549e3725b6"),
+            1_000_000_000_000_000,
+            1,
+        );
+        // No request_evidence, so the obligation is still CREATED.
+        let _ = c.request_tee_verification(
+            "obl-001".to_string(),
+            "https://example.com/evidence.bin".to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_INVALID_STATE")]
+    fn request_tee_verification_rejects_second_request() {
+        let mut c = tee_setup_for("cynex-vault.testnet", "obl-001");
+        let _ = c.request_tee_verification(
+            "obl-001".to_string(),
+            "https://example.com/evidence.bin".to_string(),
+        );
+    }
+
+    #[test]
+    fn on_tee_result_accepts_live_output() {
+        let mut c = tee_setup_for("cynexmaster.testnet", "test-seed");
+        as_vault("cynexmaster.testnet");
+        c.on_tee_result("test-seed".to_string(), Ok(tee_output_json()));
+        let o = c.get_obligation("test-seed".to_string()).unwrap();
+        assert_eq!(o.state, "READY");
+        assert_eq!(o.pending_request_id, None);
+        assert_eq!(o.pending_digest, None);
+        assert_eq!(o.evidence_requested_at_ns, None);
+        let requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
+        assert_eq!(requests.get(&"test-seed".to_string()), None);
+    }
+
+    #[test]
+    fn on_tee_result_rejects_bad_digest() {
+        let mut c = tee_setup_for("cynexmaster.testnet", "test-seed");
+        as_vault("cynexmaster.testnet");
+        let mut value = tee_output_json();
+        value["digest"] =
+            serde_json::json!("0000000000000000000000000000000000000000000000000000000000000000");
+        c.on_tee_result("test-seed".to_string(), Ok(value));
+        let o = c.get_obligation("test-seed".to_string()).unwrap();
+        assert_eq!(o.state, "EVIDENCE_PENDING");
+    }
+
+    #[test]
+    fn on_tee_result_rejects_wrong_source() {
+        let mut c = tee_setup_for("cynexmaster.testnet", "test-seed");
+        as_vault("cynexmaster.testnet");
+        let mut value = tee_output_json();
+        value["source"] = serde_json::json!("https://example.com/other.bin");
+        c.on_tee_result("test-seed".to_string(), Ok(value));
+        let o = c.get_obligation("test-seed".to_string()).unwrap();
+        assert_eq!(o.state, "EVIDENCE_PENDING");
+    }
+
+    #[test]
+    fn on_tee_result_rejects_bad_signature() {
+        let mut c = tee_setup_for("cynexmaster.testnet", "test-seed");
+        as_vault("cynexmaster.testnet");
+        let mut value = tee_output_json();
+        value["vrf_signature"] = serde_json::json!(
+            "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+        );
+        c.on_tee_result("test-seed".to_string(), Ok(value));
+        let o = c.get_obligation("test-seed".to_string()).unwrap();
+        assert_eq!(o.state, "EVIDENCE_PENDING");
+    }
+
+    #[test]
+    fn on_tee_result_rejects_wrong_seed_in_alpha() {
+        let mut c = tee_setup_for("cynexmaster.testnet", "test-seed");
+        as_vault("cynexmaster.testnet");
+        let mut value = tee_output_json();
+        value["vrf_alpha"] = serde_json::json!("vrf:10384:cynexmaster.testnet:other-seed");
+        c.on_tee_result("test-seed".to_string(), Ok(value));
+        let o = c.get_obligation("test-seed".to_string()).unwrap();
+        assert_eq!(o.state, "EVIDENCE_PENDING");
+    }
+
+    #[test]
+    fn on_tee_result_ignores_promise_error() {
+        let mut c = tee_setup_for("cynexmaster.testnet", "test-seed");
+        as_vault("cynexmaster.testnet");
+        c.on_tee_result("test-seed".to_string(), Err(PromiseError::Failed));
+        let o = c.get_obligation("test-seed".to_string()).unwrap();
+        assert_eq!(o.state, "EVIDENCE_PENDING");
+    }
+
+    #[test]
+    fn on_tee_result_ignores_null_output() {
+        let mut c = tee_setup_for("cynexmaster.testnet", "test-seed");
+        as_vault("cynexmaster.testnet");
+        c.on_tee_result("test-seed".to_string(), Ok(serde_json::Value::Null));
+        let o = c.get_obligation("test-seed".to_string()).unwrap();
+        assert_eq!(o.state, "EVIDENCE_PENDING");
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_EVIDENCE_MISMATCH")]
+    fn submit_evidence_rejects_tee_type() {
+        let mut c = tee_setup_for("cynex-vault.testnet", "obl-001");
+        // The owner is an allowlisted verifier here and the proof is the
+        // correct digest, so the only reason this must fail is the type:
+        // a TEE obligation is verified by the guest plus VRF only.
+        c.add_verifier(owner());
+        c.submit_evidence(
+            "obl-001-1".to_string(),
+            "obl-001".to_string(),
+            "ALLOWED".to_string(),
+            "528f5c78da9fd97698f20eb21a5e405aa9aa6aec54ee17218b1060549e3725b6".to_string(),
+        );
+    }
+
+    #[test]
+    fn on_tee_result_failure_drops_record_and_allows_retry() {
+        let mut c = tee_setup_for("cynexmaster.testnet", "test-seed");
+        as_vault("cynexmaster.testnet");
+        let mut value = tee_output_json();
+        value["digest"] =
+            serde_json::json!("0000000000000000000000000000000000000000000000000000000000000000");
+        c.on_tee_result("test-seed".to_string(), Ok(value));
+        let o = c.get_obligation("test-seed".to_string()).unwrap();
+        assert_eq!(o.state, "EVIDENCE_PENDING");
+        // The record is gone, so the owner can file a fresh request.
+        let requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
+        assert_eq!(requests.get(&"test-seed".to_string()), None);
+        // Back as the owner, inside the window, the retry is accepted.
+        let mut ctx = VMContextBuilder::new();
+        ctx.predecessor_account_id(owner());
+        ctx.current_account_id("cynexmaster.testnet".parse().unwrap());
+        ctx.account_balance(NearToken::from_yoctonear(
+            10_000_000_000_000_000_000_000_000,
+        ));
+        ctx.block_timestamp(3000);
+        testing_env!(ctx.build());
+        let _ = c.request_tee_verification(
+            "test-seed".to_string(),
+            "https://test.fastfs.io/cynexmaster.testnet/outlayer.testnet/528f5c78da9fd97698f20eb21a5e405aa9aa6aec54ee17218b1060549e3725b6.wasm"
+                .to_string(),
+        );
+        let requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
+        assert!(requests.get(&"test-seed".to_string()).is_some());
+    }
+
+    #[test]
+    fn on_tee_result_stale_state_drops_record() {
+        // A TeeRequest record exists for an obligation that is no longer
+        // EVIDENCE_PENDING. The callback must drop the record, not leave
+        // it orphaned.
+        let mut c = tee_setup_for("cynexmaster.testnet", "test-seed");
+        // Move the obligation out of EVIDENCE_PENDING by cancelling the
+        // evidence through the timeout path, but restore a record first
+        // so the stale branch has one to drop.
+        let requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
+        let tee = requests.get(&"test-seed".to_string()).unwrap().clone();
+        // Cancel the evidence window: advance past the timeout and mark it.
+        set_time_and_caller(owner(), 1000 + EVIDENCE_TIMEOUT_NS + 1);
+        // mark_evidence_timeout drops the record itself, so re-insert one
+        // to exercise the callback's stale branch in isolation.
+        c.mark_evidence_timeout("test-seed".to_string(), false);
+        let o = c.get_obligation("test-seed".to_string()).unwrap();
+        assert_eq!(o.state, "CANCELLED");
+        let mut requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
+        requests.insert("test-seed".to_string(), tee);
+        as_vault("cynexmaster.testnet");
+        c.on_tee_result("test-seed".to_string(), Ok(tee_output_json()));
+        let requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
+        assert_eq!(requests.get(&"test-seed".to_string()), None);
+        let o = c.get_obligation("test-seed".to_string()).unwrap();
+        assert_eq!(o.state, "CANCELLED");
+    }
+
+    #[test]
+    fn mark_evidence_timeout_drops_tee_record() {
+        let mut c = tee_setup_for("cynexmaster.testnet", "test-seed");
+        let requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
+        assert!(requests.get(&"test-seed".to_string()).is_some());
+        set_time_and_caller(owner(), 1000 + EVIDENCE_TIMEOUT_NS + 1);
+        c.mark_evidence_timeout("test-seed".to_string(), false);
+        let requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
+        assert_eq!(requests.get(&"test-seed".to_string()), None);
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_EVIDENCE_EXPIRED")]
+    fn request_tee_verification_rejects_after_expiry() {
+        let mut c = tee_setup_for("cynexmaster.testnet", "test-seed");
+        // The obligation expires at 1e15; move past it and retry.
+        set_time_and_caller(owner(), 1_000_000_000_000_001);
+        let _ = c.request_tee_verification(
+            "test-seed".to_string(),
+            "https://example.com/evidence.bin".to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_EVIDENCE_EXPIRED")]
+    fn request_tee_verification_rejects_after_evidence_timeout() {
+        let mut c = tee_setup_for("cynexmaster.testnet", "test-seed");
+        set_time_and_caller(owner(), 1000 + EVIDENCE_TIMEOUT_NS + 1);
+        let _ = c.request_tee_verification(
+            "test-seed".to_string(),
+            "https://example.com/evidence.bin".to_string(),
+        );
+    }
+
+    #[test]
+    fn on_tee_result_after_evidence_timeout_stays_pending() {
+        let mut c = tee_setup_for("cynexmaster.testnet", "test-seed");
+        as_vault("cynexmaster.testnet");
+        // Rebuild the context past the evidence timeout, keeping the
+        // vault as the caller so the private callback is allowed.
+        let vault_id: AccountId = "cynexmaster.testnet".parse().unwrap();
+        let mut ctx = VMContextBuilder::new();
+        ctx.predecessor_account_id(vault_id.clone());
+        ctx.current_account_id(vault_id);
+        ctx.block_timestamp(1000 + EVIDENCE_TIMEOUT_NS + 1);
+        testing_env!(ctx.build());
+        c.on_tee_result("test-seed".to_string(), Ok(tee_output_json()));
+        let o = c.get_obligation("test-seed".to_string()).unwrap();
+        assert_eq!(o.state, "EVIDENCE_PENDING");
+        let requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
+        assert_eq!(requests.get(&"test-seed".to_string()), None);
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_INSUFFICIENT_BALANCE")]
+    fn request_tee_verification_rejects_insufficient_balance() {
+        // Build a TEE obligation in EVIDENCE_PENDING with no TeeRequest
+        // record yet, and a zero vault balance. The only reason the
+        // request must fail is the balance.
+        let mut ctx = VMContextBuilder::new();
+        ctx.predecessor_account_id(owner());
+        ctx.current_account_id("cynex-vault.testnet".parse().unwrap());
+        // The builder defaults the balance to 100 NEAR, which would pass
+        // the check. Set it to zero so the balance guard is what fails.
+        ctx.account_balance(NearToken::from_yoctonear(0));
+        ctx.block_timestamp(1000);
+        testing_env!(ctx.build());
+        let mut c = Contract::init(owner());
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        c.create_obligation(
+            "obl-001".to_string(),
+            "policy-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            250000,
+            "TEE".to_string(),
+            hex32("528f5c78da9fd97698f20eb21a5e405aa9aa6aec54ee17218b1060549e3725b6"),
+            1_000_000_000_000_000,
+            1,
+        );
+        c.request_evidence("obl-001".to_string());
+        let _ = c.request_tee_verification(
+            "obl-001".to_string(),
+            "https://example.com/evidence.bin".to_string(),
+        );
+    }
+
+    #[test]
+    fn request_tee_verification_colon_obligation_id() {
+        // An obligation id containing ':' must still derive a seed the
+        // callback can parse, because the alpha is split on the first
+        // three colons only.
+        let c = tee_setup_for("cynex-vault.testnet", "obl:001");
+        let requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
+        let tee = requests.get(&"obl:001".to_string()).unwrap();
+        // The seed is obligation id, nonce, the request counter,
+        // and the committed digest hex, so a colon in the id stays
+        // intact and the seed is unique per request.
+        assert_eq!(
+            tee.seed,
+            "obl:001-1-0-528f5c78da9fd97698f20eb21a5e405aa9aa6aec54ee17218b1060549e3725b6"
+        );
+        let o = c.get_obligation("obl:001".to_string()).unwrap();
+        assert_eq!(o.state, "EVIDENCE_PENDING");
+    }
+
+    #[test]
+    fn on_tee_result_rejects_replayed_old_alpha() {
+        // The request 10384 output used the old seed format
+        // ("test-seed-1", no timestamp, no digest). The current
+        // TeeRequest records the new seed, so the replayed alpha's
+        // seed does not match and the obligation stays pending.
+        let mut c = tee_setup_for("cynexmaster.testnet", "test-seed");
+        as_vault("cynexmaster.testnet");
+        let old = serde_json::json!({
+            "digest": "528f5c78da9fd97698f20eb21a5e405aa9aa6aec54ee17218b1060549e3725b6",
+            "request_id": "10384",
+            "source": "https://test.fastfs.io/cynexmaster.testnet/outlayer.testnet/528f5c78da9fd97698f20eb21a5e405aa9aa6aec54ee17218b1060549e3725b6.wasm",
+            "vrf_alpha": "vrf:10384:cynexmaster.testnet:test-seed-1",
+            "vrf_output": "b7a556fd83ded2980137572e812d2e339e8cdf3199007744947597907f11778e",
+            "vrf_signature": "365d731eec3dd08003f36ec8dd3e987f377394110faffd995b45bb448bcb03f0f70a8bad9392ff6da7a1e6e53c31a1b437d10bf2e0667e30daf7d13dd460f805"
+        });
+        c.on_tee_result("test-seed".to_string(), Ok(old));
+        let o = c.get_obligation("test-seed".to_string()).unwrap();
+        assert_eq!(o.state, "EVIDENCE_PENDING");
+        let requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
+        assert!(requests.get(&"test-seed".to_string()).is_none());
+    }
+
+    #[test]
+    fn on_tee_result_rejects_replay_same_timestamp_retry() {
+        // Sol's prescribed test: a failed callback drops the record,
+        // the owner retries at the SAME block timestamp, and the first
+        // request's correctly signed new-format alpha must be rejected
+        // on the retry, because the counter gives the retry a fresh
+        // seed even though the timestamp did not advance.
+        let mut c = tee_setup_for("cynexmaster.testnet", "test-seed");
+        // First request used counter 0. Fail it with a bad digest.
+        as_vault("cynexmaster.testnet");
+        let bad = serde_json::json!({
+            "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+            "request_id": "10459",
+            "source": "https://test.fastfs.io/cynexmaster.testnet/outlayer.testnet/528f5c78da9fd97698f20eb21a5e405aa9aa6aec54ee17218b1060549e3725b6.wasm",
+            "vrf_alpha": "vrf:10459:cynexmaster.testnet:test-seed-1-0-528f5c78da9fd97698f20eb21a5e405aa9aa6aec54ee17218b1060549e3725b6",
+            "vrf_output": "f3a6e13835b866d19ce15cbe892c7a690c2f75ba4481b6314412a7adf713bde8",
+            "vrf_signature": "b103e1f0cf43b0216024ca27de9de18e41cf104c4d4852f4a995c1fc803655ac9271d9376034c633c73d5c03c360b93fa7a0966d19c7a5c8cf68db0fa43ed509"
+        });
+        c.on_tee_result("test-seed".to_string(), Ok(bad));
+        let o = c.get_obligation("test-seed".to_string()).unwrap();
+        assert_eq!(o.state, "EVIDENCE_PENDING");
+        // Retry at the SAME timestamp (1000). The counter advanced, so
+        // the retry's seed is test-seed-1-1-..., not test-seed-1-0-...
+        // The signer is set explicitly to cynexmaster.testnet so the
+        // retry records the same sender as the first request: only the
+        // seed differs, so the replay rejection isolates the seed check
+        // instead of the sender check.
+        let mut ctx = VMContextBuilder::new();
+        ctx.predecessor_account_id(accounts(0));
+        ctx.signer_account_id("cynexmaster.testnet".parse().unwrap());
+        ctx.current_account_id("cynex-vault.testnet".parse().unwrap());
+        ctx.block_timestamp(1000);
+        testing_env!(ctx.build());
+        let _ = c.request_tee_verification(
+            "test-seed".to_string(),
+            "https://test.fastfs.io/cynexmaster.testnet/outlayer.testnet/528f5c78da9fd97698f20eb21a5e405aa9aa6aec54ee17218b1060549e3725b6.wasm".to_string(),
+        );
+        let requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
+        let tee = requests.get(&"test-seed".to_string()).unwrap();
+        assert_eq!(
+            tee.seed,
+            "test-seed-1-1-528f5c78da9fd97698f20eb21a5e405aa9aa6aec54ee17218b1060549e3725b6"
+        );
+        // Now replay the first request's correctly signed alpha on the
+        // retry. It must be rejected: the seed does not match.
+        as_vault("cynexmaster.testnet");
+        c.on_tee_result("test-seed".to_string(), Ok(tee_output_json()));
+        let o = c.get_obligation("test-seed".to_string()).unwrap();
+        assert_eq!(o.state, "EVIDENCE_PENDING");
+        let requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
+        assert!(requests.get(&"test-seed".to_string()).is_none());
+    }
+
+    #[test]
+    fn on_tee_result_rejects_wrong_recorded_sender() {
+        // A valid signature for the live alpha (sender
+        // cynexmaster.testnet) must still be rejected when the request
+        // was filed by a different signer. This proves the sender check
+        // is doing work, not just the signature check. The request is
+        // filed through the real path with signer other.testnet, so the
+        // recorded sender is other.testnet while the live output's
+        // sender is cynexmaster.testnet.
+        let mut ctx = VMContextBuilder::new();
+        ctx.predecessor_account_id(owner());
+        ctx.signer_account_id("other.testnet".parse().unwrap());
+        ctx.current_account_id("cynexmaster.testnet".parse().unwrap());
+        ctx.account_balance(NearToken::from_yoctonear(
+            10_000_000_000_000_000_000_000_000,
+        ));
+        ctx.block_timestamp(1000);
+        testing_env!(ctx.build());
+        let mut c = Contract::init(owner());
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        c.create_obligation(
+            "test-seed".to_string(),
+            "policy-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            250000,
+            "TEE".to_string(),
+            hex32("528f5c78da9fd97698f20eb21a5e405aa9aa6aec54ee17218b1060549e3725b6"),
+            1_000_000_000_000_000,
+            1,
+        );
+        c.request_evidence("test-seed".to_string());
+        let _ = c.request_tee_verification(
+            "test-seed".to_string(),
+            "https://test.fastfs.io/cynexmaster.testnet/outlayer.testnet/528f5c78da9fd97698f20eb21a5e405aa9aa6aec54ee17218b1060549e3725b6.wasm"
+                .to_string(),
+        );
+        as_vault("cynexmaster.testnet");
+        c.on_tee_result("test-seed".to_string(), Ok(tee_output_json()));
+        let o = c.get_obligation("test-seed".to_string()).unwrap();
+        assert_eq!(o.state, "EVIDENCE_PENDING");
+        let requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
+        assert!(requests.get(&"test-seed".to_string()).is_none());
+    }
+
+    #[test]
+    fn on_tee_result_accepts_live_output_vault_differs_from_signer() {
+        // The discriminating accept test: the vault is
+        // cynex-vault.testnet but the signer is cynexmaster.testnet, the
+        // live topology that produced the defect. The live output must
+        // go READY. Under the old vault-based sender check this would
+        // fail, because the alpha sender (cynexmaster.testnet) is not
+        // the vault.
+        let mut c = tee_setup_for("cynex-vault.testnet", "test-seed");
+        as_vault("cynex-vault.testnet");
+        c.on_tee_result("test-seed".to_string(), Ok(tee_output_json()));
+        let o = c.get_obligation("test-seed".to_string()).unwrap();
+        assert_eq!(o.state, "READY");
+        assert_eq!(o.pending_request_id, None);
+        assert_eq!(o.pending_digest, None);
+        assert_eq!(o.evidence_requested_at_ns, None);
+        let requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
+        assert!(requests.get(&"test-seed".to_string()).is_none());
     }
 }
