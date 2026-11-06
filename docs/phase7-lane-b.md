@@ -310,9 +310,14 @@ Stated exactly, so they can be audited:
   ALLOW path is proven by the tests, not by a live sample.
 - **Console gate not exercised live by Lane B.** The console
   needs the agent key, which Lane A holds, so the live console
-  run with the gate is the section 2.6 audit step, as in Phase 6.
-  The gate logic itself is covered by tests, and the CLI
-  reputation command was run live.
+  run with the gate was the section 2.6 audit step, as in Phase 6.
+  The audit ran it live twice on the test vault: the escalate path
+  (fresh p7-audit-004, WARN, exit 1, no settle attempted, obligation
+  stayed READY) and the approve path with CYNEX_APPROVE_WARN=1
+  (fresh p7-audit-005, settle 7HHtxoHX7bvYpRmdm5pyhwhBWWRiCUHiGPMDye8F1oKh,
+  PAID, agent balance 0 to 100 exactly, receipt index 7). Lane B
+  independently re-queried all seven audit transactions and the
+  resulting state, 0 mismatches. The gate gap is closed by the audit.
 - **No code-change history.** Not claimed, not built; it needs
   an archival source or indexer we are not building.
 - **acme does not exist.** See the finding above. Any future
@@ -320,6 +325,22 @@ Stated exactly, so they can be audited:
   exists, or the owner should decide explicitly with the WARN
   in front of them.
 
-## No contract changes, no frozen doc changes, no signing in this work
+## Phase 7 close confirmation (Lane B)
 
-Lane B sign-off and section 2.6 audit still pending.
+The section 2.6 audit PASS (2026-11-06, 24 itemized checks, no
+blocking findings) is on record in the audit file supplied
+2026-11-06. Lane B independently verified the audit's live claims
+via RPC: all seven audit transactions re-queried (0 mismatches),
+the resulting state read live (p7-audit-004 READY, p7-audit-005
+PAID, test receipt 7 p7-audit-005 amount 100, test policy p6-001
+spent 3100, agent balance 100, production unchanged), acme
+UNKNOWN_ACCOUNT on three RPC endpoints, and the block 276445952
+header timestamp confirming the 65 ns snapshot rounding observation
+(same millisecond). The acme finding and the snapshot timestamp
+observation are recorded in docs/ledger.md; neither blocks Phase 7
+close. There is no contract change in Phase 7, so there is no
+corrections draft to apply.
+
+Lane B signed in docs/ledger.md on 2026-11-06. Lane A signature
+and merge remain outstanding, so the phase is not closed by this
+signature.
