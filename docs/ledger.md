@@ -241,10 +241,11 @@ Sign-off: Johnson, 2026-11-06
 
 ## Phase 9: Three-layer verification (on-chain preimage, TEE provenance, VRF anchor)
 
-Status: Phase 9 NOT closed. Lane A shipped and proven live; Lane B
+Status: CLOSED 2026-11-06. Lane A shipped and proven live; Lane B
 acceptance audit PASSED 2026-11-06 and Johnson signed the Lane B
-acceptance below; Adejoke's Lane B sign is recorded below.
-Still pending before close: the joint fresh-clone reproduction.
+acceptance below; Adejoke's Lane B sign is recorded below. The joint
+fresh-clone reproduction PASSED 2026-11-06 (see the reproduction entry
+at the end of this section).
 
 Evidence:
 - Lane A: Master 42c9bf6 (layer 1, bounded on-chain preimage evidence,
@@ -411,3 +412,30 @@ funded 1000000000); receipts 11; agent balance 700. fj-prod-pre-002 stays
 EVIDENCE_PENDING and fj-prod-tee-001 stays READY (unsettled, per scope);
 neither holds a reservation or funds. The dead Phase 9 production obligations
 (p9-prod-preimage-001, p9-prod-tee-001, READY but EXPIRED) were not touched.
+
+- Joint fresh-clone reproduction, 2026-11-06, the last Phase 9 close
+  item: fresh clone of Master 84f0d54 into a clean directory, the
+  documented commands run exactly as written. Contract: `cargo test
+  --lib` PASS (125 tests, 0 failed); `cargo clippy --all-targets --
+  -D warnings` FAILS on the default Rust 1.99.0 with the new
+  `clippy::chunks_exact_to_as_chunks` lint (src/lib.rs:67,
+  `chunks_exact(2)`), PASSES with RUSTUP_TOOLCHAIN=1.93.0; `cargo
+  near build non-reproducible-wasm` PASS (cynex_vault.wasm, 265,737
+  bytes). Frontend: `npm install` PASS (379 packages); `npm run
+  typecheck` PASS; `npm run jest` FAILS as documented in a fresh
+  checkout (3 suites, "Cannot find module 'near-api-js'"), PASSES
+  119/119 with NODE_PATH set to frontend/node_modules. Console: the
+  documented `npx tsc` line emits known `near-api-js` type errors
+  (TS2307, exit 2) but emits working JS (console.js, 28,133 bytes);
+  `node dist-test/agent/console.js` prints its usage, `node
+  dist-test/cli/cynex.js` prints the full usage listing. No live
+  console run was performed in the reproduction; the console's live
+  behaviour was already proven on production and the test vault.
+  Four trivial README doc corrections were made with this
+  reproduction (toolchain 1.93.0, `npm install`, NODE_PATH for jest,
+  the tsc type-error note). No code was changed. The `chunks_exact`
+  clippy finding is recorded as a code-level item (the code could use
+  `as_chunks::<2>().0` or an `#[allow]`), not fixed here. Full report
+  held outside the repo at cynex-system/phase9-fresh-clone-reproduction.md.
+
+Sign-off: Johnson (Phase 9 close, fresh-clone reproduction PASSED), 2026-11-06

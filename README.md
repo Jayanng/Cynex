@@ -149,23 +149,38 @@ git clone https://github.com/Jayanng/Cynex.git
 cd Cynex
 ```
 
-Contract, from `contract/`:
+Contract, from `contract/`. The repo targets Rust 1.93.0. A newer
+default toolchain fails `cargo clippy` on a lint that did not exist
+in 1.93 (`clippy::chunks_exact_to_as_chunks`, on the `chunks_exact(2)`
+call in `src/lib.rs`), so run the commands with 1.93.0:
 
 ```sh
-cargo test --lib
-cargo clippy --all-targets -- -D warnings
-cargo near build non-reproducible-wasm
+RUSTUP_TOOLCHAIN=1.93.0 cargo test --lib
+RUSTUP_TOOLCHAIN=1.93.0 cargo clippy --all-targets -- -D warnings
+RUSTUP_TOOLCHAIN=1.93.0 cargo near build non-reproducible-wasm
 ```
 
-Frontend, from `frontend/`:
+Frontend, from `frontend/`. Install dependencies first; a fresh
+checkout has no `node_modules`:
 
 ```sh
+npm install
 npm run typecheck
-npm run jest
+```
+
+`npm run jest` needs `NODE_PATH` set to the frontend `node_modules`
+in a fresh checkout, or the three suites that import `near-api-js`
+fail to load with "Cannot find module 'near-api-js'":
+
+```sh
+NODE_PATH=$PWD/node_modules npm run jest
 ```
 
 Console, from `frontend/`: compile the TypeScript with the frontend
 `tsc` binary, then run the console with the environment below. The
+`tsc` line emits known `near-api-js` type errors (TS2307) and exits
+non-zero, but it still emits working JavaScript; the errors are
+expected, the emitted `dist-test/` is what matters. The
 console creates the obligation, requests evidence, verifies the
 evidence, and settles with the agent's scoped key, reading the
 obligation and the recipient balance back from chain after each step.
