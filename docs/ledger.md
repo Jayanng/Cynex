@@ -210,6 +210,35 @@ Evidence:
 Sign-off: rastadev (Lane B), 2026-11-06
 
 
+## Phase 8: OutLayer spike (TEE route investigation)
+
+Status: CLOSED. Investigation complete, verdict recorded. The spike
+report is committed as Master a6dbd30 and pushed 2026-11-06.
+
+- Scope: investigate OutLayer as the TEE route for Phase 9 layer 2,
+  via GitHub-source request_execution and FastFS hosting.
+- Verdict: DO NOT integrate OutLayer. TRUSTED_RELAYER remains the
+  single trust mode.
+- Evidence: two live GitHub-source request_execution calls produced
+  no verifiable execution. One left pending with no worker resolve
+  tx and no attestation; the retry failed with 'Execution promise
+  failed'. Only 0.001 NEAR base fee was charged. FastFS hosting also
+  failed: three on-chain upload calls failed at the NEAR level, the
+  file was never served, so the WasmUrl path was never successfully
+  exercised. A successful verification would cost only about 0.001
+  to 0.0021 NEAR, so cost is not the blocker, reliability is.
+- Reviews: round 1 all FAIL with fixes applied, round 2 all PASS.
+  Sol gate FAILED with 7 findings, all fixed and verified, including
+  a real callback-type error.
+- Full report: docs/spike-outlayer.md.
+- Note: the OutLayer CLI Project flow (pre-published WASM, no
+  Payment Key on testnet) was found later during the Phase 9
+  workaround investigation and became the working TEE route. The
+  Phase 8 verdict stands for the GitHub-source route it investigated.
+
+Sign-off: Johnson, 2026-11-06
+
+
 ## Phase 9: Three-layer verification (on-chain preimage, TEE provenance, VRF anchor)
 
 Status: Phase 9 NOT closed. Lane A shipped and proven live; Lane B
