@@ -64,7 +64,8 @@ fn hex_decode(s: &str) -> Option<Vec<u8>> {
         _ => None,
     };
     let mut out = Vec::with_capacity(bytes.len() / 2);
-    for pair in bytes.chunks_exact(2) {
+    let (pairs, _) = bytes.as_chunks::<2>();
+    for pair in pairs {
         let hi = digit(pair[0])?;
         let lo = digit(pair[1])?;
         out.push((hi << 4) | lo);
@@ -1429,6 +1430,12 @@ impl Contract {
         if policy.token_id != token_id {
             return amount;
         }
+        // A zero-amount funding call credits nothing, so it must not
+        // touch storage: the checked_add below would pass, but the
+        // insert after it would rewrite an unchanged policy.
+        if amount.0 == 0 {
+            return U128(0);
+        }
         // Over-budget funding is refused, not credited: the excess
         // would be inert (settle caps by limit) but locked, with no
         // withdrawal path. The full amount is returned unused, matching
@@ -1471,6 +1478,9 @@ impl Contract {
         // evidence_ref is frozen in the settle signature for off-chain audit,
         // it is not an on-chain booking field; terms are read from state.
         let _ = evidence_ref;
+        // One timestamp for the whole call: the expiry check and the
+        // dispatch timestamp below read the same block time.
+        let now = env::block_timestamp();
         let mut obligation = self
             .obligations
             .get(&obligation_id)
@@ -1503,7 +1513,7 @@ impl Contract {
         );
         require!(obligation.amount == proposed_amount.0, "ERR_TERMS_MISMATCH");
         require!(
-            env::block_timestamp() <= obligation.expires_at_ns,
+            now <= obligation.expires_at_ns,
             "ERR_OBLIGATION_EXPIRED"
         );
         let mut policy = self
@@ -1554,7 +1564,7 @@ impl Contract {
             .checked_add(1)
             .unwrap_or_else(|| env::panic_str("ERR_NONCE_ALREADY_CONSUMED"));
         let attempt = obligation.transfer_attempt;
-        obligation.transfer_dispatched_at_ns = Some(env::block_timestamp());
+        obligation.transfer_dispatched_at_ns = Some(now);
         let policy_id = obligation.policy_id.clone();
         let token_id = policy.token_id.clone();
         let recipient = obligation.recipient.clone();
@@ -1565,15 +1575,15 @@ impl Contract {
         // settle that has written TRANSFER_PENDING must also hold the lock,
         // or the lock would not cover the window the promise is in flight.
         set_token_lock(&token_id);
-        let args = serde_json::json!({
-            "receiver_id": recipient,
-            "amount": amount.to_string(),
-            "memo": null,
-        });
         Promise::new(token_id)
             .function_call(
                 "ft_transfer".to_string(),
-                serde_json::to_vec(&args).unwrap(),
+                serde_json::to_vec(&serde_json::json!({
+                    "receiver_id": recipient,
+                    "amount": amount.to_string(),
+                    "memo": null,
+                }))
+                .unwrap(),
                 NearToken::from_yoctonear(1),
                 FT_TRANSFER_GAS,
             )
@@ -1629,7 +1639,9 @@ impl Contract {
         env::log_str(&format!("EVENT_JSON:{}", serde_json::to_string(&serde_json::json!({"standard": "nep297", "version": "1.0.0", "event": "receipt", "data": [{"index": receipt.index, "obligation_id": &receipt.obligation_id, "recipient": &receipt.recipient, "amount": receipt.amount.to_string(), "token_id": &receipt.token_id, "timestamp": receipt.timestamp, "prev_hash": receipt.prev_hash.iter().map(|b| format!("{:02x}", b)).collect::<String>(), "tx_ref": &receipt.tx_ref}]})).unwrap_or_default()));
         let mut map: LookupMap<u64, Receipt> = LookupMap::new(b"r");
         map.insert(index, receipt);
-        map.flush();
+        // No explicit flush: a near-sdk store LookupMap flushes on drop,
+        // so the insert above is written to storage when map goes out of
+        // scope at the end of this function.
         self.receipt_index = self.receipt_index.saturating_add(1);
         self.last_receipt_hash = hash;
     }
@@ -1808,6 +1820,17 @@ mod tests {
     }
 
     #[test]
+    fn hex_decode_accepts_even_and_rejects_odd_or_bad() {
+        assert_eq!(hex_decode(""), Some(vec![]));
+        assert_eq!(hex_decode("00ffab"), Some(vec![0x00, 0xff, 0xab]));
+        assert_eq!(hex_decode("AB"), Some(vec![0xab]));
+        assert_eq!(hex_decode("0"), None);
+        assert_eq!(hex_decode("abc"), None);
+        assert_eq!(hex_decode("zz"), None);
+        assert_eq!(hex_decode("0g"), None);
+    }
+
+    #[test]
     fn owner_can_create_policy_and_obligation() {
         let mut c = setup_owner();
         c.create_policy(
@@ -1942,6 +1965,18 @@ mod tests {
             "not json".to_string(),
         );
         assert_eq!(refunded.0, 100);
+        assert_eq!(
+            c.get_policy("policy-001".to_string()).unwrap().funded,
+            250000000
+        );
+        // A zero-amount funding call credits nothing and returns zero
+        // unused: no storage write, funded stays exactly as it was.
+        let zero = c.ft_on_transfer(
+            "cynexmaster.testnet".parse().unwrap(),
+            U128(0),
+            "{\"fund_policy\": \"policy-001\"}".to_string(),
+        );
+        assert_eq!(zero.0, 0);
         assert_eq!(
             c.get_policy("policy-001".to_string()).unwrap().funded,
             250000000
