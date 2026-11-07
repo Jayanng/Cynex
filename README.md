@@ -80,6 +80,73 @@ itself out if the gas allowance runs out. Keep the agent's allowance
 topped up, and keep a full-access key for the agent account somewhere
 safe, outside this repo, so the scope can be repaired.
 
+## On-chain enforcement
+
+The contract enforces the terms, not the agent and not the console. Every
+check below runs in the vault itself, so a compromised agent, a spoofed UI,
+or a lying courier cannot change the outcome.
+
+- Recipient: settle reads the recipient from the obligation in state and
+  compares it to the proposed recipient. A mismatch rejects with
+  RECIPIENT_SUBSTITUTION. The check lives in the contract, not in the
+  console.
+- Amount: settle reads the amount from the obligation in state and
+  compares it to the proposed amount. A mismatch rejects with
+  TERMS_MISMATCH.
+- Replay: a one-time nonce is consumed and locked on the first settle
+  attempt. A duplicate attempt rejects with NONCE_ALREADY_CONSUMED, even
+  while the first attempt is still in flight.
+- Budget: settle checks spent plus reserved plus amount against the policy
+  limit and the funded amount, using checked arithmetic, and reserves
+  synchronously before any promise is returned, so two concurrent settle
+  calls cannot both pass and both pay. A breach rejects with
+  BUDGET_EXCEEDED.
+- Evidence: the obligation moves to READY only when the evidence matches
+  the digest committed at authorization. For layer 1 the vault hashes the
+  bytes itself. For layers 2 and 3 the vault checks the guest-reported
+  digest and source plus the VRF signature. The TDX quote itself is verified
+  off chain through OutLayer's attestation endpoint, not on chain; what the
+  vault checks on chain is the digest, the source, and the VRF signature.
+  A mismatch changes no state.
+- Expiry: settle after expires_at_ns rejects with OBLIGATION_EXPIRED.
+  Expiry alone does not auto-cancel, because auto-cancel would hide a
+  missed settlement.
+- Timeout: a transfer that does not complete within the transfer timeout
+  escalates to reconciliation, and evidence that never arrives never moves
+  an obligation to READY by default.
+
+The frozen API, the digest format, the timeouts, and the reason codes are
+in `docs/contract-api.md`.
+
+## Security model
+
+The agent is assumed compromised. Its prompt, its inputs, and any data it
+carries may be attacker controlled. The attacker can submit any settle call
+the scoped key allows, with any arguments. The attacker cannot sign as the
+owner, cannot add keys, and cannot call other contracts with the agent key.
+The owner key is human held and never on the executor host.
+
+What the vault assumes: the owner authorizes obligations with care, because
+the vault enforces the terms the human set, it does not judge whether those
+terms are wise. The verifier set is owner managed, and evidence from anyone
+outside it is rejected. The token ledger in the vault is authoritative; the
+token balance on the account is not, on its own, the ledger.
+
+What function-call keys do NOT prevent: the key scopes which method can be
+called, it does not limit token spending, the vault does that. The key does
+not prevent the agent from calling settle on a READY obligation, that is by
+design, and the vault re-checks every term before it pays. The key does not
+prevent a compromised agent from trying bad terms, the vault rejects them
+on-chain. The key does not prevent the owner from authorizing a bad
+obligation, that judgment belongs to the human at authorization time. The
+key does not prove a real-world delivery happened, and neither does a TEE
+attestation, which proves a verifier ran untampered over given inputs, not
+that a counterparty is honest.
+
+Reputation signals are detection, not prevention. They inform the owner
+before settlement, they do not replace the on-chain checks. The full threat
+model is in `docs/threat-model.md`.
+
 ## The three layers of evidence verification
 
 No single layer trusts another.
@@ -109,20 +176,29 @@ with `env::ed25519_verify`, bound to the pending request.
 
 Oversized evidence keeps the labeled fallback, TRUSTED_RELAYER: the owner
 as the verifier, named as trusted, never presented as trustless. Layers 2
-and 3 ship only if the live test proves the guest fetch and the
-attestation work. If either fails, Phase 9 ships layer 1 plus the
-fallback, not a broken TEE layer.
+and 3 shipped in Phase 9 and were proven live on testnet: a TEE obligation
+went READY through the full guest fetch and VRF path on OutLayer request
+10640, with a real TDX quote binding the input and output hashes. The
+fallback stays for oversized evidence, not as a substitute for a broken
+TEE layer.
 
 ## The reputation check
 
-Before the agent settles, the console checks the recipient against four
+Before the agent settles, the console checks the recipient against five
 sourced signals: the account exists on-chain and its current code hash,
 the account age as a lower bound from snapshots, prior interactions with
-this vault from the receipts, and a shared blocklist when one is
-configured. The answer is ALLOW, WARN, or BLOCK, with reasons. BLOCK
+this vault from the receipts, a shared blocklist when one is configured,
+and whether the receiver's contract code changed recently. The code-change
+signal compares the current code hash to a snapshot baseline and, when the
+code changed, uses the NearBlocks v3 deployment timestamp for the exact
+age: BLOCK if the change is within 24 hours or the account has no other
+history, WARN if within 7 days, ALLOW if the code has not changed or is
+stable for over 7 days. No contract and first observation are neutral, not
+a penalty. The answer is ALLOW, WARN, or BLOCK, with reasons. BLOCK
 refuses outright. WARN goes to the owner for a decision and never settles
 silently. Unknown maps to WARN, never to a silent ALLOW. The full spec is
-in `docs/phase7-lane-b.md`.
+in `docs/phase7-lane-b.md`, and the fifth signal is in
+`docs/scorecard-code-change-recency.md`.
 
 ## The attack demo
 
@@ -275,6 +351,7 @@ weaker than the on-chain check, not stronger.
 - `docs/spike-outlayer.md`, the OutLayer spike report and verdict
 - `docs/phase6-attack-transcript.md`, the attack demo log
 - `docs/phase7-lane-b.md`, the reputation engine
+- `docs/deployment.md`, where the vaults are deployed and how to verify them
 
 Track: NEAR Hackathon 2026, AI Security and Defense. Submission deadline:
 14 November 2026, 23:59 UTC.
