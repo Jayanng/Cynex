@@ -1,5 +1,7 @@
 # Cynex
 
+AI agents now hold wallets and spend money, but a single compromised prompt can drain them, because nothing enforces that a payment matches what the human actually authorized.
+
 Cynex is a purpose-bound settlement vault for AI agents on NEAR.
 Pay the obligation. Not the prompt.
 
@@ -30,12 +32,11 @@ authorization time.
 ## Status
 
 Testnet throughout. The vault is deployed at
-`cynex-vault.cynexmaster.testnet`. Phases 0 through 8 are closed. Phase 9
-is in progress: the three-layer verification described below. The repo
+`cynex-vault.cynexmaster.testnet`. Phases 0 through 9 are closed. The repo
 goes public on 13 November 2026.
 
-Live state, last verified 2026-11-06: policy-001 funded 1,000,000,000,
-spent 975,001,000, reserved 0, frozen false, 8 receipts. The token is
+Live state, last verified 2026-11-07: policy-001 funded 1,000,000,000,
+spent 975,001,000, reserved 0, frozen false, 11 receipts. The token is
 `usdc.fakes.testnet` (USDC.e, 6 decimals). The full ledger is in
 `docs/ledger.md`.
 
