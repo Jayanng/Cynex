@@ -478,4 +478,29 @@ Evidence:
   EVIDENCE_PENDING), p9-prod-preimage-001 and p9-prod-tee-001
   still READY.
 
-Sign-off: pending the section 2.6 audit.
+- Lane B acceptance audit, section 2.6, 2026-11-07: PASS. All six
+  acceptance criteria met, no blocking findings, no code change
+  requested. Auditor verified: Jest 135/135 in 12 suites, frontend
+  typecheck clean, conformance 6/6, live proof on testnet for all
+  four cases (no change ALLOW, first observation neutral, no
+  contract neutral with ALLOW score 1.000, production vault BLOCK
+  on the code change at 7.4h exact age), gate tested directly
+  (BLOCK refuses and names code_change_recency, WARN escalates,
+  ALLOW proceeds). Three PARTIALs, none a defect, none needing a
+  fix: (1) scaffold typecheck has 5 pre-existing near-api-js
+  errors, identical on Master, none in the new code - "scaffold
+  typecheck clean" in the PR is only true as "no new errors";
+  (2) the NearBlocks indexer missed the Phase 9 deployment tx in
+  its list (third-party data gap; the signal handles it by taking
+  the max timestamp and falling back to the window); (3) the
+  ledger live state in this entry (10 receipts, spent 200, agent
+  500) was true when written on 2026-11-06 and has since moved to
+  11, 300, 700 - accurate as a delivery-time record. Lane B
+  independently re-verified before signing: Jest 135/135, frontend
+  typecheck clean, conformance 6/6, and the production vault BLOCK
+  live on the current code (judge's fixes deployment E2Uq5FzN,
+  tx Ba8uDygsaACrGS9mMtjjiuCoTdNmy34gLdmKBm7PwJUr, age 8.1h) -
+  the signal has now caught a second real code change after the
+  Phase 9 one.
+
+Sign-off: rastadev (Lane B), 2026-11-07
