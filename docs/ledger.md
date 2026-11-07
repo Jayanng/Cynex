@@ -504,3 +504,5 @@ Evidence:
   Phase 9 one.
 
 Sign-off: rastadev (Lane B), 2026-11-07
+
+Sign-off: Johnson (fifth signal Lane B acceptance, section 2.6 audit PASSED), 2026-11-07
