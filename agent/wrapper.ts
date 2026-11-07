@@ -10,9 +10,11 @@
  * Phase 7: the reputation gate. Before the agent settles, the
  * console checks the recipient's reputation (see
  * services/reputation) and applies the gate here:
- * - BLOCK: the counterparty is on a named blocklist. Refuse.
- *   No settle is attempted, and the refusal names the signal
- *   and its source.
+ * - BLOCK: the counterparty is on a named blocklist, or the
+ *   code_change_recency signal fires BLOCK (the receiver's
+ *   contract code changed very recently, or it changed and the
+ *   receiver has no other history). Refuse. No settle is
+ *   attempted, and the refusal names the signal and its source.
  * - WARN: the counterparty has too little sourced history. The
  *   settle does not go through silently; it goes to the owner
  *   for a decision. Without explicit owner approval the gate
@@ -61,13 +63,20 @@ export function gateSettleOnReputation(
 ): GateResult {
   if (report.verdict === "BLOCK") {
     const blocklist = report.signals.find((s) => s.name === "blocklist");
+    const codeChange = report.signals.find((s) => s.name === "code_change_recency");
+    const codeChangeBlocks =
+      codeChange !== undefined && report.reasons.some((r) => r.startsWith("code_change_recency"));
+    const blocking = codeChangeBlocks ? codeChange : blocklist;
+    const blockingName = codeChangeBlocks ? "code_change_recency" : "blocklist";
     return {
       decision: "refuse",
       reason:
         "refused: " +
         report.accountId +
-        " is BLOCKED by the blocklist signal (source: " +
-        String(blocklist?.source ?? "none") +
+        " is BLOCKED by the " +
+        blockingName +
+        " signal (source: " +
+        String(blocking?.source ?? "none") +
         "); no settle attempted",
     };
   }

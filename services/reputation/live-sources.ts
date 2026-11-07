@@ -3,9 +3,11 @@
  *
  * Builds the ReputationSources object from real reads: the RPC
  * view_account call, the contract receipts view paginated from
- * genesis, the snapshot files on disk, and an optional blocklist
- * URL. Used by the CLI reputation command and by the console
- * reputation gate, so both read the same way.
+ * genesis, the snapshot files on disk, an optional blocklist
+ * URL, and the NearBlocks v3 deployments endpoint for the exact
+ * age of the current contract code. Used by the CLI reputation
+ * command and by the console reputation gate, so both read the
+ * same way.
  *
  * Error handling is deliberate and differs per signal:
  * - view_account: an UNKNOWN_ACCOUNT error is a sourced fact
@@ -19,6 +21,14 @@
  *   failure also means unavailable, with the reason recorded.
  *   A blocklist URL is only ever used when one is configured;
  *   nothing is fetched silently.
+ * - code deployments: the NearBlocks v3 endpoint returns the
+ *   deployment history for the account; an empty list means no
+ *   deployments on record (no contract). A fetch or parse failure
+ *   means unavailable, with the reason recorded, and the signal
+ *   falls back to the snapshot window. The indexer timestamp is
+ *   only trusted by the signal when it is after the previous
+ *   snapshot; an older timestamp means the indexer is missing
+ *   the latest deployment.
  *
  * The blocklist format accepted here is a JSON array of NEAR
  * account ids, or a newline-delimited text list of account ids.
@@ -28,17 +38,21 @@ import {
   NO_BLOCKLIST_REASON,
   type AccountView,
   type BlocklistCheck,
+  type CodeDeploymentCheck,
   type ReceiptsSummary,
   type ReputationSources,
   type SnapshotEntry,
 } from "./reputation.js";
 import { readSnapshots } from "./snapshot.js";
 
+export const NEARBLOCKS_TESTNET_API = "https://api-testnet.nearblocks.io";
+
 export interface LiveSourcesOptions {
   vaultId: string;
   rpcUrl: string;
   snapshotDir: string;
   blocklistUrl?: string;
+  nearblocksBaseUrl?: string;
   fetchFn?: typeof fetch;
 }
 
@@ -246,6 +260,79 @@ async function checkBlocklistLive(
   }
 }
 
+async function checkCodeDeploymentLive(
+  accountId: string,
+  nearblocksBaseUrl: string,
+  fetchFn: typeof fetch,
+): Promise<CodeDeploymentCheck> {
+  const url =
+    nearblocksBaseUrl + "/v3/accounts/" + accountId + "/contract/deployments?limit=5";
+  const fetchedAt = new Date().toISOString();
+  const unavailable = (reason: string): CodeDeploymentCheck => ({
+    status: "unavailable",
+    latestDeploymentTimestampNs: null,
+    latestDeploymentTx: null,
+    source: url,
+    fetchedAt,
+    reason,
+  });
+  try {
+    const response = await fetchFn(url, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) {
+      return unavailable("NearBlocks deployments fetch failed: HTTP " + response.status);
+    }
+    const body = (await response.json()) as { data?: unknown };
+    if (!Array.isArray(body.data)) {
+      return unavailable("NearBlocks deployments returned an unexpected shape");
+    }
+    const rows = body.data as {
+      block?: { block_timestamp?: string };
+      transaction_hash?: string;
+    }[];
+    if (rows.length === 0) {
+      return {
+        status: "no_contract",
+        latestDeploymentTimestampNs: null,
+        latestDeploymentTx: null,
+        source: url,
+        fetchedAt,
+        reason: "no deployments on record for this account",
+      };
+    }
+    let latest: { blockTimestamp: string; tx: string | null } | null = null;
+    for (const row of rows) {
+      const ts = row.block?.block_timestamp;
+      if (typeof ts !== "string") {
+        continue;
+      }
+      if (latest === null || BigInt(ts) > BigInt(latest.blockTimestamp)) {
+        latest = {
+          blockTimestamp: ts,
+          tx: typeof row.transaction_hash === "string" ? row.transaction_hash : null,
+        };
+      }
+    }
+    if (latest === null) {
+      return unavailable("NearBlocks deployments had no block timestamp");
+    }
+    return {
+      status: "deployed",
+      latestDeploymentTimestampNs: latest.blockTimestamp,
+      latestDeploymentTx: latest.tx,
+      source: url,
+      fetchedAt,
+      reason: "",
+    };
+  } catch (error) {
+    return unavailable(
+      "NearBlocks deployments fetch failed: " + (error instanceof Error ? error.message : String(error)),
+    );
+  }
+}
+
 export function makeLiveSources(options: LiveSourcesOptions): ReputationSources {
   const fetchFn = options.fetchFn ?? fetch;
   return {
@@ -254,6 +341,8 @@ export function makeLiveSources(options: LiveSourcesOptions): ReputationSources 
     readSnapshots: (accountId: string): Promise<SnapshotEntry[]> =>
       Promise.resolve(readSnapshots(options.snapshotDir, accountId)),
     checkBlocklist: (accountId: string) => checkBlocklistLive(accountId, options.blocklistUrl, fetchFn),
+    checkCodeDeployment: (accountId: string) =>
+      checkCodeDeploymentLive(accountId, options.nearblocksBaseUrl ?? NEARBLOCKS_TESTNET_API, fetchFn),
   };
 }
 

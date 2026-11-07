@@ -578,6 +578,7 @@ async function liveRun(): Promise<number> {
     rpcUrl: TESTNET_RPC_URL,
     snapshotDir: process.env.CYNEX_SNAPSHOT_DIR ?? "",
     blocklistUrl: process.env.CYNEX_BLOCKLIST_URL,
+    nearblocksBaseUrl: process.env.CYNEX_NEARBLOCKS_URL,
   });
   const reputationReport = await evaluateCounterparty(input.recipient, reputationSources);
   for (const line of formatReport(reputationReport)) {

@@ -8,6 +8,13 @@ wrapper, and recorded the snapshot method, the blocklist provenance,
 and the sample outputs below. No contract changes, no frozen doc
 changes, no signing in the delivery commit.
 
+Note (scorecard brief, 2026-11-06): a fifth signal, code-change
+recency, was added to the reputation engine after Phase 7 closed.
+It is documented in the addendum at the end of this file and in
+docs/scorecard-code-change-recency.md. The "four signals" framing
+and the "no code-change history" statement in section 2 below are
+the Phase 7 record; the fifth signal supersedes the latter.
+
 ## The four signals
 
 Only these four, each returning a source and a timestamp on every
@@ -344,3 +351,54 @@ corrections draft to apply.
 Lane B signed in docs/ledger.md on 2026-11-06. Lane A signature
 and merge remain outstanding, so the phase is not closed by this
 signature.
+
+## Addendum: fifth signal - code-change recency (scorecard brief, 2026-11-06)
+
+After Phase 7 closed, the scorecard brief asked for a fifth
+signal: whether the receiver's contract code changed recently.
+It is implemented in services/reputation/ and wired into the
+same gate. The full delivery record is in
+docs/scorecard-code-change-recency.md; this addendum records the
+signal in the reputation docs, as the brief requires.
+
+### 5. Code-change recency (snapshot + indexer)
+
+Source: the current code hash from the RPC view_account read
+(the same read the existence signal uses) compared to the latest
+snapshot for the account in demo/reputation-snapshots/; the
+exact age of the current code from the NearBlocks v3 deployments
+endpoint (https://api-testnet.nearblocks.io/v3/accounts/{account}/contract/deployments).
+The indexer timestamp is used only when it is after the previous
+snapshot's fetched_at; an older timestamp means the indexer is
+missing the latest deployment and the snapshot window is used
+instead, with that stated in the output. The change itself is
+always the live RPC code hash against the snapshot, so a stale or
+missing indexer cannot hide a change, only widen the recency
+window. A change is reported as a window (for example "15.4h
+window"), never as a false precise age, unless the indexer gives
+an exact deployment timestamp.
+
+Thresholds (named in services/reputation/reputation.ts):
+CODE_CHANGE_WARN_WINDOW_MS = 7 days, CODE_CHANGE_BLOCK_WINDOW_MS
+= 24 hours. Verdict: no change -> ALLOW; change and the current
+code stable longer than 7 days (exact age) -> ALLOW; change
+within 7 days, or a wide window -> WARN; change within 24 hours,
+or a change with no other history (no prior vault interactions
+and first seen at the baseline snapshot) -> BLOCK. No contract
+(the default code hash) and first observation are neutral, never
+a penalty. The gate refuses on a code-change BLOCK and names the
+signal; it escalates on WARN. The signal never writes snapshots;
+the reputation-snapshot command records baselines.
+
+This supersedes the "no code-change history" statement in section
+2 above, which was the Phase 7 record. The fifth signal is the
+sourced code-change tracking that Phase 7 deliberately did not
+claim.
+
+Live proof (2026-11-06): the production vault BLOCKed on the real
+Phase 9 deployment (old G3Mt2gKs -> new 7PBw1x6H, deployment tx
+7HPscpDE6BikHutgALKJP6BDh9LArFS2aZGtHRHTH6ki, age 5.2h); the test
+vault was neutral on first observation and ALLOW ("no change")
+after a snapshot; the agent (no contract) was neutral and ALLOW
+score 1.000. See docs/scorecard-code-change-recency.md for the
+verbatim outputs.

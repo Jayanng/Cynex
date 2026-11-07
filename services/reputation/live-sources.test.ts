@@ -20,7 +20,11 @@ type StubResponse = {
   text: () => Promise<string>;
 };
 
-function stubFetchFactory(blocklistBody: string | null, blocklistStatus = 200): typeof fetch {
+function stubFetchFactory(
+  blocklistBody: string | null,
+  blocklistStatus = 200,
+  nearblocksBody: unknown = { data: [] },
+): typeof fetch {
   const receiptsPage = [
     { index: "0", recipient: "acme-supplies.testnet", timestamp: "1793751483012073148" },
     { index: "1", recipient: "someone-else.testnet", timestamp: "1793752000000000000" },
@@ -34,6 +38,12 @@ function stubFetchFactory(blocklistBody: string | null, blocklistStatus = 200): 
   });
   return ((input: unknown, init?: { body?: string }) => {
     const url = String(input);
+    if (url.startsWith("https://api-testnet.nearblocks.io")) {
+      if (nearblocksBody === null) {
+        return Promise.resolve(asResponse("not found", false, 404));
+      }
+      return Promise.resolve(asResponse(nearblocksBody));
+    }
     if (url.startsWith("https://example.invalid/blocklist")) {
       if (blocklistBody === null) {
         return Promise.resolve(asResponse("not found", false, 404));
@@ -155,6 +165,56 @@ describe("live sources with a stub RPC", () => {
       fetchFn: stubFetchFactory(null),
     });
     const check = await sources.checkBlocklist("acme-supplies.testnet");
+    expect(check.status).toBe("unavailable");
+    expect(check.reason).toContain("HTTP 404");
+  });
+
+it("the deployments endpoint returns the latest deployment timestamp and tx", async () => {
+    const sources = makeLiveSources({
+      vaultId: VAULT,
+      rpcUrl: RPC_URL,
+      snapshotDir: "/nonexistent",
+      fetchFn: stubFetchFactory(null, 200, {
+        data: [
+          {
+            block: { block_hash: "a", block_height: "276216883", block_timestamp: "1793808160556694635" },
+            predecessor_account_id: "x",
+            transaction_hash: "aaa",
+          },
+          {
+            block: { block_hash: "b", block_height: "276504544", block_timestamp: "1793979013847021866" },
+            predecessor_account_id: "x",
+            transaction_hash: "bbb",
+          },
+        ],
+      }),
+    });
+    const check = await sources.checkCodeDeployment("cynex-testvault.cynexmaster.testnet");
+    expect(check.status).toBe("deployed");
+    expect(check.latestDeploymentTimestampNs).toBe("1793979013847021866");
+    expect(check.latestDeploymentTx).toBe("bbb");
+  });
+
+  it("an empty deployments list means no contract", async () => {
+    const sources = makeLiveSources({
+      vaultId: VAULT,
+      rpcUrl: RPC_URL,
+      snapshotDir: "/nonexistent",
+      fetchFn: stubFetchFactory(null, 200, { data: [] }),
+    });
+    const check = await sources.checkCodeDeployment("cynex-agent.cynexmaster.testnet");
+    expect(check.status).toBe("no_contract");
+    expect(check.latestDeploymentTimestampNs).toBeNull();
+  });
+
+  it("a deployments fetch failure is unavailable with the reason", async () => {
+    const sources = makeLiveSources({
+      vaultId: VAULT,
+      rpcUrl: RPC_URL,
+      snapshotDir: "/nonexistent",
+      fetchFn: stubFetchFactory(null, 200, null),
+    });
+    const check = await sources.checkCodeDeployment("someone.testnet");
     expect(check.status).toBe("unavailable");
     expect(check.reason).toContain("HTTP 404");
   });

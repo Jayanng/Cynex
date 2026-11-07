@@ -1,0 +1,15 @@
+{
+  "taken_by": "lane-b",
+  "source_rpc": "https://test.rpc.fastnear.com",
+  "fetched_at": "2026-11-06T20:56:37.100Z",
+  "accounts": [
+    {
+      "account_id": "cynex-testvault.cynexmaster.testnet",
+      "exists": true,
+      "code_hash": "7PBw1x6HbH3Eu2dWrTKjEEfxdJnAfFPwPJS5vZMM5zRC",
+      "block_height": 276537047,
+      "block_timestamp": 1793998595463806700,
+      "fetched_at": "2026-11-06T20:56:37.780Z"
+    }
+  ]
+}

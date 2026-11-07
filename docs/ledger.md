@@ -439,3 +439,43 @@ neither holds a reservation or funds. The dead Phase 9 production obligations
   held outside the repo at cynex-system/phase9-fresh-clone-reproduction.md.
 
 Sign-off: Johnson (Phase 9 close, fresh-clone reproduction PASSED), 2026-11-06
+
+## Scorecard: fifth reputation signal (code-change recency)
+
+Status: Delivered as Lane B work on the scorecard brief
+(2026-11-06). The section 2.6 audit of this delivery is pending;
+Adejoke's Lane B sign-off follows the audit. Not a numbered phase;
+it closes the last open scorecard item for the reputation engine.
+
+Evidence:
+- Lane B: branch lane-b-code-change-signal, 7 modified files +
+  1 new snapshot (services/reputation/reputation.ts,
+  services/reputation/live-sources.ts, agent/wrapper.ts,
+  cli/cynex.ts, agent/console.ts, the two test files,
+  demo/reputation-snapshots/2026-11-06-205637Z.json). The signal
+  compares the receiver's current code hash (RPC view_account) to
+  the latest snapshot and assesses recency from the snapshot window
+  and the NearBlocks v3 deployments timestamp (exact age when the
+  indexer is current, window otherwise, never a false precise age).
+  Thresholds: BLOCK within 24h (or a change with no other history),
+  WARN within 7d (or a wide window), ALLOW on no change or a code
+  stable longer than 7d; no contract and first observation are
+  neutral. The gate refuses on a code-change BLOCK (naming the
+  signal) and escalates on WARN.
+- Tests: Jest 135/135 in 12 suites (baseline 119/119 in 12).
+  Scaffold and frontend typecheck clean, conformance 6/6.
+- Live proof on testnet (2026-11-06): production vault BLOCK
+  (code changed Phase 6 hash G3Mt2gKs to Phase 9 hash 7PBw1x6H,
+  deployment tx 7HPscpDE6BikHutgALKJP6BDh9LArFS2aZGtHRHTH6ki,
+  age 5.2h); test vault first observation neutral, then no change
+  after a snapshot; agent no contract neutral, ALLOW score 1.000.
+  Delivery doc: docs/scorecard-code-change-recency.md.
+- Live state at delivery: production receipts 10 (all
+  verified_ok=true; new: prod-console-preimage-001 and
+  prod-console-tee-001, 100 units each to the agent, on
+  p5-prod-001), p5-prod-001 spent 200 headroom 800, agent
+  ft_balance_of 500, p9-prod-preimage-002 CANCELLED (was
+  EVIDENCE_PENDING), p9-prod-preimage-001 and p9-prod-tee-001
+  still READY.
+
+Sign-off: pending the section 2.6 audit.

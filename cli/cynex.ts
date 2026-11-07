@@ -82,16 +82,20 @@
  *     Appends the run to the transcript file (default
  *     docs/phase6-attack-transcript.md). Exit 0 when every
  *     scenario produced its expected code, 1 otherwise.
- *   reputation <vaultId> <accountId> [--snapshots <dir>] [--blocklist-url <url>]
+ *   reputation <vaultId> <accountId> [--snapshots <dir>] [--blocklist-url <url>] [--nearblocks-url <url>]
  *     Reads the counterparty's reputation live (services/reputation):
  *     account existence plus current code hash from the RPC, first
  *     seen from the snapshot files in <dir> (default
  *     demo/reputation-snapshots), prior vault interactions from the
- *     contract receipts view, and a blocklist only when
- *     --blocklist-url names one. Every line shows a real source and
- *     timestamp; a signal that cannot be sourced is shown as
- *     unavailable, never fabricated. Exit 0 when the check ran and
- *     printed a report (any verdict); 1 when the check itself failed.
+ *     contract receipts view, a blocklist only when
+ *     --blocklist-url names one, and code-change recency from the
+ *     latest snapshot against the current code hash, with the exact
+ *     age of the current code from the NearBlocks v3 deployments
+ *     endpoint (testnet default; --nearblocks-url overrides it).
+ *     Every line shows a real source and timestamp; a signal that
+ *     cannot be sourced is shown as unavailable, never fabricated.
+ *     Exit 0 when the check ran and printed a report (any verdict);
+ *     1 when the check itself failed.
  *   reputation-snapshot <accountId...> [--snapshots <dir>] [--rpc <url>]
  *     Takes a reputation snapshot of each listed account: a live
  *     view_account read plus the final block height and timestamp,
@@ -897,6 +901,7 @@ async function reputationCmd(vaultId: string, accountId: string, rest: string[])
     rpcUrl: TESTNET_RPC_URL,
     snapshotDir: flagValue(rest, "--snapshots") ?? "demo/reputation-snapshots",
     blocklistUrl: flagValue(rest, "--blocklist-url"),
+    nearblocksBaseUrl: flagValue(rest, "--nearblocks-url"),
   });
   const report = await evaluateCounterparty(accountId, sources);
   for (const line of formatReport(report)) {
