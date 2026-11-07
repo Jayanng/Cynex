@@ -1,6 +1,6 @@
 # Cynex
 
-AI agents now hold wallets and spend money, but a single compromised prompt can drain them, because nothing enforces that a payment matches what the human actually authorized.
+AI agents now hold wallets and spend money, but a compromised prompt has already drained an agent wallet, because no universal on-chain check ensures a payment matches exactly what the human authorized.
 
 Cynex is a purpose-bound settlement vault for AI agents on NEAR.
 Pay the obligation. Not the prompt.
