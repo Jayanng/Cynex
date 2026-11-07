@@ -750,6 +750,51 @@ impl Contract {
         self.obligations.insert(obligation_id, obligation);
     }
 
+    pub fn cancel_expired_ready(&mut self, obligation_id: String) {
+        // Owner only. Removes a READY obligation whose evidence window
+        // has already expired, the dead record the judge audit fixes
+        // left with no cleanup path: cancel_obligation refuses READY,
+        // and settle rejects an expired obligation, so an expired READY
+        // record could never leave the vault. This is the only way out
+        // of READY, and it is deliberately narrow: the obligation must
+        // be READY and already expired (block_timestamp() >
+        // expires_at_ns, the same boundary settle uses, live at
+        // expires_at_ns). A live READY obligation cannot be cleaned up,
+        // so the owner cannot cancel a READY obligation that could
+        // still settle. No funds move: a READY obligation holds no
+        // reservation and no token lock, its amount was never reserved
+        // (the reservation is taken at settle time, not at READY), so
+        // spent, reserved, funded, and receipts are untouched. The
+        // transfer-timeout guard does not apply here: it requires
+        // in_flight, and a READY obligation has no transfer in flight.
+        // in_flight is still asserted false, so a record that somehow
+        // claims both READY and in flight is rejected instead of
+        // cleaned up. The obligation goes to terminal CANCELLED, so it
+        // can never settle afterwards: settle requires READY. Any stale
+        // TEE request record and pending evidence fields are dropped
+        // with it, so a late TEE callback finds nothing to resolve.
+        // No stored field changes, so no migration is needed.
+        self.assert_owner();
+        let mut obligation = self
+            .obligations
+            .get(&obligation_id)
+            .cloned()
+            .unwrap_or_else(|| env::panic_str("ERR_OBLIGATION_MISSING"));
+        require!(obligation.state == "READY", "ERR_INVALID_STATE");
+        require!(!obligation.in_flight, "ERR_INVALID_STATE");
+        require!(
+            env::block_timestamp() > obligation.expires_at_ns,
+            "ERR_NOT_EXPIRED"
+        );
+        obligation.state = "CANCELLED".to_string();
+        obligation.pending_request_id = None;
+        obligation.pending_digest = None;
+        obligation.evidence_requested_at_ns = None;
+        let mut requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
+        requests.remove(&obligation_id);
+        self.obligations.insert(obligation_id, obligation);
+    }
+
     pub fn mark_reconciliation_required(&mut self, obligation_id: String) {
         // Owner or the policy reconciler, only from TRANSFER_PENDING, only
         // after TRANSFER_TIMEOUT_NS has passed since dispatch. This is the
@@ -5247,5 +5292,286 @@ mod tests {
             );
             assert_eq!(c.get_obligation(id.to_string()).unwrap().state, "CREATED");
         }
+    }
+
+    // Expired READY cleanup: a PREIMAGE obligation that went READY
+    // with a short expiry, then moved past it.
+    fn expired_ready_setup() -> Contract {
+        let evidence = b"delivery-note-001:obl-001:250000".to_vec();
+        let mut c = preimage_setup_at(&evidence, "PREIMAGE", 1_000_000_000);
+        as_other();
+        c.submit_evidence_preimage("obl-001-1".to_string(), "obl-001".to_string(), evidence);
+        assert_eq!(
+            c.get_obligation("obl-001".to_string()).unwrap().state,
+            "READY"
+        );
+        c
+    }
+
+    #[test]
+    fn cancel_expired_ready_cleans_up_expired_ready() {
+        let mut c = expired_ready_setup();
+        let token: AccountId = "usdc.fakes.testnet".parse().unwrap();
+        assert!(!is_token_locked(&token));
+        let before = c.get_policy("policy-001".to_string()).unwrap();
+        assert_eq!(c.receipts(0, 10).len(), 0);
+        set_time_and_caller(owner(), 1_000_000_001);
+        c.cancel_expired_ready("obl-001".to_string());
+        let o = c.get_obligation("obl-001".to_string()).unwrap();
+        assert_eq!(o.state, "CANCELLED");
+        assert!(!o.in_flight);
+        assert_eq!(o.pending_request_id, None);
+        let after = c.get_policy("policy-001".to_string()).unwrap();
+        assert_eq!(after.spent, before.spent);
+        assert_eq!(after.reserved, before.reserved);
+        assert_eq!(after.funded, before.funded);
+        assert_eq!(after.limit, before.limit);
+        assert_eq!(c.receipts(0, 10).len(), 0);
+        assert!(!is_token_locked(&token));
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_NOT_EXPIRED")]
+    fn cancel_expired_ready_live_ready_rejects() {
+        let mut c = expired_ready_setup();
+        // At exactly expires_at_ns the obligation is still live:
+        // settle accepts it while block_timestamp() <= expires_at_ns.
+        set_time_and_caller(owner(), 1_000_000_000);
+        c.cancel_expired_ready("obl-001".to_string());
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_NOT_OWNER")]
+    fn cancel_expired_ready_non_owner_rejects() {
+        let mut c = expired_ready_setup();
+        set_time_and_caller(other(), 1_000_000_001);
+        c.cancel_expired_ready("obl-001".to_string());
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_INVALID_STATE")]
+    fn cancel_expired_ready_created_rejects() {
+        let mut c = setup_owner();
+        c.create_policy(
+            "policy-001".to_string(),
+            "usdc.fakes.testnet".parse().unwrap(),
+            1000000,
+        );
+        c.create_obligation(
+            "obl-001".to_string(),
+            "policy-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            250000,
+            "delivery-note".to_string(),
+            hex32("686f753bc595b5260eb0a86315e69cf229be183e3cce985cbee27f9705ea3b38"),
+            1_000_000_000,
+            1,
+        );
+        set_time_and_caller(owner(), 1_000_000_001);
+        c.cancel_expired_ready("obl-001".to_string());
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_INVALID_STATE")]
+    fn cancel_expired_ready_settle_afterwards_rejects() {
+        let mut c = expired_ready_setup();
+        set_time_and_caller(owner(), 1_000_000_001);
+        c.cancel_expired_ready("obl-001".to_string());
+        set_time_and_caller(other(), 1_000_000_001);
+        let _ = c.settle(
+            "obl-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            U128(250000),
+            "x".to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_INVALID_STATE")]
+    fn cancel_expired_ready_in_flight_rejects() {
+        let mut c = expired_ready_setup();
+        // A READY record that somehow still claims in_flight must
+        // never be cleaned up: in_flight means a transfer may still
+        // land or a reservation may still be held.
+        let mut o = c.get_obligation("obl-001".to_string()).unwrap();
+        o.in_flight = true;
+        c.obligations.insert("obl-001".to_string(), o);
+        set_time_and_caller(owner(), 1_000_000_001);
+        c.cancel_expired_ready("obl-001".to_string());
+    }
+
+    #[test]
+    fn cancel_expired_ready_removes_tee_request_record() {
+        let mut c = expired_ready_setup();
+        // The TeeRequest map is keyed by obligation id, like every
+        // other use of prefix b"t": request_tee_verification inserts
+        // by obligation id, on_tee_result and mark_evidence_timeout
+        // remove by obligation id. The pending request id
+        // ("obl-001-1") is the evidence request id, not a map key.
+        let mut requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
+        requests.insert(
+            "obl-001".to_string(),
+            TeeRequest {
+                obligation_id: "obl-001".to_string(),
+                evidence_url: "https://example.invalid/evidence".to_string(),
+                seed: "obl-001-1-0-00".to_string(),
+                requested_at_ns: 0,
+                sender: owner(),
+            },
+        );
+        assert!(requests.get(&"obl-001".to_string()).is_some());
+        set_time_and_caller(owner(), 1_000_000_001);
+        c.cancel_expired_ready("obl-001".to_string());
+        let requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
+        assert_eq!(requests.get(&"obl-001".to_string()), None);
+    }
+
+    #[test]
+    fn cancel_expired_ready_tee_origin_cleans_up_and_late_callback_noop() {
+        let mut c = tee_setup_for("cynexmaster.testnet", "test-seed");
+        as_vault("cynexmaster.testnet");
+        c.on_tee_result("test-seed".to_string(), Ok(tee_output_json()));
+        assert_eq!(
+            c.get_obligation("test-seed".to_string()).unwrap().state,
+            "READY"
+        );
+        set_time_and_caller(owner(), 1_000_000_000_000_001);
+        c.cancel_expired_ready("test-seed".to_string());
+        let o = c.get_obligation("test-seed".to_string()).unwrap();
+        assert_eq!(o.state, "CANCELLED");
+        assert_eq!(o.pending_request_id, None);
+        assert_eq!(o.pending_digest, None);
+        assert_eq!(o.evidence_requested_at_ns, None);
+        let requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
+        assert_eq!(requests.get(&"test-seed".to_string()), None);
+        // A late TEE callback must not resurrect the obligation, even
+        // if a stale request record is present: on_tee_result returns
+        // early unless the obligation is EVIDENCE_PENDING.
+        let mut requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
+        requests.insert(
+            "test-seed".to_string(),
+            TeeRequest {
+                obligation_id: "test-seed".to_string(),
+                evidence_url: "https://test.fastfs.io/cynexmaster.testnet/outlayer.testnet/528f5c78da9fd97698f20eb21a5e405aa9aa6aec54ee17218b1060549e3725b6.wasm".to_string(),
+                seed: "test-seed-1-0-528f5c78da9fd97698f20eb21a5e405aa9aa6aec54ee17218b1060549e3725b6".to_string(),
+                requested_at_ns: 1000,
+                sender: "cynexmaster.testnet".parse().unwrap(),
+            },
+        );
+        as_vault("cynexmaster.testnet");
+        c.on_tee_result("test-seed".to_string(), Ok(tee_output_json()));
+        assert_eq!(
+            c.get_obligation("test-seed".to_string()).unwrap().state,
+            "CANCELLED"
+        );
+        let requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
+        assert_eq!(requests.get(&"test-seed".to_string()), None);
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_OBLIGATION_MISSING")]
+    fn cancel_expired_ready_missing_rejects() {
+        let mut c = setup_owner();
+        set_time_and_caller(owner(), 1_000_000_001);
+        c.cancel_expired_ready("no-such-obligation".to_string());
+    }
+
+    #[test]
+    fn cancel_expired_ready_resolve_ready_releases_nothing() {
+        // The resolve_settlement READY path: the obligation held a
+        // reservation and a token lock while TRANSFER_PENDING, and
+        // resolve released both. Cleaning it up after expiry must
+        // change no policy counter and create no receipt.
+        let mut c = setup_owner();
+        setup_transfer_pending(&mut c, "obl-001", 250000);
+        // The reservation is held while TRANSFER_PENDING: settle took
+        // it before dispatch, and resolve must release it.
+        assert_eq!(
+            c.get_policy("policy-001".to_string()).unwrap().reserved,
+            250000
+        );
+        owner_ctx_at(TRANSFER_TIMEOUT_NS);
+        c.mark_reconciliation_required("obl-001".to_string());
+        owner_ctx_at(TRANSFER_TIMEOUT_NS);
+        c.resolve_settlement("obl-001".to_string(), "READY".to_string(), "".to_string());
+        let o = c.get_obligation("obl-001".to_string()).unwrap();
+        assert_eq!(o.state, "READY");
+        assert_eq!(c.get_policy("policy-001".to_string()).unwrap().reserved, 0);
+        let token: AccountId = "usdc.fakes.testnet".parse().unwrap();
+        assert!(!is_token_locked(&token));
+        // The fixture expiry is 9999999999999999999, so move past it.
+        owner_ctx_at(10_000_000_000_000_000_000);
+        c.cancel_expired_ready("obl-001".to_string());
+        let o = c.get_obligation("obl-001".to_string()).unwrap();
+        assert_eq!(o.state, "CANCELLED");
+        let policy = c.get_policy("policy-001".to_string()).unwrap();
+        assert_eq!(policy.spent, 0);
+        assert_eq!(policy.reserved, 0);
+        assert_eq!(policy.funded, 1000000);
+        assert_eq!(c.receipts(0, 10).len(), 0);
+        assert!(!is_token_locked(&token));
+    }
+
+    #[test]
+    fn cancel_expired_ready_allows_recreation_with_new_id() {
+        // The duplicate check in create_obligation is by obligation
+        // id only, not by digest, so a cleaned-up obligation can be
+        // re-created with a fresh id and a fresh nonce, the same
+        // remediation the contract already prescribes for a retry.
+        let evidence = b"delivery-note-001:obl-001:250000".to_vec();
+        let digest_vec = env::sha256(&evidence);
+        let mut digest = [0u8; 32];
+        digest.copy_from_slice(&digest_vec);
+        let mut c = preimage_setup_at(&evidence, "PREIMAGE", 1_000_000_000);
+        as_other();
+        c.submit_evidence_preimage("obl-001-1".to_string(), "obl-001".to_string(), evidence);
+        set_time_and_caller(owner(), 1_000_000_001);
+        c.cancel_expired_ready("obl-001".to_string());
+        // Pin the cancel and the digest: the re-created obligation
+        // must carry the same committed digest as the cancelled one,
+        // or the test would pass even with a no-op cancel or a
+        // different digest.
+        let cancelled = c.get_obligation("obl-001".to_string()).unwrap();
+        assert_eq!(cancelled.state, "CANCELLED");
+        assert_eq!(cancelled.evidence_hash, digest);
+        c.create_obligation(
+            "obl-002".to_string(),
+            "policy-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            250000,
+            "PREIMAGE".to_string(),
+            digest,
+            2_000_000_000,
+            2,
+        );
+        let recreated = c.get_obligation("obl-002".to_string()).unwrap();
+        assert_eq!(recreated.state, "CREATED");
+        assert_eq!(recreated.evidence_hash, digest);
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_OBLIGATION_EXISTS")]
+    fn cancel_expired_ready_same_id_cannot_recreate() {
+        let mut c = expired_ready_setup();
+        set_time_and_caller(owner(), 1_000_000_001);
+        c.cancel_expired_ready("obl-001".to_string());
+        assert_eq!(
+            c.get_obligation("obl-001".to_string()).unwrap().state,
+            "CANCELLED"
+        );
+        let evidence = b"delivery-note-001:obl-001:250000".to_vec();
+        let digest_vec = env::sha256(&evidence);
+        let mut digest = [0u8; 32];
+        digest.copy_from_slice(&digest_vec);
+        c.create_obligation(
+            "obl-001".to_string(),
+            "policy-001".to_string(),
+            "acme-supplies.testnet".parse().unwrap(),
+            250000,
+            "PREIMAGE".to_string(),
+            digest,
+            2_000_000_000,
+            2,
+        );
     }
 }

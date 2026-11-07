@@ -7,11 +7,10 @@ they run, and how anyone can verify that from chain.
 
 | Vault | Account | Code hash |
 | --- | --- | --- |
-| Production | `cynex-vault.cynexmaster.testnet` | `E2Uq5FzNcfGuDHQfqTGx6Rqd41ZwsBDXtYVx6bhQoFd1` |
-| Test | `cynex-testvault.cynexmaster.testnet` | `E2Uq5FzNcfGuDHQfqTGx6Rqd41ZwsBDXtYVx6bhQoFd1` |
+| Production | `cynex-vault.cynexmaster.testnet` | `7JJ27aMWztX2F3z4W9zxSmK93eMa7RuTGvmAwWab9x4B` |
+| Test | `cynex-testvault.cynexmaster.testnet` | `7JJ27aMWztX2F3z4W9zxSmK93eMa7RuTGvmAwWab9x4B` |
 
-Both vaults run the same code: the judge's audit fixes, committed as Master
-6b40576 and deployed to both vaults on 2026-11-06. The code hash is the
+Both vaults run the same code: the judge audit fixes (Master 6b40576, deployed 2026-11-06) plus the expired READY cleanup, deployed to both vaults on 2026-11-07. The cleanup is uncommitted work in the Cynex-expired-cleanup worktree, off Master fc3ceac, awaiting Johnson review. The code hash is the
 on-chain fingerprint of that code. If the hash differs from the table above,
 the vault is not running the code this repo describes.
 
@@ -50,15 +49,13 @@ frozen false, 11 receipts. Production policy p5-prod-001: funded 1,000, spent
 `usdc.fakes.testnet` (USDC.e, 6 decimals). The agent token balance is
 1,000. The test policy spent and the agent balance moved on 2026-11-07
 when the Phase 10 demo settled three obligations of 100 each on the test
-vault; the pre-demo baseline was spent 3,400 and balance 700.
+vault; the pre-demo baseline was spent 3,400 and balance 700. The expired READY cleanup, deployed 2026-11-07, changed no balances: production p5-prod-001 still spent 300, test p6-001 still spent 3,700, receipts still 11 and 14, agent balance still 1,000. The two dead production obligations p9-prod-preimage-001 and p9-prod-tee-001 are now CANCELLED.
 
 ## Deployment history
 
 The production vault was first deployed in Phase 1. The code hash changed
 with each phase that touched the contract: G3Mt2gKs94C61Se4oLWvMUgR2Bfv2djdFQLz4TVrDH3E
-(Phase 6), 7PBw1x6HbH3Eu2dWrTKjEEfxdJnAfFPwPJS5vZMM5zRC (Phase 9), then
-E2Uq5FzNcfGuDHQfqTGx6Rqd41ZwsBDXtYVx6bhQoFd1 (the judge's audit fixes,
-current). Each deployment was proven live on both
+(Phase 6), 7PBw1x6HbH3Eu2dWrTKjEEfxdJnAfFPwPJS5vZMM5zRC (Phase 9), then E2Uq5FzNcfGuDHQfqTGx6Rqd41ZwsBDXtYVx6bhQoFd1 (the judge audit fixes), then 7JJ27aMWztX2F3z4W9zxSmK93eMa7RuTGvmAwWab9x4B (the expired READY cleanup, current). Each deployment was proven live on both
 vaults before the phase closed, and the ledger in `docs/ledger.md` records the
 tx hash for each one.
 

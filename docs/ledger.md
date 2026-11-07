@@ -506,3 +506,62 @@ Evidence:
 Sign-off: rastadev (Lane B), 2026-11-07
 
 Sign-off: Johnson (fifth signal Lane B acceptance, section 2.6 audit PASSED), 2026-11-07
+
+- Expired READY cleanup, 2026-11-07. The fix for the dead production
+  obligations p9-prod-preimage-001 and p9-prod-tee-001 (READY but EXPIRED,
+  no cleanup path: cancel_obligation refused READY, settle rejected with
+  ERR_OBLIGATION_EXPIRED). New owner-only method cancel_expired_ready in
+  contract/src/lib.rs: requires state READY, requires in_flight false,
+  requires block_timestamp() > expires_at_ns (ERR_NOT_EXPIRED otherwise,
+  the exact complement of settle, live at expires_at_ns), moves the
+  obligation to terminal CANCELLED, clears pending evidence fields, drops
+  the TeeRequest record by obligation id. No funds, reservation, token lock,
+  or receipt moves; no stored field changes, so no migration. 12 new unit
+  tests, suite 137 passed, 0 failed (baseline 125). fmt clean, clippy
+  --all-targets -D warnings clean, overflow-checks on in release profile.
+  Gates, all on GMI: Argon GATE PASS, 0 blocking; GLM GATE PASS on re-review,
+  0 blocking (its first-round F1/F2 verified FALSE against lib.rs: the b"t"
+  prefix is the established TeeRequest prefix in all 19 uses, and every READY
+  path releases any reservation and lock); DeepSeek re-review GATE PASS,
+  0 blocking (first full run truncated with no verdict; three re-review rounds
+  each found one real test gap, each fixed); Sol gate GATE PASS, 0 blocking.
+  Near-agent-skills check PASS, 0 blocking (direct check against the skill
+  files, main cb32b6a). Full finding verification at
+  ~/workspace/cynex-system/expired-ready-cleanup-review-verification.md.
+  Wasm sha256 5d943d2db2f8b5c29ac134b54a679c84eee07b6dae17809f6f12ce7a79e8e3b4,
+  new code hash 7JJ27aMWztX2F3z4W9zxSmK93eMa7RuTGvmAwWab9x4B.
+  Test vault deploy tx HWNENx52Cvxb4L7YNobQGH5vxR2tgKVEDiK8bkXXW6zc (first
+  deploy CRoTtLFx47MSPriwP6PJWRBnL2Q2Uxx1nAnYYwnXuKFe). Preimage proof,
+  obligation cleanup-test-preimage-003, policy p6-001, 100 units to the
+  agent: create 2iFYt6cqGerUBtTL134wLoRzNGXwcK9KQ6McaGqxp8qp,
+  request_evidence DaCC46PtWt7trDNfFo9yJ15kryd4vyr8MMimCoXafzEw, submit
+  2WwbN82scE42CoX7ADCFy76ux5UEhSpuAPQReQy8vAY9, READY; live cancel failed
+  ERR_NOT_EXPIRED, tx CwMySno7Nnjkgfj3EBDqzjfw9QM9kV6PXRiV6HN36eeJ; expired
+  cancel tx Ahv5oQHpksrdi8nXdkn8KN1m5STkrBJbESBimC419jpt, CANCELLED; settle
+  after cancel failed ERR_INVALID_STATE, tx 9ips83KmTBHuGoiiuDnNhYvuyFLw3Xhtbqyifv6UVsHH.
+  TEE proof, obligation cleanup-test-tee-001, same policy and amount:
+  create FpHpKvG1HwGuywpZhL1PqCkWATjuKW9p75emPcJvBPrc, request_evidence
+  H3PFEsWZjm3MoJ5dVLFwY9td3KbrjyT9P3JT1B82SXvJ, request_tee_verification
+  3tCyVS3CjKuNU1pp2F6mTbpsSf96D2XieDuKCPKYJMGf, READY through the OutLayer
+  guest and VRF; expired cancel tx eZLnLQfG8Jqnkkntei6EJhwHnnHVc6dCrmfavhwjQ2d,
+  CANCELLED; settle after cancel failed ERR_INVALID_STATE, tx
+  4TbKPXHUrjevYmQBf4ibSb2ya8AMmtRebWGN5SH7ymY3. Test policy p6-001 after:
+  spent 3700, reserved 0, funded 10000, receipts 14, agent balance 1000.
+  Production deploy tx Drz9TrJUzspeeF7TmgmQ7FksQMd7gFk1AcmfYgsakhCB, code hash
+  7JJ27aMWztX2F3z4W9zxSmK93eMa7RuTGvmAwWab9x4B on both vaults. Production
+  cleanup: p9-prod-preimage-001 cancel tx 5RsrMW4iirDEQV2yzU4GWk98VxhLeXFjGy8sqJHsBTkg,
+  p9-prod-tee-001 cancel tx 3mewqMYoi1Qwh3H8nwvG6qFW43DGNZjGmJPdj1nyqW2N, both
+  CANCELLED; settle after cancel on p9-prod-preimage-001 failed
+  ERR_INVALID_STATE, tx 4iGkiTducaYWeUPEzEB1wygnnuGupooMp3xu9VGY71R.
+  Production policy p5-prod-001 after: spent 300, reserved 0, funded 1000,
+  receipts 11, agent balance 1000. Receipt chains verified on both vaults
+  after the deploy (production 11 receipts, test 14, all verified_ok by
+  recomputing the hash chain against state). No other production obligation
+  touched, nothing settled on production. Test-vault artifact:
+  cleanup-test-preimage-001 sits EVIDENCE_PENDING, expired, holding no
+  reservation and no funds (its submit used the wrong request id in the
+  proof script, a script bug, not a contract bug); it can only be cleared by
+  mark_evidence_timeout after EVIDENCE_TIMEOUT_NS. Full report at
+  ~/workspace/cynex-system/expired-ready-cleanup-report.md. Work left
+  uncommitted in the Cynex-expired-cleanup worktree for Johnson to review;
+  NOT committed, NOT pushed.
