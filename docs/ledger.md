@@ -565,3 +565,78 @@ Sign-off: Johnson (fifth signal Lane B acceptance, section 2.6 audit PASSED), 20
   ~/workspace/cynex-system/expired-ready-cleanup-report.md. Work left
   uncommitted in the Cynex-expired-cleanup worktree for Johnson to review;
   NOT committed, NOT pushed.
+
+## NEAR AI DeepSeek audit fixes (2026-11-07)
+
+Status: Fixed, reviewed, committed, pushed, deployed to both vaults, proven
+live. Johnson approved the commit, the push, and the redeploy with live proof
+on 2026-11-07 ("Go ahead with it").
+
+The NEAR AI DeepSeek abliterated audit of Cynex (Master f15d299, both lanes)
+found 46 findings: Lane A 1 TRUE, 7 PARTIAL, 18 FALSE; Lane B 3 TRUE,
+2 PARTIAL, 14 FALSE, 1 UNPROVEN. No blocking finding. All 4 TRUE findings
+were Low severity. Full audit report at
+~/workspace/cynex-system/nearai-deepseek-audit.md.
+
+Fixes, committed as b0c7cb1 ("Fix 4 TRUE findings from the NEAR AI DeepSeek
+audit (Master f15d299)"), 8 files, 585 insertions, 43 deletions, pushed
+f15d299..b0c7cb1 to origin Master:
+
+- 3b-2 (Lane A, contract): on_tee_result now measures the 1-hour evidence
+  window from tee.requested_at_ns, the retry's own timestamp, instead of
+  obligation.evidence_requested_at_ns. A TEE retry filed near the end of the
+  hour no longer has its valid callback rejected. The obligation expiry check
+  is unchanged and still bounds everything. 4 new unit tests, each proven to
+  fail before the fix and pass after. Reviewed: GLM triage conditional, Argon
+  GATE PASS, DeepSeek GATE PASS, Sol GATE PASS, near-agent-skills PASS.
+- 6-1 (Lane B, CLI): verify-live now anchors the final receipt against the
+  contract's state() last_receipt_hash. New anchored field per row,
+  parseVaultState and assertReceiptCount. A tampered final receipt no longer
+  reports verified_ok=true. 11 new Jest tests.
+- 6-2 (Lane B, console): createObligationArgs accepts arbitrary valid u64
+  expires_at_ns instead of requiring an exact JS Number round-trip. The
+  contract remains the enforcer (ERR_OBLIGATION_EXPIRED). 7 new Jest tests.
+- 8-1 (Lane B, frontend): new toSafeJsonU64 throws outside the safe integer
+  range instead of silently rounding; receipts() uses it for start and limit.
+  6 new Jest tests.
+
+Tests before commit, re-run from the worktree: cargo fmt clean, clippy
+--all-targets -D warnings clean, cargo test --lib 141 passed, 0 failed,
+Jest 159/159 in 13 suites, frontend typecheck clean, conformance 6/6,
+cynex-verify exits 0 on both vaults. Lane B reviewers round 2: GLM, Argon,
+DeepSeek all GATE PASS. One caveat: after the round-2 GATE PASS, three
+doc/test-only polish items were applied (wording, one tie-boundary test),
+no code behaviour changed, Jest re-run green at 159, no third review round
+was run on that polish; Johnson approved proceeding anyway.
+
+Deployment, 2026-11-07. Wasm built from b0c7cb1, 267,619 bytes, SHA-256
+c426c6a3b0011a45eca7a0b6d6fd55591d611f7d8ab997f85bd9d6105582dd64,
+bs58 EChCjrfRGBwMC6yu7QsrJqgkEuMZCJhmRZ5DNU64GJh9.
+
+Test vault deploy tx 6pi7E5bQm7iD7zGNifVdnNkd66kEekWWBK9ntSQMN4p8, code hash
+EChCjrfRGBwMC6yu7QsrJqgkEuMZCJhmRZ5DNU64GJh9. Before: p6-001 spent 3900,
+reserved 0, funded 10000, agent balance 1200, 16 receipts. Live TEE proof,
+obligation audit-fixes-tee-001 (policy p6-001, recipient the agent, 100 units,
+evidence URL https://raw.githubusercontent.com/near/near-api-js/master/README.md):
+create tx 7AUtH1sgztyrmvbNZqMwLUgdarqap61gHDyY7jX1E4BE, request_evidence tx
+CFZWtHVf6xZ5mTgU2eBZ8m3HFBkom2eetJzzzm4wYskJ, request_tee_verification tx
+GpKEseWhtaLZt27yKBnSy1AyhWykHDHPRcHTXKCaHW5w, obligation went READY through
+the OutLayer guest and VRF, reputation ALLOW score 1.000, gate proceed.
+The console settle failed because the agent's scoped settle key is bound to
+the production vault only, so the settle was done by near-cli with the
+agent's full-access key: settle tx
+2V36w9NNr1XYwmpRmuRN7kLmU66U2mdWxKu3J7LRxFSS, receipt index 16, obligation
+PAID. After: p6-001 spent 4000, reserved 0, funded 10000, agent balance
+1300. cynex-verify on the test vault: 17 receipts, all verified_ok=true.
+
+Production deploy tx AGjo8rj6x3ymKVo7mLYqg2jzQfCjP46SXDydkX3kpiwf, code hash
+EChCjrfRGBwMC6yu7QsrJqgkEuMZCJhmRZ5DNU64GJh9, matching the test vault.
+After: p5-prod-001 spent 300, reserved 0, funded 1000, agent balance
+unchanged by production (1300, moved only by the test-vault settle),
+p9-prod-preimage-001 and p9-prod-tee-001 still CANCELLED. cynex-verify on
+production: 11 receipts, all verified_ok=true. Nothing settled on
+production. No other production obligation touched.
+
+Full fix report at ~/workspace/cynex-system/nearai-audit-fixes-report.md,
+deployment report at
+~/workspace/cynex-system/nearai-audit-fixes-deployment-report.md.
