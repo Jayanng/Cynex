@@ -125,15 +125,29 @@ export interface ObligationFile {
 export function createObligationArgs(input: ObligationFile): DeployCreateObligationArgs {
   // NEAR JSON u64/u128 inputs are numbers, so a value that is
   // not exactly representable as a JS number must never be
-  // silently rounded. Check each u64/u128 input against its
-  // BigInt form and throw if it does not round-trip exactly.
-  // Live Phase 2 values pass this check: amounts 250000000 and
-  // 100000000, nonces 1 to 8, and expiry 1893456000000000000 are
-  // all exactly representable. A future value that fails here
-  // is a hard error, not a rounded expiry or amount.
+  // silently rounded. Amount and nonce are checked against
+  // their BigInt form and throw if they do not round-trip
+  // exactly: an amount is money and a nonce is an identity,
+  // so both must be exact. Live values pass this check
+  // (amounts 250000000 and 100000000, nonces 1 to 8).
+  // expires_at_ns is different. It is also sent as a JSON
+  // number, because create_obligation takes it as u64, but a
+  // realistic nanosecond timestamp is above 2^53, so exact JS
+  // Number representability is impossible for arbitrary values:
+  // the old check rejected valid timestamps such as now + 1h
+  // and only exactly representable round values passed (audit
+  // finding 6-2). The rounding a JSON number applies is at most
+  // half a Number spacing, 128 ns at a realistic timestamp and
+  // 1024 ns at the very top of the u64 range, far below the
+  // granularity at which expiries are specified and blocks are
+  // produced, so it cannot change whether a settlement at any
+  // real block timestamp is before or after expiry. The
+  // contract still enforces expiry with ERR_OBLIGATION_EXPIRED.
+  // So expires_at_ns is accepted here when it is a
+  // non-negative integer inside the u64 range, and the contract
+  // remains the enforcer for expired or invalid values.
   for (const [name, value] of [
     ["amount", input.amount],
-    ["expires_at_ns", input.expires_at_ns],
     ["nonce", input.nonce],
   ] as const) {
     if (BigInt(Number(value)).toString() !== BigInt(value).toString()) {
@@ -141,6 +155,21 @@ export function createObligationArgs(input: ObligationFile): DeployCreateObligat
         "obligation input " + name + " is not exactly representable as a JS number: " + value,
       );
     }
+  }
+  if (!/^[0-9]+$/.test(input.expires_at_ns)) {
+    throw new Error(
+      "obligation input expires_at_ns is not a non-negative integer: " + input.expires_at_ns,
+    );
+  }
+  if (BigInt(input.expires_at_ns) > 0xffffffffffffffffn) {
+    throw new Error(
+      "obligation input expires_at_ns is outside the u64 range: " + input.expires_at_ns,
+    );
+  }
+  if (BigInt(Number(input.expires_at_ns)) > 0xffffffffffffffffn) {
+    throw new Error(
+      "obligation input expires_at_ns rounds to a value outside the u64 range: " + input.expires_at_ns,
+    );
   }
   const hashBytes: number[] = [];
   for (let i = 0; i < input.evidence_hash.length; i += 2) {

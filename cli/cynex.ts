@@ -9,7 +9,10 @@
  *     does not match the recomputed previous hash, is reported
  *     as failed and the command exits non-zero. No receipt is
  *     trusted from its own verified_ok field; that field is
- *     output, not input.
+ *     output, not input. The final receipt has no successor to
+ *     anchor it in file mode, so it is reported anchored=false;
+ *     verify-live anchors it against state() last_receipt_hash
+ *     instead.
  *   verify-live <vaultId>
  *     Reads real receipts through the paginated receipts view
  *     (0, 100 at a time until empty), verifies the same chain,
@@ -17,7 +20,12 @@
  *     index, prev_hash, obligation_id, recipient, amount,
  *     token_id, timestamp, tx_ref, verified_ok. Exits non-zero
  *     on any chain break. This reads the live chain; it does
- *     not sign, fund, or settle anything.
+ *     not sign, fund, or settle anything. The final receipt is
+ *     anchored against state() last_receipt_hash read live from
+ *     the vault, so a tampered final receipt fails instead of
+ *     passing. The receipts read and the state() read are two
+ *     separate view calls, so a settlement landing between them
+ *     fails the run (fail-closed); re-running passes.
  *   verify --csv <vaultId>
  *   verify --csv --file <receipts.json>
  *     The canonical cynex-verify entry point (plan section
@@ -28,7 +36,10 @@
  *     non-zero on any chain break. Receipts carry no
  *     evidence_type, so the chain check and the CSV cover
  *     PREIMAGE and TEE settlements exactly like the verifier
- *     path; the tamper-detection test proves it.
+ *     path; the tamper-detection test proves it. Live mode
+ *     anchors the final receipt against state()
+ *     last_receipt_hash; file mode cannot, so its final
+ *     receipt is reported unanchored.
  *   playground <vaultId> <obligationId...>
  *     Reads each listed obligation and its policy live from the
  *     contract (no signing, no transactions) and prints the Phase 3
@@ -165,14 +176,27 @@ function parseReceipt(row: ReceiptJson): Receipt {
   };
 }
 
-export function verifyReceiptChain(rows: ReceiptJson[]): { index: bigint; verified_ok: boolean }[] {
+/**
+ * Replay a receipts file from genesis. Each row is anchored by
+ * its successor: the next row prev_hash must equal the
+ * recomputed hash of this row, so a tampered row is reported
+ * unanchored at the row itself. The final row has no successor
+ * and no vault state is available in file mode, so it is
+ * reported anchored=false and its verified_ok covers only the
+ * link checks, never the content of the final receipt itself.
+ * Use verify-live to anchor the final receipt against the
+ * vault state() last_receipt_hash.
+ */
+export function verifyReceiptChain(rows: ReceiptJson[]): { index: bigint; verified_ok: boolean; anchored: boolean }[] {
+  const receipts = rows.map(parseReceipt);
+  const hashes = receipts.map((receipt) => receiptHash(receipt));
   let prev = GENESIS_PREV_HASH;
-  const out: { index: bigint; verified_ok: boolean }[] = [];
-  for (const [i, row] of rows.entries()) {
-    const receipt = parseReceipt(row);
+  const out: { index: bigint; verified_ok: boolean; anchored: boolean }[] = [];
+  for (const [i, receipt] of receipts.entries()) {
     const ok = receipt.index === BigInt(i) && receipt.prev_hash === prev;
-    out.push({ index: receipt.index, verified_ok: ok });
-    prev = receiptHash(receipt);
+    const anchored = i === receipts.length - 1 ? false : receipts[i + 1]?.prev_hash === hashes[i];
+    out.push({ index: receipt.index, verified_ok: ok, anchored });
+    prev = hashes[i];
   }
   return out;
 }
@@ -200,14 +224,108 @@ function parseLiveReceipt(row: Record<string, unknown>): Receipt {
   };
 }
 
-export function verifyLiveChain(receipts: Receipt[]): { receipt: Receipt; verified_ok: boolean }[] {
+/**
+ * Decode the vault state() view, which returns the tuple
+ * (owner, receipt_index, last_receipt_hash) from contract
+ * state() (lib.rs). The receipt index is the count of
+ * receipts, and last_receipt_hash is the 32-byte hash of the
+ * final receipt. Anything else throws: verify-live must fail
+ * rather than anchor against a guessed hash.
+ */
+export function parseVaultState(state: unknown): {
+  owner: string;
+  receiptIndex: bigint;
+  lastReceiptHash: string;
+} {
+  if (!Array.isArray(state) || state.length !== 3) {
+    throw new Error("vault state() did not return a 3-element tuple");
+  }
+  const [owner, receiptIndex, hashBytes] = state as unknown[];
+  if (typeof owner !== "string" || owner === "") {
+    throw new Error("vault state() owner is not an account id string");
+  }
+  let index: bigint;
+  if (typeof receiptIndex === "number" && Number.isSafeInteger(receiptIndex) && receiptIndex >= 0) {
+    index = BigInt(receiptIndex);
+  } else if (typeof receiptIndex === "string" && /^[0-9]+$/.test(receiptIndex)) {
+    index = BigInt(receiptIndex);
+  } else {
+    throw new Error("vault state() receipt_index is not a non-negative integer");
+  }
+  if (
+    !Array.isArray(hashBytes) ||
+    hashBytes.length !== 32 ||
+    !hashBytes.every((b) => typeof b === "number" && Number.isInteger(b) && b >= 0 && b <= 255)
+  ) {
+    throw new Error("vault state() last_receipt_hash is not 32 bytes");
+  }
+  return {
+    owner,
+    receiptIndex: index,
+    lastReceiptHash: toHex(new Uint8Array(hashBytes as number[])),
+  };
+}
+
+/**
+ * Cross-check the paginated receipts read against state()
+ * receipt_index, which is the count of receipts. A short read
+ * (an empty page against a non-empty vault, a truncated page
+ * set) must fail instead of verifying a prefix, or nothing at
+ * all, and passing vacuously: the anchor comparison alone
+ * cannot catch an empty read, because there is no final row
+ * to compare. A settle landing between the receipts read and
+ * the state() read also trips this check; that fails closed
+ * and a re-run passes.
+ */
+export function assertReceiptCount(receipts: Receipt[], receiptIndex: bigint): void {
+  if (BigInt(receipts.length) !== receiptIndex) {
+    throw new Error(
+      "receipt count " +
+        receipts.length.toString() +
+        " does not match state() receipt_index " +
+        receiptIndex.toString() +
+        "; the chain read is incomplete or changed mid-read, re-run verify-live",
+    );
+  }
+}
+
+/**
+ * Verify live receipts. Each row is anchored by its successor
+ * as in verifyReceiptChain, and the final row is anchored
+ * against lastReceiptHash, the vault state()
+ * last_receipt_hash, when it is supplied: the final receipt
+ * only verifies when its recomputed hash equals that stored
+ * hash. Without an anchor the final row is reported
+ * anchored=false and its verified_ok covers only the link
+ * checks. verifyLive always supplies the anchor read live
+ * from the vault, so a tampered final receipt fails there.
+ * A malformed anchor throws instead of verifying against a
+ * guess.
+ */
+export function verifyLiveChain(
+  receipts: Receipt[],
+  lastReceiptHash?: string,
+): { receipt: Receipt; verified_ok: boolean; anchored: boolean }[] {
+  let anchor: string | undefined;
+  if (lastReceiptHash !== undefined) {
+    if (!/^[0-9a-fA-F]{64}$/.test(lastReceiptHash)) {
+      throw new Error("last_receipt_hash anchor is not 32 bytes of hex: " + lastReceiptHash);
+    }
+    anchor = lastReceiptHash.toLowerCase();
+  }
+  const hashes = receipts.map((receipt) => receiptHash(receipt));
   let prev = GENESIS_PREV_HASH;
   let expected = 0n;
-  const out: { receipt: Receipt; verified_ok: boolean }[] = [];
-  for (const receipt of receipts) {
-    const ok = receipt.index === expected && receipt.prev_hash === prev;
-    out.push({ receipt, verified_ok: ok });
-    prev = receiptHash(receipt);
+  const out: { receipt: Receipt; verified_ok: boolean; anchored: boolean }[] = [];
+  for (const [i, receipt] of receipts.entries()) {
+    const isFinal = i === receipts.length - 1;
+    const linkOk = receipt.index === expected && receipt.prev_hash === prev;
+    const anchored = isFinal
+      ? anchor !== undefined && hashes[i] === anchor
+      : receipts[i + 1]?.prev_hash === hashes[i];
+    const ok = linkOk && (!isFinal || anchor === undefined || anchored);
+    out.push({ receipt, verified_ok: ok, anchored });
+    prev = hashes[i];
     expected += 1n;
   }
   return out;
@@ -299,7 +417,10 @@ async function verifyLive(vaultId: string): Promise<number> {
       break;
     }
   }
-  const results = verifyLiveChain(all);
+  const client = new CynexClient(vaultId);
+  const vaultState = parseVaultState(await client.state());
+  assertReceiptCount(all, vaultState.receiptIndex);
+  const results = verifyLiveChain(all, vaultState.lastReceiptHash);
   for (const line of toCsvRows(results)) {
     console.log(line);
   }
@@ -320,6 +441,9 @@ async function verifyCsv(args: string[]): Promise<number> {
     for (const line of lines) {
       console.log(line);
     }
+    if (results.length > 0) {
+      console.error("note: the final receipt is unanchored in file mode; verify-live anchors it against state() last_receipt_hash");
+    }
     return results.every((r) => r.verified_ok) ? 0 : 1;
   }
   if (args[1] !== undefined && args[1] !== "--file") {
@@ -334,7 +458,7 @@ function verifyFile(file: string): number {
   const rows = JSON.parse(readFileSync(file, "utf-8")) as ReceiptJson[];
   const results = verifyReceiptChain(rows);
   for (const r of results) {
-    console.log(r.index.toString() + " verified_ok=" + r.verified_ok);
+    console.log(r.index.toString() + " verified_ok=" + r.verified_ok + " anchored=" + r.anchored);
   }
   return results.every((r) => r.verified_ok) ? 0 : 1;
 }

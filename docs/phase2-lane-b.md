@@ -199,7 +199,7 @@ Live state left by the re-audit, independently re-read from chain before this fi
 - obl-002 remains READY from Phase 2.
 - Cancel observation, Lane A, not Lane B homework and not a merge blocker: the deployed cancel_obligation only allows CREATED, while the frozen doc allows cancel from more states, so obl-003 cannot be cancelled from EVIDENCE_PENDING, only completed or left.
 
-Known caveat, unchanged by this fix: createObligationArgs converts u64 inputs with Number, so a dry-run expiry above 2 to the power 53 rounds. Live values in the re-audit were below that range. This was already flagged in the first audit round.
+Known caveat, corrected 2026-11-07 in the audit fixes (finding 6-2): createObligationArgs used to require expires_at_ns to round-trip exactly as a JS number, so valid arbitrary nanosecond timestamps such as now + 1h were rejected. expires_at_ns now accepts any u64 timestamp that can be sent as a JSON number; the top 1024 u64 values, which round to 2 to the power 64, are rejected locally instead of failing at the contract. The JSON number sent can differ from the specified expiry by at most about a microsecond of Number rounding, far below the granularity at which expiries are specified and blocks are produced. Amount and nonce keep the exact round-trip check.
 
 Next step, for Jayaang: third live re-audit with a fresh console obligation, create, request, submit, settle, all through the console, with live transaction hashes and the balance delta in the console output, and verify-live re-run on the then three-receipt chain. Live console settlement was not run from this machine: owner, verifier, and agent keys are held by Lane A.
 

@@ -13,6 +13,29 @@ import { JsonRpcProvider } from "near-api-js";
 
 export const TESTNET_RPC_URL = "https://test.rpc.fastnear.com";
 
+/**
+ * Convert a u64 pagination value to the JSON number the
+ * contract expects, refusing to round silently. NEAR JSON u64
+ * is a number, not a string: sending strings failed live with
+ * invalid type: string "0", expected u64. But Number() loses
+ * precision above 2^53, so a value outside the safe integer
+ * range throws here instead of being sent rounded. BigInt
+ * cannot be sent directly, the contract takes a JSON number,
+ * so throwing is the only honest option for such a value.
+ */
+export function toSafeJsonU64(value: bigint, name: string): number {
+  if (value < 0n || value > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new Error(
+      "receipts " +
+        name +
+        " " +
+        value.toString() +
+        " is outside the safe integer range; the contract expects a JSON number, so it cannot be sent exactly",
+    );
+  }
+  return Number(value);
+}
+
 export class CynexClient {
   private provider: JsonRpcProvider;
   readonly vaultId: string;
@@ -44,9 +67,17 @@ export class CynexClient {
     return this.view("balances", { policy_id });
   }
 
-    // NEAR JSON u64 is a number, not a string. Sending strings failed live with: invalid type: string "0", expected u64. Pagination values are small, so Number() loses no precision here.
+  // Pagination values are checked against the safe integer
+  // range before conversion (see toSafeJsonU64 above): a value
+  // above 2^53 throws instead of silently rounding. Pagination
+  // values are small in practice (receipt indices 0-15), so the
+  // throw never fires in practice, but the conversion is now
+  // correct in principle.
   receipts(start: bigint, limit: bigint): Promise<unknown> {
-    return this.view("receipts", { start: Number(start), limit: Number(limit) });
+    return this.view("receipts", {
+      start: toSafeJsonU64(start, "start"),
+      limit: toSafeJsonU64(limit, "limit"),
+    });
   }
 
   state(): Promise<unknown> {

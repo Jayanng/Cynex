@@ -14,6 +14,7 @@ import {
   PREIMAGE_MAX_BYTES,
   TEE_CALL_GAS,
   consoleCalls,
+  createObligationArgs,
   evidenceBranch,
   isHttpUrl,
   pollTee,
@@ -134,5 +135,63 @@ describe("pollTee", () => {
     const row = { state: "EVIDENCE_PENDING", evidence_requested_at_ns: twoHoursAgoNs };
     const out = await pollTee(stubClient(row), "p9-test-001", 3, 0);
     expect(out).toBeNull();
+  });
+});
+
+describe("createObligationArgs expires_at_ns (audit finding 6-2)", () => {
+  function fileWithExpiry(expiresAtNs: string): ObligationFile {
+    return {
+      ...obligationFile("PREIMAGE", "phase9-demo"),
+      expires_at_ns: expiresAtNs,
+    };
+  }
+
+  test("an arbitrary nanosecond timestamp (now + 1h) is accepted", () => {
+    const expiry = (BigInt(Date.now()) * 1000000n + 3600000000000n) | 1n;
+    const args = createObligationArgs(fileWithExpiry(expiry.toString()));
+    expect(typeof args.expires_at_ns).toBe("number");
+    const drift = BigInt(args.expires_at_ns) - expiry;
+    const absDrift = drift < 0n ? -drift : drift;
+    expect(absDrift <= 1000n).toBe(true);
+  });
+
+  test("exactly representable values still pass through unchanged", () => {
+    const args = createObligationArgs(fileWithExpiry("1893456000000000000"));
+    expect(BigInt(args.expires_at_ns).toString()).toBe("1893456000000000000");
+  });
+
+  test("an invalid expiry throws", () => {
+    for (const bad of ["abc", "-1", "", "18446744073709551616", "1.5"]) {
+      expect(() => createObligationArgs(fileWithExpiry(bad))).toThrow();
+    }
+  });
+
+  test("an expiry that rounds to 2^64 still throws", () => {
+    expect(() =>
+      createObligationArgs(fileWithExpiry("18446744073709551615")),
+    ).toThrow("outside the u64 range");
+  });
+
+  test("the tie value 2^64 - 1024 throws and 2^64 - 1025 rounds down", () => {
+    expect(() =>
+      createObligationArgs(fileWithExpiry("18446744073709550592")),
+    ).toThrow("outside the u64 range");
+    const args = createObligationArgs(fileWithExpiry("18446744073709550591"));
+    expect(BigInt(args.expires_at_ns).toString()).toBe("18446744073709549568");
+  });
+
+  test("the largest exactly representable u64 below 2^64 is accepted", () => {
+    const args = createObligationArgs(fileWithExpiry("18446744073709549568"));
+    expect(BigInt(args.expires_at_ns).toString()).toBe("18446744073709549568");
+  });
+
+  test("amount and nonce still require exact representability", () => {
+    const over = "9007199254740993";
+    expect(() =>
+      createObligationArgs({ ...obligationFile("PREIMAGE", "phase9-demo"), amount: over }),
+    ).toThrow("not exactly representable");
+    expect(() =>
+      createObligationArgs({ ...obligationFile("PREIMAGE", "phase9-demo"), nonce: over }),
+    ).toThrow("not exactly representable");
   });
 });

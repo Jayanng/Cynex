@@ -1372,24 +1372,21 @@ impl Contract {
             requests.remove(&obligation_id);
             return;
         }
-        // The TEE result is only usable inside the evidence window, the
-        // same window submit_evidence enforces.
+        // The TEE result is only usable inside the evidence window, and
+        // the window runs from this request's own timestamp, not from
+        // the original evidence request: a retry filed near the end of
+        // the first hour gets its own fresh hour, so its valid callback
+        // is not rejected as expired. The obligation expiry above still
+        // bounds everything, and request_tee_verification still only
+        // files a retry inside the original window.
         let now = env::block_timestamp();
         if now > obligation.expires_at_ns {
             requests.remove(&obligation_id);
             return;
         }
-        match obligation.evidence_requested_at_ns {
-            Some(requested_at) => {
-                if now > requested_at.saturating_add(EVIDENCE_TIMEOUT_NS) {
-                    requests.remove(&obligation_id);
-                    return;
-                }
-            }
-            None => {
-                requests.remove(&obligation_id);
-                return;
-            }
+        if now > tee.requested_at_ns.saturating_add(EVIDENCE_TIMEOUT_NS) {
+            requests.remove(&obligation_id);
+            return;
         }
         let value = match result {
             Ok(v) => v,
@@ -3973,6 +3970,17 @@ mod tests {
         testing_env!(ctx.build());
     }
 
+    // Run the vault callback as the vault itself at a chosen block
+    // timestamp, which is what #[private] requires.
+    fn as_vault_at(vault: &str, block_timestamp: u64) {
+        let vault_id: AccountId = vault.parse().unwrap();
+        let mut ctx = VMContextBuilder::new();
+        ctx.predecessor_account_id(vault_id.clone());
+        ctx.current_account_id(vault_id);
+        ctx.block_timestamp(block_timestamp);
+        testing_env!(ctx.build());
+    }
+
     // The exact output of the live guest v2 run, request 10459. The
     // digest is the SHA-256 of the fetched file, the alpha is the
     // three-part form the host builds, and the signature is the real
@@ -4088,6 +4096,107 @@ mod tests {
         assert_eq!(o.pending_request_id, None);
         assert_eq!(o.pending_digest, None);
         assert_eq!(o.evidence_requested_at_ns, None);
+        let requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
+        assert_eq!(requests.get(&"test-seed".to_string()), None);
+    }
+
+    #[test]
+    fn on_tee_result_accepts_retry_after_original_window() {
+        // Finding 3b-2: the callback window must run from the retry's
+        // own requested_at_ns, not from the original evidence request.
+        // The first request was filed at block 1000, so the original
+        // window ends at 1000 + EVIDENCE_TIMEOUT_NS. The retry is
+        // filed one second before that deadline, and its callback
+        // arrives just past it: the old code rejected this, the fix
+        // accepts it. The stored request keeps the original seed, so
+        // the canned live output still verifies; only the timestamp
+        // moves, which is exactly what a retry changes.
+        let mut c = tee_setup_for("cynexmaster.testnet", "test-seed");
+        let retry_at = 1000 + EVIDENCE_TIMEOUT_NS - 1_000_000_000;
+        // The store LookupMap only writes to storage when it is
+        // dropped, so the fresh request is written in its own scope
+        // and flushed before the callback reads it back.
+        {
+            let mut requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
+            let mut tee = requests.get(&"test-seed".to_string()).unwrap().clone();
+            tee.requested_at_ns = retry_at;
+            requests.insert("test-seed".to_string(), tee);
+        }
+        let callback_at = 1000 + EVIDENCE_TIMEOUT_NS + 1;
+        as_vault_at("cynexmaster.testnet", callback_at);
+        c.on_tee_result("test-seed".to_string(), Ok(tee_output_json()));
+        let o = c.get_obligation("test-seed".to_string()).unwrap();
+        assert_eq!(o.state, "READY");
+    }
+
+    #[test]
+    fn on_tee_result_rejects_callback_after_retry_window() {
+        // The retry's own window is still enforced: a callback past
+        // retry requested_at_ns + EVIDENCE_TIMEOUT_NS is rejected.
+        let mut c = tee_setup_for("cynexmaster.testnet", "test-seed");
+        let retry_at = 1000 + EVIDENCE_TIMEOUT_NS - 1_000_000_000;
+        // The store LookupMap only writes to storage when it is
+        // dropped, so the fresh request is written in its own scope
+        // and flushed before the callback reads it back.
+        {
+            let mut requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
+            let mut tee = requests.get(&"test-seed".to_string()).unwrap().clone();
+            tee.requested_at_ns = retry_at;
+            requests.insert("test-seed".to_string(), tee);
+        }
+        let callback_at = retry_at + EVIDENCE_TIMEOUT_NS + 1;
+        as_vault_at("cynexmaster.testnet", callback_at);
+        c.on_tee_result("test-seed".to_string(), Ok(tee_output_json()));
+        let o = c.get_obligation("test-seed".to_string()).unwrap();
+        assert_eq!(o.state, "EVIDENCE_PENDING");
+        let requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
+        assert_eq!(requests.get(&"test-seed".to_string()), None);
+    }
+
+    #[test]
+    fn on_tee_result_accepts_callback_at_retry_deadline() {
+        // Boundary (GLM F3): the check is `now > requested_at +
+        // TIMEOUT`, so a callback arriving exactly at the retry
+        // deadline is accepted.
+        let mut c = tee_setup_for("cynexmaster.testnet", "test-seed");
+        let retry_at = 1000 + EVIDENCE_TIMEOUT_NS - 1_000_000_000;
+        {
+            let mut requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
+            let mut tee = requests.get(&"test-seed".to_string()).unwrap().clone();
+            tee.requested_at_ns = retry_at;
+            requests.insert("test-seed".to_string(), tee);
+        }
+        let callback_at = retry_at + EVIDENCE_TIMEOUT_NS;
+        as_vault_at("cynexmaster.testnet", callback_at);
+        c.on_tee_result("test-seed".to_string(), Ok(tee_output_json()));
+        let o = c.get_obligation("test-seed".to_string()).unwrap();
+        assert_eq!(o.state, "READY");
+    }
+
+    #[test]
+    fn on_tee_result_rejects_callback_past_obligation_expiry() {
+        // Boundary (GLM F4): the obligation expiry still bounds
+        // everything, so a callback inside the retry window but past
+        // expires_at_ns is rejected. The obligation is shortened to
+        // expire one nanosecond before the callback, the way a
+        // short-lived obligation expires in production while its retry
+        // window is still open.
+        let mut c = tee_setup_for("cynexmaster.testnet", "test-seed");
+        let retry_at = 1000 + EVIDENCE_TIMEOUT_NS - 1_000_000_000;
+        {
+            let mut requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
+            let mut tee = requests.get(&"test-seed".to_string()).unwrap().clone();
+            tee.requested_at_ns = retry_at;
+            requests.insert("test-seed".to_string(), tee);
+        }
+        let callback_at = 1000 + EVIDENCE_TIMEOUT_NS + 1;
+        let mut o = c.get_obligation("test-seed".to_string()).unwrap();
+        o.expires_at_ns = callback_at - 1;
+        c.obligations.insert("test-seed".to_string(), o);
+        as_vault_at("cynexmaster.testnet", callback_at);
+        c.on_tee_result("test-seed".to_string(), Ok(tee_output_json()));
+        let o = c.get_obligation("test-seed".to_string()).unwrap();
+        assert_eq!(o.state, "EVIDENCE_PENDING");
         let requests: LookupMap<String, TeeRequest> = LookupMap::new(b"t");
         assert_eq!(requests.get(&"test-seed".to_string()), None);
     }
