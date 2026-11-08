@@ -173,6 +173,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): McpConfig {
         "MCP config: CYNEX_SANDBOX_CHAIN_ID is not a valid chain id: " + sandboxChainId,
       );
     }
+    // A sandbox chain id never names a real network: near-sandbox
+    // reports "sandbox" or a randomized test-chain-XXXXX id, so
+    // "testnet" or "mainnet" here can only be a mistake. Refuse it
+    // instead of letting the runtime check compare the live chain
+    // id against a name the local node does not serve.
+    if (sandboxChainId === "testnet" || sandboxChainId === "mainnet") {
+      throw new Error(
+        "MCP config: CYNEX_SANDBOX_CHAIN_ID must not name a real network: " + sandboxChainId,
+      );
+    }
     return {
       vaultId,
       agentId,

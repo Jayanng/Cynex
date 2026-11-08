@@ -10,6 +10,7 @@ import { join } from "node:path";
 import {
   base58Encode,
   codeHashOfWasm,
+  nonceAsBigInt,
   readMasterSecretKey,
   sandboxBinaryPath,
 } from "./sandbox-harness.js";
@@ -26,6 +27,22 @@ describe("base58Encode", () => {
     expect(codeHashOfWasm(new Uint8Array([]))).toBe(
       "GKot5hBsd81kMupNCXHaqbhv3huEbxAFMLnpcX2hniwn",
     );
+  });
+});
+
+describe("nonceAsBigInt", () => {
+  test("reads a JSON number nonce exactly", () => {
+    expect(nonceAsBigInt(647000003)).toBe(647000003n);
+  });
+
+  test("passes a bigint nonce through unchanged", () => {
+    expect(nonceAsBigInt(647000003n)).toBe(647000003n);
+  });
+
+  test("refuses values that cannot be compared exactly", () => {
+    expect(() => nonceAsBigInt(Number.MAX_SAFE_INTEGER + 1)).toThrow(/not a readable nonce/);
+    expect(() => nonceAsBigInt("647000003")).toThrow(/not a readable nonce/);
+    expect(() => nonceAsBigInt(undefined)).toThrow(/not a readable nonce/);
   });
 });
 

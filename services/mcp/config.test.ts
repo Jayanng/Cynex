@@ -115,6 +115,21 @@ describe("loadConfig", () => {
     expect(config.expectedChainId).toBe("test-chain-AJwDw");
   });
 
+  test("sandbox mode refuses a chain id that names a real network", () => {
+    for (const chainId of ["testnet", "mainnet"]) {
+      expect(() =>
+        loadConfig({
+          CYNEX_VAULT: VAULT,
+          CYNEX_AGENT: "cynex-agent.cynexmaster.testnet",
+          CYNEX_AGENT_KEY_FILE: "/tmp/agent-key.json",
+          CYNEX_SANDBOX_RPC_URL: "http://127.0.0.1:3030",
+          CYNEX_SANDBOX_VAULT_CODE_HASH: "65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6",
+          CYNEX_SANDBOX_CHAIN_ID: chainId,
+        }),
+      ).toThrow(/must not name a real network/);
+    }
+  });
+
   test("isSandboxRpcUrl accepts only the literal loopback address with a port", () => {
     expect(isSandboxRpcUrl("http://127.0.0.1:3030")).toBe(true);
     expect(isSandboxRpcUrl("http://localhost:3030")).toBe(false);

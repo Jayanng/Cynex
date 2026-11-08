@@ -188,8 +188,14 @@ export function verifyRuntimeState(
   },
 ): RuntimeCheckResult {
   const sandbox = opts.sandbox === true;
-  const expectedChainId =
-    opts.expectedChainId ?? (sandbox ? SANDBOX_CHAIN_ID : TESTNET_CHAIN_ID);
+  // The testnet path pins testnet, like the code hash pins
+  // EXPECTED_VAULT_CODE_HASH below: the expected network is not a
+  // caller-supplied value, so it cannot be co-varied with the RPC
+  // URL. Sandbox mode still takes the expected id from the caller,
+  // because near-sandbox randomizes its chain id on every init.
+  const expectedChainId = sandbox
+    ? (opts.expectedChainId ?? SANDBOX_CHAIN_ID)
+    : TESTNET_CHAIN_ID;
   const expectedCodeHash = sandbox ? opts.expectedVaultCodeHash : EXPECTED_VAULT_CODE_HASH;
   if (sandbox) {
     if (!isSandboxRpcUrl(opts.rpcUrl)) {

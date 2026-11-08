@@ -161,6 +161,23 @@ export function codeHashOfWasm(wasm: Uint8Array): string {
   return base58Encode(createHash("sha256").update(wasm).digest());
 }
 
+/**
+ * An access-key nonce as a bigint, for exact comparison. The RPC
+ * returns a JSON number and near-api-js also has an AccessKeyView
+ * shape whose nonce is a bigint; either way the comparison must
+ * be exact, so a number is accepted only when it is a safe
+ * integer, and anything else throws instead of comparing lossy.
+ */
+export function nonceAsBigInt(value: unknown): bigint {
+  if (typeof value === "bigint") {
+    return value;
+  }
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) {
+    return BigInt(value);
+  }
+  throw new Error("access key nonce is not a readable nonce: " + JSON.stringify(value));
+}
+
 // ---------------------------------------------------------------------------
 // near-sandbox binary and node
 // ---------------------------------------------------------------------------
@@ -1121,12 +1138,20 @@ export async function runSandboxMcpSuite(): Promise<SandboxSuiteResult> {
         const receiptRows = (asRecord(receiptsOut.data).receipts ?? []) as Array<
           Record<string, unknown>
         >;
-        if (receiptRows.length !== 2) {
+        if (
+          receiptRows.length !== 2 ||
+          receiptRows[0]?.obligation_id !== "sandbox-bootstrap-001" ||
+          receiptRows[1]?.obligation_id !== "sandbox-bootstrap-002"
+        ) {
           throw new Error(
-            "MCP receipts list has " + receiptRows.length + " rows, expected 2 after bootstrap",
+            "MCP receipts list is not the two bootstrap receipts: " +
+              JSON.stringify(receiptRows),
           );
         }
-        check("MCP receipts list", "2 receipts read from the sandbox vault");
+        check(
+          "MCP receipts list",
+          "2 receipts read from the sandbox vault: sandbox-bootstrap-001 and sandbox-bootstrap-002",
+        );
 
         const obligationOut = await callTool(client, "cynex_get_obligation", {
           obligation_id: "sandbox-mcp-001",
@@ -1290,6 +1315,18 @@ export async function runSandboxMcpSuite(): Promise<SandboxSuiteResult> {
         }
         check("prepare submits nothing", "sandbox-prepare-001 does not exist on chain");
 
+        // The agent access-key nonce, read live: a failed
+        // transaction still consumes a nonce on NEAR, so an
+        // unchanged nonce is the proof the refused attempt
+        // submitted nothing.
+        async function agentNonce(): Promise<bigint> {
+          const key = (await provider.viewAccessKey({
+            accountId: agentId,
+            publicKey: agentKeyPair.getPublicKey().toString(),
+            finalityQuery: { finality: "final" },
+          })) as unknown as { nonce?: unknown };
+          return nonceAsBigInt(key.nonce);
+        }
         // Negative: a second server configured with the wrong
         // expected vault code hash must refuse the settle at the
         // runtime check, on the same live chain, without submitting
@@ -1297,6 +1334,7 @@ export async function runSandboxMcpSuite(): Promise<SandboxSuiteResult> {
         // refusal can only come from the runtime check. The wrong
         // hash is the test token's real hash: valid base58, but not
         // the vault's.
+        const nonceBefore = await agentNonce();
         const savedHash = process.env.CYNEX_SANDBOX_VAULT_CODE_HASH;
         process.env.CYNEX_SANDBOX_VAULT_CODE_HASH =
           "bvJCULdyrVfhtZ9Wvk2xEBwVY8aC1vwx3TKb2gniuLM";
@@ -1326,9 +1364,20 @@ export async function runSandboxMcpSuite(): Promise<SandboxSuiteResult> {
                 JSON.stringify(tamperedOut),
             );
           }
+          const nonceAfter = await agentNonce();
+          if (nonceAfter !== nonceBefore) {
+            throw new Error(
+              "wrong code hash attempt moved the agent nonce from " +
+                nonceBefore.toString() +
+                " to " +
+                nonceAfter.toString() +
+                ", a transaction was submitted",
+            );
+          }
           check(
             "wrong code hash refused",
-            "tampered server refused the settle at the runtime check, nothing submitted",
+            "tampered server refused the settle at the runtime check, agent nonce unchanged at " +
+              nonceBefore.toString(),
           );
         } finally {
           try {
@@ -1397,6 +1446,10 @@ export async function runSandboxMcpSuite(): Promise<SandboxSuiteResult> {
       txHashes,
     };
   } finally {
-    await sandbox.stop();
+    try {
+      await sandbox.stop();
+    } catch {
+      // stopping must not hide the suite result
+    }
   }
 }

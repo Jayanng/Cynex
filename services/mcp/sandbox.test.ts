@@ -29,7 +29,34 @@ describe("sandbox MCP suite", () => {
       // a local chain, never testnet or mainnet.
       expect(result.chainId).toMatch(/^(sandbox|test-chain-[A-Za-z0-9]+)$/);
       expect(result.vaultCodeHash).toBe("65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6");
-      expect(result.checks.length).toBeGreaterThanOrEqual(10);
+      // The harness throws on the first failed expectation, so a
+      // returned result means every check passed. Pin the exact
+      // count and the full name list anyway: a dropped check must
+      // fail here, not pass silently with a shorter list.
+      expect(result.checks.length).toBe(21);
+      expect(result.checks.map((check) => check.name)).toEqual([
+        "sandbox up",
+        "vault wasm",
+        "accounts",
+        "vault deployed",
+        "token deployed",
+        "policy funded",
+        "obligations READY",
+        "agent key scoped",
+        "reputation bootstrap",
+        "counterparty ALLOW",
+        "MCP policy read",
+        "MCP receipts list",
+        "MCP obligation read",
+        "MCP prepare",
+        "MCP settle PAID",
+        "vault refuses changed recipient",
+        "replay refused",
+        "prepare submits nothing",
+        "wrong code hash refused",
+        "final policy spent",
+        "MCP tools over sandbox",
+      ]);
       expect(result.txHashes["mcp-001"]).toMatch(/^[A-Za-z0-9]{43,44}$/);
       expect(result.txHashes["negative-001"]).toMatch(/^[A-Za-z0-9]{43,44}$/);
       expect(result.txHashes["bootstrap-001"]).toMatch(/^[A-Za-z0-9]{43,44}$/);

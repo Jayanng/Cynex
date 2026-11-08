@@ -136,6 +136,31 @@ export function pickResolverObligationId(
  * carries no --matrix-obligation, and its own fixture obligation
  * is the right source.
  */
+/**
+ * Matrix fixtures in the order their flags appear on the command
+ * line. pickMatrixResolverObligationId reads the policy from the
+ * first fixture, and the documented order is the command-line
+ * order, so a run that lists --matrix-blocked before
+ * --matrix-settle must read the policy from the blocked fixture,
+ * not from the settle fixture by fixed priority. A fixture whose
+ * flag is absent from the command line is undefined anyway, so
+ * its position at the end is irrelevant. The position is the first
+ * occurrence with a full valid value list, the same rule matrixArgs
+ * parses by, so a malformed earlier occurrence cannot reorder the
+ * fixtures.
+ */
+export function matrixFixturesInArgvOrder(
+  argv: string[],
+  fixtures: Array<{ flag: string; count: number; fixture: string[] | undefined }>,
+): Array<string[] | undefined> {
+  const positioned = fixtures.map((entry, i) => {
+    const at = firstValidFlagIndex(argv, entry.flag, entry.count);
+    return { fixture: entry.fixture, at: at < 0 ? Number.MAX_SAFE_INTEGER : at, i };
+  });
+  positioned.sort((a, b) => a.at - b.at || a.i - b.i);
+  return positioned.map((entry) => entry.fixture);
+}
+
 export function pickMatrixResolverObligationId(
   matrixObligation: string | undefined,
   fixtures: Array<string[] | undefined>,
@@ -182,19 +207,25 @@ export async function resolvePolicyId(
 // A flag with no value (last on the command line, or followed by
 // another flag) yields nothing instead of swallowing the next
 // flag as its value. Shared by the normal runner and the matrix
-// runner, which parse argv separately.
-export function flagValue(argv: string[], index: number): string | undefined {
-  if (index < 0) {
-    return undefined;
+// runner, which parse argv separately. Every occurrence of the
+// flag is scanned in order, and the first one with a value wins:
+// a malformed first occurrence must not shadow a later valid one.
+export function flagValue(argv: string[], flag: string): string | undefined {
+  let index = argv.indexOf(flag);
+  while (index >= 0) {
+    const value = argv[index + 1];
+    if (value !== undefined && !value.startsWith("--")) {
+      return value;
+    }
+    index = argv.indexOf(flag, index + 1);
   }
-  const value = argv[index + 1];
-  return value !== undefined && !value.startsWith("--") ? value : undefined;
+  return undefined;
 }
 
 async function main(): Promise<number> {
   const argv = process.argv.slice(2);
-  const obligationId = flagValue(argv, argv.indexOf("--obligation"));
-  const policyFlag = flagValue(argv, argv.indexOf("--policy"));
+  const obligationId = flagValue(argv, "--obligation");
+  const policyFlag = flagValue(argv, "--policy");
   const settleIndex = argv.indexOf("--settle");
   const settleArgs = settleIndex >= 0 ? argv.slice(settleIndex + 1, settleIndex + 5) : undefined;
   const transport = new StdioClientTransport({
@@ -535,13 +566,31 @@ export interface MatrixRowResult {
 
 type RowOutcome = { outcome: MatrixRowResult["outcome"]; detail: string; txHash?: string };
 
-function matrixArgs(argv: string[], flag: string, count: number): string[] | undefined {
-  const index = argv.indexOf(flag);
+/**
+ * Index of the first occurrence of a flag whose following `count`
+ * arguments are all present and none is another flag. A malformed
+ * first occurrence must not shadow a later valid one, the same rule
+ * flagValue applies to single-value flags. Returns -1 when no
+ * occurrence has a full valid value list.
+ */
+export function firstValidFlagIndex(argv: string[], flag: string, count: number): number {
+  let index = argv.indexOf(flag);
+  while (index >= 0) {
+    const args = argv.slice(index + 1, index + 1 + count);
+    if (args.length === count && args.every((arg) => !arg.startsWith("--"))) {
+      return index;
+    }
+    index = argv.indexOf(flag, index + 1);
+  }
+  return -1;
+}
+
+export function matrixArgs(argv: string[], flag: string, count: number): string[] | undefined {
+  const index = firstValidFlagIndex(argv, flag, count);
   if (index < 0) {
     return undefined;
   }
-  const args = argv.slice(index + 1, index + 1 + count);
-  return args.length === count ? args : undefined;
+  return argv.slice(index + 1, index + 1 + count);
 }
 
 function txHashFromReason(reason: string): string | undefined {
@@ -597,11 +646,11 @@ async function runMatrix(client: Client, argv: string[]): Promise<number> {
     }
     return typeof out.stage === "string" && RUNTIME_STAGES.has(out.stage);
   }
-  const outFile = flagValue(argv, argv.indexOf("--matrix-out"));
+  const outFile = flagValue(argv, "--matrix-out");
   const vaultId = process.env.CYNEX_VAULT ?? TEST_VAULT;
   const allowProductionNegative = argv.includes("--allow-production-negative");
-  const matrixObligation = flagValue(argv, argv.indexOf("--matrix-obligation"));
-  const matrixPolicyFlag = flagValue(argv, argv.indexOf("--policy"));
+  const matrixObligation = flagValue(argv, "--matrix-obligation");
+  const matrixPolicyFlag = flagValue(argv, "--policy");
   // The fixtures are parsed before the policy resolves: the
   // policy id is read from --matrix-obligation when given,
   // otherwise from the first fixture obligation on the command
@@ -629,13 +678,13 @@ async function runMatrix(client: Client, argv: string[]): Promise<number> {
       },
       {
         policyFlag: matrixPolicyFlag,
-        obligationId: pickMatrixResolverObligationId(matrixObligation, [
-          settleFixture,
-          negativeFixture,
-          negativeAmountFixture,
-          overBudgetFixture,
-          blockedFixture,
-        ]),
+        obligationId: pickMatrixResolverObligationId(matrixObligation, matrixFixturesInArgvOrder(argv, [
+          { flag: "--matrix-settle", count: 4, fixture: settleFixture },
+          { flag: "--matrix-negative", count: 4, fixture: negativeFixture },
+          { flag: "--matrix-negative-amount", count: 3, fixture: negativeAmountFixture },
+          { flag: "--matrix-overbudget", count: 4, fixture: overBudgetFixture },
+          { flag: "--matrix-blocked", count: 4, fixture: blockedFixture },
+        ])),
         envPolicy: process.env.CYNEX_POLICY,
       },
     );

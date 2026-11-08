@@ -27,7 +27,17 @@ import { runSandboxMcpSuite } from "../../services/mcp/sandbox-harness.js";
 async function main(): Promise<number> {
   try {
     const result = await runSandboxMcpSuite();
+    // The harness throws on the first failed expectation, so a
+    // returned result means every check passed. Pin the count
+    // here too, so the standalone runner cannot exit 0 on a
+    // shorter list if a check is ever dropped.
+    if (result.checks.length !== 21) {
+      throw new Error(
+        "sandbox suite returned " + result.checks.length + " checks, expected 21",
+      );
+    }
     console.log("SANDBOX SUITE PASSED");
+    console.log("SANDBOX CHECKS " + result.checks.length);
     console.log("vault " + result.vaultId + " token " + result.tokenId);
     console.log("policy " + result.policyId + " code hash " + result.vaultCodeHash);
     for (const [name, hash] of Object.entries(result.txHashes)) {

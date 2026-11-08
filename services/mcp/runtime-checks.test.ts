@@ -113,6 +113,40 @@ describe("verifyRuntimeState", () => {
     expect(out.reason).toMatch(/no expected vault code hash/);
   });
 
+  test("sandbox mode uses the default sandbox chain id when no expected id is given", () => {
+    const state = passingState();
+    state.chainId = "sandbox";
+    const out = verifyRuntimeState(state, {
+      rpcUrl: "http://127.0.0.1:3030",
+      vaultId: VAULT,
+      agentPublicKey: PUBKEY,
+      sandbox: true,
+      expectedVaultCodeHash: CODE_HASH,
+    });
+    expect(out.ok).toBe(true);
+    expect(out.reason).toMatch(/sandbox RPC, chain sandbox/);
+  });
+
+  test("the testnet path pins the testnet chain id and ignores a caller-supplied expected id", () => {
+    const out = verifyRuntimeState(passingState(), {
+      rpcUrl: RPC_URL,
+      vaultId: VAULT,
+      agentPublicKey: PUBKEY,
+      expectedChainId: "sandbox",
+    });
+    expect(out.ok).toBe(true);
+    const wrongChain = passingState();
+    wrongChain.chainId = "sandbox";
+    const refused = verifyRuntimeState(wrongChain, {
+      rpcUrl: RPC_URL,
+      vaultId: VAULT,
+      agentPublicKey: PUBKEY,
+      expectedChainId: "sandbox",
+    });
+    expect(refused.ok).toBe(false);
+    expect(refused.reason).toMatch(/expected testnet/);
+  });
+
   test("refuses when the network id could not be read", () => {
     const out = check({ ...passingState(), chainId: null });
     expect(out.ok).toBe(false);

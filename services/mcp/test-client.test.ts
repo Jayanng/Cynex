@@ -8,7 +8,10 @@ import {
   budgetLine,
   claimProductionNegativeUse,
   flagValue,
+  firstValidFlagIndex,
   guardSettle,
+  matrixArgs,
+  matrixFixturesInArgvOrder,
   pickMatrixResolverObligationId,
   pickResolverObligationId,
   resolvePolicyId,
@@ -94,20 +97,26 @@ describe("budgetLine", () => {
 
 describe("flagValue", () => {
   test("a flag with a value returns it", () => {
-    expect(flagValue(["--policy", "p6-001"], 0)).toBe("p6-001");
+    expect(flagValue(["--policy", "p6-001"], "--policy")).toBe("p6-001");
   });
 
   test("a flag followed by another flag yields nothing", () => {
-    expect(flagValue(["--policy", "--matrix-settle", "x"], 0)).toBeUndefined();
-    expect(flagValue(["--matrix-obligation", "--matrix-settle", "x"], 0)).toBeUndefined();
+    expect(flagValue(["--policy", "--matrix-settle", "x"], "--policy")).toBeUndefined();
+    expect(flagValue(["--matrix-obligation", "--matrix-settle", "x"], "--matrix-obligation")).toBeUndefined();
   });
 
   test("a flag last on the command line yields nothing", () => {
-    expect(flagValue(["--policy"], 0)).toBeUndefined();
+    expect(flagValue(["--policy"], "--policy")).toBeUndefined();
   });
 
   test("a missing flag yields nothing", () => {
-    expect(flagValue([], -1)).toBeUndefined();
+    expect(flagValue([], "--policy")).toBeUndefined();
+  });
+
+  test("a malformed first occurrence does not shadow a later valid one", () => {
+    expect(
+      flagValue(["--policy", "--matrix-settle", "x", "--policy", "p6-001"], "--policy"),
+    ).toBe("p6-001");
   });
 });
 
@@ -164,6 +173,52 @@ describe("resolvePolicyId", () => {
       pickMatrixResolverObligationId("matrix-obligation", [["mcp-m2-001"]]),
     ).toBe("matrix-obligation");
     expect(pickMatrixResolverObligationId(undefined, [undefined, undefined])).toBeUndefined();
+  });
+
+  test("matrix fixtures resolve the policy from the first fixture on the command line", () => {
+    const settle = ["settle-001", "a", "100", "ref"];
+    const blocked = ["blocked-001", "a", "100", "ref"];
+    const blockedFirst = matrixFixturesInArgvOrder(
+      ["--matrix", "--matrix-blocked", ...blocked, "--matrix-settle", ...settle],
+      [
+        { flag: "--matrix-settle", count: 4, fixture: settle },
+        { flag: "--matrix-blocked", count: 4, fixture: blocked },
+      ],
+    );
+    expect(pickMatrixResolverObligationId(undefined, blockedFirst)).toBe("blocked-001");
+    const settleFirst = matrixFixturesInArgvOrder(
+      ["--matrix", "--matrix-settle", ...settle, "--matrix-blocked", ...blocked],
+      [
+        { flag: "--matrix-settle", count: 4, fixture: settle },
+        { flag: "--matrix-blocked", count: 4, fixture: blocked },
+      ],
+    );
+    expect(pickMatrixResolverObligationId(undefined, settleFirst)).toBe("settle-001");
+  });
+
+  test("a malformed first fixture occurrence does not reorder the fixtures", () => {
+    const settle = ["settle-001", "a", "100", "ref"];
+    const blocked = ["blocked-001", "a", "100", "ref"];
+    const ordered = matrixFixturesInArgvOrder(
+      ["--matrix", "--matrix-settle", "--matrix-blocked", ...blocked, "--matrix-settle", ...settle],
+      [
+        { flag: "--matrix-settle", count: 4, fixture: settle },
+        { flag: "--matrix-blocked", count: 4, fixture: blocked },
+      ],
+    );
+    expect(pickMatrixResolverObligationId(undefined, ordered)).toBe("blocked-001");
+    expect(firstValidFlagIndex(["--matrix-settle", "--matrix-blocked"], "--matrix-settle", 4)).toBe(-1);
+  });
+
+  test("matrixArgs skips a malformed first occurrence for a later valid one", () => {
+    expect(
+      matrixArgs(
+        ["--matrix-settle", "--matrix-blocked", "b", "100", "ref", "--matrix-settle", "s", "a", "100", "ref"],
+        "--matrix-settle",
+        4,
+      ),
+    ).toEqual(["s", "a", "100", "ref"]);
+    expect(matrixArgs(["--matrix-settle", "--matrix-blocked"], "--matrix-settle", 4)).toBeUndefined();
   });
 
   test("refuses when the obligation on chain has no policy id", async () => {
