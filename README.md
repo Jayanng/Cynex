@@ -182,6 +182,87 @@ went READY through the full guest fetch and VRF path on OutLayer request
 fallback stays for oversized evidence, not as a substitute for a broken
 TEE layer.
 
+## Verifying the TEE attestation
+
+The TDX quote is real, and you do not have to take our word for it. Every
+TEE execution behind the live proofs has a published attestation you can
+fetch and verify yourself, with no account, no key, and no trust in us.
+
+What the vault checks on chain, and what it does not: the vault verifies
+the evidence digest with SHA-256, the exact-match terms (recipient,
+amount, token), the budget, the one-time nonce, and the VRF signature.
+The VRF signature proves the output was not re-rolled and binds the
+signature to the pending request. It does not prove a TEE executed the
+guest, and we do not claim it does. The TDX quote is what proves the
+guest ran inside a genuine enclave, and the vault does not verify the
+quote on chain, because on-chain TDX verification is infeasible on NEAR:
+a 5 KB quote plus a certificate chain plus Intel collateral is
+gas-prohibitive, and NEAR has no native support for it. So the quote is
+verified off chain, with a standalone verifier, and the proof is shipped
+in this repo.
+
+The three executions, all on testnet:
+
+- OutLayer request 10640, the Phase 9 live proof, transaction
+  `DusvRubtcAnPyyB1BQYkf66nA8Vy3eSdZVAmdviuPpUu`
+- OutLayer request 11912, the Phase 10 demo, transaction
+  `5Xvu78qxd9NfgJzRBeyvdQXnqK8sLfSmzrfVC5dgDK68`
+- OutLayer request 13040, the loose-ends retry proof, transaction
+  `EYyyLXCLusX66ktWH4VyZWpP3UbkrcjZGf3MnX6Dfc6p`
+
+Verify a bundle offline, no network needed. First install the verifier:
+
+```sh
+cargo install --git https://github.com/out-layer/outlayer-verify outlayer-verify
+```
+
+Then, from the repo root:
+
+```sh
+outlayer-verify bundle docs/attestation-proofs/attestation-proof-10640.json --offline
+outlayer-verify bundle docs/attestation-proofs/attestation-proof-11912.json --offline
+outlayer-verify bundle docs/attestation-proofs/attestation-proof-13040-mainnet-collateral.json --offline
+```
+
+Each one exits 0. The verifier checks five things: the Intel signature
+chain against Intel collateral, the TCB status, all five measurements
+against the on-chain approved list, the binding of the quote to the exact
+task, and the input and output re-hashed from the on-chain transaction.
+The bundles carry the approved measurements and the collateral with them,
+so the offline check compares against the bundled list, not a live fetch.
+
+Or run the script, which does the same and prints PASS or FAIL:
+
+```sh
+scripts/verify-tee-attestation.sh --bundle docs/attestation-proofs/attestation-proof-10640.json
+```
+
+To verify live from a transaction hash instead of a bundle:
+
+```sh
+scripts/verify-tee-attestation.sh --tx DusvRubtcAnPyyB1BQYkf66nA8Vy3eSdZVAmdviuPpUu
+scripts/verify-tee-attestation.sh --tx 5Xvu78qxd9NfgJzRBeyvdQXnqK8sLfSmzrfVC5dgDK68
+scripts/verify-tee-attestation.sh --tx EYyyLXCLusX66ktWH4VyZWpP3UbkrcjZGf3MnX6Dfc6p
+```
+
+One note on the newest execution: the testnet collateral archive lags
+the current Intel window, it still serves the window ending
+2026-11-07T23:46:20Z, so a plain live check of request 13040 fails
+with TCBInfo expired. That failure says the collateral is out of date, it says
+nothing about the quote, and the retry with covering collateral is what
+confirms the quote. The mainnet collateral endpoint already has the covering
+window, 2026-11-08T00:15:55Z to 2026-12-08T00:15:19Z, and the script fetches
+it and retries automatically, saying plainly which collateral it used. The
+shipped bundle for 13040 already includes that collateral and verifies offline
+with exit 0. The covering collateral is also shipped in this repo at
+docs/attestation-proofs/collateral-fmspc-b0c06f000000-2026-11-08.json, and the
+script falls back to it when the mainnet endpoint cannot be reached.
+
+The live attestation host is `https://testnet-api.outlayer.ai`. Two older
+hosts are retired and will fail: `coordinator-2gpvryc48.outlayer.workers.dev`
+returns nothing, and `testnet-api.outlayer.fastnear.com` returns 410.
+
+
 ## The reputation check
 
 Before the agent settles, the console checks the recipient against five
@@ -312,9 +393,12 @@ off by default, so GitHub-source requests need a worker with the
 compilation capability that the fleet mostly does not have. The way
 around it is pre-published WASM through the coordinator cache or a
 dashboard Project, and a contract-caller request instead of a direct
-account call. Separately, no recent execution has a published attestation
-through the public API, even successful ones, so the VRF signature is the
-on-chain anchor while that gap persists. The full report is in
+account call. Separately, the Phase 8 spike found no recent execution with a published attestation
+through the public API, even successful ones. That gap is closed: checked again
+on 2026-11-08, every recent execution returns a full TDX quote from the live
+host, https://testnet-api.outlayer.ai, and the earlier 404s came from querying
+retired hosts. Both parts of the reversal bar are now met for requests 10640,
+11912, and 13040. See Verifying the TEE attestation above. The full report is in
 `docs/spike-outlayer.md`, and the workaround findings are in the Phase 9
 entry notes. The reversal bar: a contract-caller execution that resolves
 with a VRF output whose signature verifies against the published public
