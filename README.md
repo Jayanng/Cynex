@@ -201,7 +201,7 @@ gas-prohibitive, and NEAR has no native support for it. So the quote is
 verified off chain, with a standalone verifier, and the proof is shipped
 in this repo.
 
-The three executions, all on testnet:
+The four executions, all on testnet. The first three ran on the test vault, the fourth ran on the production vault:
 
 - OutLayer request 10640, the Phase 9 live proof, transaction
   `DusvRubtcAnPyyB1BQYkf66nA8Vy3eSdZVAmdviuPpUu`
@@ -209,6 +209,10 @@ The three executions, all on testnet:
   `5Xvu78qxd9NfgJzRBeyvdQXnqK8sLfSmzrfVC5dgDK68`
 - OutLayer request 13040, the loose-ends retry proof, transaction
   `EYyyLXCLusX66ktWH4VyZWpP3UbkrcjZGf3MnX6Dfc6p`
+- OutLayer request 13324, the production proof, obligation `prod-tee-001`, 100 units to the agent, receipt 11, transaction
+  `9rLoxGuEFYSLWPJ8Jc2cv1krSLtummWszASUcX7kzuxZ`
+
+The production proof is the first production TEE execution with a fetched and independently verified TDX attestation. An earlier production TEE settle exists, receipt 9, obligation `prod-console-tee-001` from Phase 9, but no attestation was ever recorded for it, so it was never independently verified.
 
 Verify a bundle offline, no network needed. First install the verifier:
 
@@ -222,6 +226,7 @@ Then, from the repo root:
 outlayer-verify bundle docs/attestation-proofs/attestation-proof-10640.json --offline
 outlayer-verify bundle docs/attestation-proofs/attestation-proof-11912.json --offline
 outlayer-verify bundle docs/attestation-proofs/attestation-proof-13040-mainnet-collateral.json --offline
+outlayer-verify bundle docs/attestation-proofs/attestation-proof-prod-tee-001.json --offline
 ```
 
 Each one exits 0. The verifier checks five things: the Intel signature
@@ -243,9 +248,10 @@ To verify live from a transaction hash instead of a bundle:
 scripts/verify-tee-attestation.sh --tx DusvRubtcAnPyyB1BQYkf66nA8Vy3eSdZVAmdviuPpUu
 scripts/verify-tee-attestation.sh --tx 5Xvu78qxd9NfgJzRBeyvdQXnqK8sLfSmzrfVC5dgDK68
 scripts/verify-tee-attestation.sh --tx EYyyLXCLusX66ktWH4VyZWpP3UbkrcjZGf3MnX6Dfc6p
+scripts/verify-tee-attestation.sh --tx 9rLoxGuEFYSLWPJ8Jc2cv1krSLtummWszASUcX7kzuxZ
 ```
 
-One note on the newest execution: the testnet collateral archive lags
+One note on request 13040: the testnet collateral archive lags
 the current Intel window, it still serves the window ending
 2026-11-07T23:46:20Z, so a plain live check of request 13040 fails
 with TCBInfo expired. That failure says the collateral is out of date, it says
@@ -257,6 +263,8 @@ shipped bundle for 13040 already includes that collateral and verifies offline
 with exit 0. The covering collateral is also shipped in this repo at
 docs/attestation-proofs/collateral-fmspc-b0c06f000000-2026-11-08.json, and the
 script falls back to it when the mainnet endpoint cannot be reached.
+
+The production proof, request 13324, needed the same treatment. It ran on 2026-11-08, after the testnet archive window ended, so it verifies with the mainnet collateral too, and its shipped bundle already includes it and verifies offline with exit 0.
 
 The live attestation host is `https://testnet-api.outlayer.ai`. Two older
 hosts are retired and will fail: `coordinator-2gpvryc48.outlayer.workers.dev`
@@ -398,7 +406,7 @@ through the public API, even successful ones. That gap is closed: checked again
 on 2026-11-08, every recent execution returns a full TDX quote from the live
 host, https://testnet-api.outlayer.ai, and the earlier 404s came from querying
 retired hosts. Both parts of the reversal bar are now met for requests 10640,
-11912, and 13040. See Verifying the TEE attestation above. The full report is in
+11912, 13040, and 13324. See Verifying the TEE attestation above. The full report is in
 `docs/spike-outlayer.md`, and the workaround findings are in the Phase 9
 entry notes. The reversal bar: a contract-caller execution that resolves
 with a VRF output whose signature verifies against the published public
