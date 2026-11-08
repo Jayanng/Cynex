@@ -21,13 +21,14 @@
 import { SETTLE_CALL_GAS } from "../../agent/console.js";
 import {
   EXPECTED_VAULT_CODE_HASH,
+  SANDBOX_CHAIN_ID,
+  TESTNET_CHAIN_ID,
+  isSandboxRpcUrl,
   isTestnetRpcUrl,
   verifyKeyScope,
 } from "./config.js";
 
-export { EXPECTED_VAULT_CODE_HASH };
-
-export const TESTNET_CHAIN_ID = "testnet";
+export { EXPECTED_VAULT_CODE_HASH, SANDBOX_CHAIN_ID, TESTNET_CHAIN_ID };
 
 /**
  * Live state read for one settle attempt. A null field means the
@@ -111,12 +112,41 @@ export function toChainBigInt(value: unknown, name: string): bigint {
  * (function-call, receiver, exactly [settle], finite positive
  * allowance), then allowance sufficiency against the live gas
  * price. The first failure stops the check and refuses the settle.
+ *
+ * In sandbox mode (opts.sandbox) the RPC URL must be a loopback
+ * sandbox URL, the chain id must be the sandbox chain id, and the
+ * code hash must equal opts.expectedVaultCodeHash, the hash of the
+ * wasm deployed to the sandbox vault. A sandbox run without an
+ * expected hash fails closed. The testnet path is unchanged when
+ * opts.sandbox is absent or false.
  */
 export function verifyRuntimeState(
   state: RuntimeState,
-  opts: { rpcUrl: string; vaultId: string; agentPublicKey: string },
+  opts: {
+    rpcUrl: string;
+    vaultId: string;
+    agentPublicKey: string;
+    sandbox?: boolean;
+    expectedChainId?: string;
+    expectedVaultCodeHash?: string;
+  },
 ): RuntimeCheckResult {
-  if (!isTestnetRpcUrl(opts.rpcUrl)) {
+  const sandbox = opts.sandbox === true;
+  const expectedChainId =
+    opts.expectedChainId ?? (sandbox ? SANDBOX_CHAIN_ID : TESTNET_CHAIN_ID);
+  const expectedCodeHash = sandbox ? opts.expectedVaultCodeHash : EXPECTED_VAULT_CODE_HASH;
+  if (sandbox) {
+    if (!isSandboxRpcUrl(opts.rpcUrl)) {
+      return failed(
+        "runtime check failed: the configured RPC URL is not a loopback sandbox RPC URL: " + opts.rpcUrl,
+      );
+    }
+    if (expectedCodeHash === undefined || expectedCodeHash === "") {
+      return failed(
+        "runtime check failed: no expected vault code hash is configured for sandbox mode, failing closed",
+      );
+    }
+  } else if (!isTestnetRpcUrl(opts.rpcUrl)) {
     return failed(
       "runtime check failed: the configured RPC URL is not a testnet RPC URL: " + opts.rpcUrl,
     );
@@ -126,12 +156,12 @@ export function verifyRuntimeState(
       "runtime check failed: the network id could not be read from the RPC, failing closed",
     );
   }
-  if (state.chainId !== TESTNET_CHAIN_ID) {
+  if (state.chainId !== expectedChainId) {
     return failed(
       "runtime check failed: the RPC serves network " +
         state.chainId +
         ", expected " +
-        TESTNET_CHAIN_ID,
+        expectedChainId,
     );
   }
   if (!state.vaultExists) {
@@ -139,7 +169,7 @@ export function verifyRuntimeState(
       "runtime check failed: the vault account " +
         opts.vaultId +
         " does not exist on " +
-        TESTNET_CHAIN_ID,
+        expectedChainId,
     );
   }
   if (state.vaultCodeHash === null) {
@@ -147,12 +177,12 @@ export function verifyRuntimeState(
       "runtime check failed: the vault code hash could not be read for " + opts.vaultId,
     );
   }
-  if (state.vaultCodeHash !== EXPECTED_VAULT_CODE_HASH) {
+  if (state.vaultCodeHash !== expectedCodeHash) {
     return failed(
       "runtime check failed: the vault code hash " +
         state.vaultCodeHash +
         " does not equal the expected deployed hash " +
-        EXPECTED_VAULT_CODE_HASH +
+        expectedCodeHash +
         ", the vault code may have changed",
     );
   }
@@ -218,8 +248,10 @@ export function verifyRuntimeState(
     );
   }
   return passed(
-    "runtime checks passed: testnet RPC, chain " +
-      TESTNET_CHAIN_ID +
+    "runtime checks passed: " +
+      (sandbox ? "sandbox" : "testnet") +
+      " RPC, chain " +
+      expectedChainId +
       ", vault code hash matches the deployed hash, signing key is settle-only on the vault with allowance covering the settle gas cost",
   );
 }

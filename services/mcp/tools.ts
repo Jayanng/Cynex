@@ -699,6 +699,9 @@ export async function requestSettlement(
     rpcUrl: ctx.config.rpcUrl,
     vaultId: ctx.config.vaultId,
     agentPublicKey: ctx.agentPublicKey,
+    sandbox: ctx.config.sandbox,
+    expectedChainId: ctx.config.expectedChainId,
+    expectedVaultCodeHash: ctx.config.expectedVaultCodeHash,
   });
   if (!integrity.ok) {
     return refused(integrity.reason + ", no settle attempted");

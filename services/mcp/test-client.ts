@@ -13,11 +13,23 @@
  * cynex_list_receipts, cynex_get_obligation, and
  * cynex_prepare_obligation. It never settles unless asked.
  *
+ * The policy id for the read-only calls and the prepare call is
+ * resolved in this order: --policy <id>, the policy id read from
+ * the --obligation fixture on chain (or the --settle obligation
+ * when the run is a settle), CYNEX_POLICY, and otherwise the
+ * client refuses with a message naming --policy. No policy id
+ * is hardcoded: the test vault policy and the production policy
+ * differ, and a hardcoded id would silently read the wrong one.
+ * The settle path already reads the policy from the obligation on
+ * chain; this gives the read-only path the same treatment.
+ *
  * Usage, from frontend/ after npm run mcp:build, with the same
  * CYNEX_* environment the server needs:
  *
  *   node dist-test/services/mcp/test-client.js
+ *   (the bare run needs a policy source: --policy, --obligation, or CYNEX_POLICY)
  *   node dist-test/services/mcp/test-client.js --obligation <id>
+ *   node dist-test/services/mcp/test-client.js --policy <id>
  *   node dist-test/services/mcp/test-client.js --settle <obligation-id> <recipient> <amount> <evidence-ref>
  *   node dist-test/services/mcp/test-client.js --matrix [--matrix-obligation <id>] [--matrix-settle <id> <recipient> <amount> <evidence-ref>] [--matrix-negative <id> <recipient> <amount> <evidence-ref>] [--matrix-blocked <id> <recipient> <amount> <evidence-ref>] [--matrix-out <file>]
  *
@@ -49,7 +61,6 @@ import path from "node:path";
 const TEST_VAULT = "cynex-testvault.cynexmaster.testnet";
 const PROD_VAULT = "cynex-vault.cynexmaster.testnet";
 const TEST_AGENT = "cynex-agent.cynexmaster.testnet";
-const TEST_POLICY = "p6-001";
 
 function serverPath(): string {
   const here = path.dirname(fileURLToPath(import.meta.url));
@@ -84,10 +95,106 @@ async function call(
   }
 }
 
+
+/**
+ * Resolve the policy id for the read-only calls and the prepare
+ * call. Order: an explicit --policy flag, the policy id read from
+ * the --obligation fixture on chain, CYNEX_POLICY, and otherwise
+ * a refusal naming --policy. The reader is the obligation row as
+ * the chain returns it (the same shape the settle path reads), so
+ * the unit tests can pass a plain object and the live client can
+ * pass its cynex_get_obligation call.
+ */
+export type ObligationPolicyReader = (
+  obligationId: string,
+) => Promise<Record<string, unknown>>;
+
+/**
+ * The obligation the policy id is read from: --obligation when
+ * given, otherwise the --settle obligation (a plain settle run
+ * carries no --obligation), otherwise nothing to read from.
+ */
+export function pickResolverObligationId(
+  obligationId: string | undefined,
+  settleArgs: string[] | undefined,
+): string | undefined {
+  if (obligationId !== undefined) {
+    return obligationId;
+  }
+  if (settleArgs !== undefined && settleArgs.length > 0) {
+    return settleArgs[0];
+  }
+  return undefined;
+}
+
+/**
+ * The obligation the matrix policy id is read from:
+ * --matrix-obligation when given, otherwise the first fixture
+ * obligation on the command line (--matrix-settle,
+ * --matrix-negative, --matrix-negative-amount, --matrix-overbudget,
+ * --matrix-blocked). A documented --matrix --matrix-settle run
+ * carries no --matrix-obligation, and its own fixture obligation
+ * is the right source.
+ */
+export function pickMatrixResolverObligationId(
+  matrixObligation: string | undefined,
+  fixtures: Array<string[] | undefined>,
+): string | undefined {
+  if (matrixObligation !== undefined) {
+    return matrixObligation;
+  }
+  for (const fixture of fixtures) {
+    if (fixture !== undefined && fixture.length > 0) {
+      return fixture[0];
+    }
+  }
+  return undefined;
+}
+
+export async function resolvePolicyId(
+  readObligation: ObligationPolicyReader,
+  opts: { policyFlag?: string; obligationId?: string; envPolicy?: string },
+): Promise<string> {
+  if (opts.policyFlag !== undefined && opts.policyFlag !== "") {
+    return opts.policyFlag;
+  }
+  if (opts.obligationId !== undefined) {
+    const row = await readObligation(opts.obligationId);
+    const policyId = row.policy_id;
+    if (typeof policyId === "string" && policyId !== "") {
+      return policyId;
+    }
+    throw new Error(
+      "cannot resolve the policy id: the obligation " +
+        opts.obligationId +
+        " has no policy id on chain, pass --policy <id> explicitly",
+    );
+  }
+  if (opts.envPolicy !== undefined && opts.envPolicy !== "") {
+    return opts.envPolicy;
+  }
+  throw new Error(
+    "cannot resolve the policy id: pass --policy <id>, or --obligation <id> to read it " +
+      "from the obligation on chain, or set CYNEX_POLICY",
+  );
+}
+
+// A flag with no value (last on the command line, or followed by
+// another flag) yields nothing instead of swallowing the next
+// flag as its value. Shared by the normal runner and the matrix
+// runner, which parse argv separately.
+export function flagValue(argv: string[], index: number): string | undefined {
+  if (index < 0) {
+    return undefined;
+  }
+  const value = argv[index + 1];
+  return value !== undefined && !value.startsWith("--") ? value : undefined;
+}
+
 async function main(): Promise<number> {
   const argv = process.argv.slice(2);
-  const obligationIndex = argv.indexOf("--obligation");
-  const obligationId = obligationIndex >= 0 ? argv[obligationIndex + 1] : undefined;
+  const obligationId = flagValue(argv, argv.indexOf("--obligation"));
+  const policyFlag = flagValue(argv, argv.indexOf("--policy"));
   const settleIndex = argv.indexOf("--settle");
   const settleArgs = settleIndex >= 0 ? argv.slice(settleIndex + 1, settleIndex + 5) : undefined;
   const transport = new StdioClientTransport({
@@ -109,15 +216,31 @@ async function main(): Promise<number> {
   }
   const tools = await client.listTools();
   console.log("TOOLS " + tools.tools.map((t: { name: string }) => t.name).join(", "));
+  // The policy id is resolved before any read-only call, in the
+  // order documented on resolvePolicyId. The obligation it is read
+  // from is --obligation when given, otherwise the --settle
+  // obligation: a plain settle run carries no --obligation, and
+  // its own obligation is the right source. Resolving only from
+  // --obligation would make a documented --settle invocation fail
+  // here before settlement runs. A failure refuses the run before
+  // any call that needs a policy id.
+  const resolverObligationId = pickResolverObligationId(obligationId, settleArgs);
+  const policyId = await resolvePolicyId(
+    async (id: string): Promise<Record<string, unknown>> => {
+      const out = await call(client, "cynex_get_obligation", { obligation_id: id });
+      return (out.data ?? {}) as Record<string, unknown>;
+    },
+    { policyFlag, obligationId: resolverObligationId, envPolicy: process.env.CYNEX_POLICY },
+  );
   await call(client, "cynex_check_counterparty", { account_id: TEST_AGENT });
-  await call(client, "cynex_get_policy", { policy_id: TEST_POLICY });
+  await call(client, "cynex_get_policy", { policy_id: policyId });
   await call(client, "cynex_list_receipts", { start: 0, limit: 5 });
   if (obligationId !== undefined) {
     await call(client, "cynex_get_obligation", { obligation_id: obligationId });
   }
   const prepareId = "mcp-test-" + Date.now().toString();
   await call(client, "cynex_prepare_obligation", {
-    policy_id: TEST_POLICY,
+    policy_id: policyId,
     obligation_id: prepareId,
     recipient: TEST_AGENT,
     amount: "100",
@@ -306,7 +429,7 @@ export function budgetLine(policy: Record<string, unknown>): string {
  * result with its layer, expected outcome, and transaction hash
  * when a transaction was submitted. Rows without a fixture are
  * recorded as skipped, never as passed. Rows that run outside
- * MCP (the unauthorized caller, the TDX quote, the VRF
+ * MCP (the scoped-key caller, the TDX quote, the VRF
  * signature) are recorded as external, with the exact command
  * to run. See services/mcp/acceptance-matrix.md for the row
  * definitions. Exit code 0 means every row that ran passed;
@@ -382,17 +505,51 @@ async function runMatrix(client: Client, argv: string[]): Promise<number> {
       reason,
     );
   }
-  const outIndex = argv.indexOf("--matrix-out");
-  const outFile = outIndex >= 0 ? argv[outIndex + 1] : undefined;
+  const outFile = flagValue(argv, argv.indexOf("--matrix-out"));
   const vaultId = process.env.CYNEX_VAULT ?? TEST_VAULT;
   const allowProductionNegative = argv.includes("--allow-production-negative");
-  const obligationIndex = argv.indexOf("--matrix-obligation");
-  const matrixObligation = obligationIndex >= 0 ? argv[obligationIndex + 1] : undefined;
+  const matrixObligation = flagValue(argv, argv.indexOf("--matrix-obligation"));
+  const matrixPolicyFlag = flagValue(argv, argv.indexOf("--policy"));
+  // The fixtures are parsed before the policy resolves: the
+  // policy id is read from --matrix-obligation when given,
+  // otherwise from the first fixture obligation on the command
+  // line. A documented --matrix --matrix-settle run carries no
+  // --matrix-obligation, and its own fixture obligation is the
+  // right source; resolving only from --matrix-obligation would
+  // fail that run before any row executes.
   const settleFixture = matrixArgs(argv, "--matrix-settle", 4);
   const negativeFixture = matrixArgs(argv, "--matrix-negative", 4);
   const negativeAmountFixture = matrixArgs(argv, "--matrix-negative-amount", 3);
   const overBudgetFixture = matrixArgs(argv, "--matrix-overbudget", 4);
   const blockedFixture = matrixArgs(argv, "--matrix-blocked", 4);
+  // The matrix policy resolves the same way as the default run:
+  // --policy, a fixture obligation on chain, then CYNEX_POLICY.
+  // A failure here does not crash the runner: P2 and P4 record it
+  // as a failed row, and the matrix JSON still gets written, so a
+  // missing policy is visible, never silent.
+  let matrixPolicy: string | undefined;
+  let matrixPolicyError: string | undefined;
+  try {
+    matrixPolicy = await resolvePolicyId(
+      async (id: string): Promise<Record<string, unknown>> => {
+        const out = await call(client, "cynex_get_obligation", { obligation_id: id });
+        return (out.data ?? {}) as Record<string, unknown>;
+      },
+      {
+        policyFlag: matrixPolicyFlag,
+        obligationId: pickMatrixResolverObligationId(matrixObligation, [
+          settleFixture,
+          negativeFixture,
+          negativeAmountFixture,
+          overBudgetFixture,
+          blockedFixture,
+        ]),
+        envPolicy: process.env.CYNEX_POLICY,
+      },
+    );
+  } catch (error) {
+    matrixPolicyError = error instanceof Error ? error.message : String(error);
+  }
   // What the matrix actually proved, tracked per attempt, not per
   // row: whether any settle attempt reached the runtime checks, and
   // how many BUDGET lines were printed before live attempts. A
@@ -420,7 +577,10 @@ async function runMatrix(client: Client, argv: string[]): Promise<number> {
     return { outcome: "pass", detail: "verdict " + String(data.verdict) };
   });
   await row("P2", "server", "policy read returns the policy and the exact remaining budget", async () => {
-    const out = await call(client, "cynex_get_policy", { policy_id: TEST_POLICY });
+    if (matrixPolicy === undefined) {
+      return { outcome: "fail", detail: matrixPolicyError ?? "no policy id resolved" };
+    }
+    const out = await call(client, "cynex_get_policy", { policy_id: matrixPolicy });
     if (out.ok !== true) {
       return { outcome: "fail", detail: String(out.reason) };
     }
@@ -436,9 +596,12 @@ async function runMatrix(client: Client, argv: string[]): Promise<number> {
     return { outcome: "pass", detail: String(rows.length) + " receipts read" };
   });
   await row("P4", "server", "prepare returns exact arguments and the prepared label, submits nothing", async () => {
+    if (matrixPolicy === undefined) {
+      return { outcome: "fail", detail: matrixPolicyError ?? "no policy id resolved" };
+    }
     const prepareId = "mcp-matrix-" + Date.now().toString();
     const out = await call(client, "cynex_prepare_obligation", {
-      policy_id: TEST_POLICY,
+      policy_id: matrixPolicy,
       obligation_id: prepareId,
       recipient: TEST_AGENT,
       amount: "100",
@@ -649,11 +812,11 @@ async function runMatrix(client: Client, argv: string[]): Promise<number> {
     };
   });
 
-  await row("M7", "vault", "an unauthorized caller reaches the contract and fails", async () => {
+  await row("M7", "Access-key layer, not the vault", "a function-call key scoped to another receiver is rejected at the access-key layer", async () => {
     return {
       outcome: "external",
       detail:
-        "run outside MCP with a key that holds no settle permission on the vault, for example cli/cynex.ts attack-one with a different key, or near-cli with a different key; the transaction is rejected, no funds move, and the exact error is recorded from the live run",
+        "run outside MCP with a function-call key scoped to a different receiver, for example cli/cynex.ts attack-one with such a key, or near-cli with such a key; the transaction is rejected at the access-key layer with the receiver-mismatch error (exact name as recorded from the live run), no funds move, and the exact error is recorded from the live run. A full-access key can invoke settle; the vault checks terms, it performs no caller check",
     };
   });
   await row("M8", "server", "settlement before READY is refused by the server, no settle submitted", async () => {

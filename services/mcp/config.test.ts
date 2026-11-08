@@ -4,7 +4,13 @@
  * accept exactly a settle-only key on the configured vault.
  * The key material is never in a refusal reason.
  */
-import { loadConfig, readAgentKey, verifyKeyScope, type AccessKeyEntry } from "./config.js";
+import {
+  isSandboxRpcUrl,
+  loadConfig,
+  readAgentKey,
+  verifyKeyScope,
+  type AccessKeyEntry,
+} from "./config.js";
 import { KeyPair } from "near-api-js";
 import { unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -69,6 +75,112 @@ describe("loadConfig", () => {
     expect(loadConfig({ ...base, CYNEX_RPC_URL: "https://rpc.testnet.near.org" }).rpcUrl).toBe(
       "https://rpc.testnet.near.org",
     );
+  });
+
+  test("the testnet path is not sandbox mode", () => {
+    const config = loadConfig({
+      CYNEX_VAULT: VAULT,
+      CYNEX_AGENT: "cynex-agent.cynexmaster.testnet",
+      CYNEX_AGENT_KEY_FILE: "/tmp/agent-key.json",
+    });
+    expect(config.sandbox).toBe(false);
+    expect(config.expectedChainId).toBe("testnet");
+    expect(config.expectedVaultCodeHash).toBe("65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6");
+  });
+
+  test("sandbox mode accepts a loopback RPC with the deployed wasm hash", () => {
+    const config = loadConfig({
+      CYNEX_VAULT: VAULT,
+      CYNEX_AGENT: "cynex-agent.cynexmaster.testnet",
+      CYNEX_AGENT_KEY_FILE: "/tmp/agent-key.json",
+      CYNEX_SANDBOX_RPC_URL: "http://127.0.0.1:3030",
+      CYNEX_SANDBOX_VAULT_CODE_HASH: "65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6",
+    });
+    expect(config.sandbox).toBe(true);
+    expect(config.rpcUrl).toBe("http://127.0.0.1:3030");
+    expect(config.expectedChainId).toBe("sandbox");
+    expect(config.expectedVaultCodeHash).toBe("65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6");
+  });
+
+  test("sandbox mode takes the expected chain id from CYNEX_SANDBOX_CHAIN_ID", () => {
+    const config = loadConfig({
+      CYNEX_VAULT: VAULT,
+      CYNEX_AGENT: "cynex-agent.cynexmaster.testnet",
+      CYNEX_AGENT_KEY_FILE: "/tmp/agent-key.json",
+      CYNEX_SANDBOX_RPC_URL: "http://127.0.0.1:3030",
+      CYNEX_SANDBOX_VAULT_CODE_HASH: "65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6",
+      CYNEX_SANDBOX_CHAIN_ID: "test-chain-AJwDw",
+    });
+    expect(config.sandbox).toBe(true);
+    expect(config.expectedChainId).toBe("test-chain-AJwDw");
+  });
+
+  test("isSandboxRpcUrl accepts only the literal loopback address with a port", () => {
+    expect(isSandboxRpcUrl("http://127.0.0.1:3030")).toBe(true);
+    expect(isSandboxRpcUrl("http://localhost:3030")).toBe(false);
+    expect(isSandboxRpcUrl("http://127.0.0.1")).toBe(false);
+    expect(isSandboxRpcUrl("https://127.0.0.1:3030")).toBe(false);
+    expect(isSandboxRpcUrl("http://127.0.0.1.evil.com:3030")).toBe(false);
+    expect(isSandboxRpcUrl("not a url")).toBe(false);
+  });
+
+  test("a partial sandbox configuration is refused instead of falling back to testnet", () => {
+    const base = {
+      CYNEX_VAULT: VAULT,
+      CYNEX_AGENT: "cynex-agent.cynexmaster.testnet",
+      CYNEX_AGENT_KEY_FILE: "/tmp/agent-key.json",
+    };
+    expect(() =>
+      loadConfig({
+        ...base,
+        CYNEX_SANDBOX_VAULT_CODE_HASH:
+          "65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6",
+      }),
+    ).toThrow(/without CYNEX_SANDBOX_RPC_URL/);
+    expect(() => loadConfig({ ...base, CYNEX_SANDBOX_CHAIN_ID: "test-chain-AJwDw" })).toThrow(
+      /without CYNEX_SANDBOX_RPC_URL/,
+    );
+  });
+
+  test("sandbox mode refuses a localhost RPC URL, it is never resolved", () => {
+    const base = {
+      CYNEX_VAULT: VAULT,
+      CYNEX_AGENT: "cynex-agent.cynexmaster.testnet",
+      CYNEX_AGENT_KEY_FILE: "/tmp/agent-key.json",
+      CYNEX_SANDBOX_VAULT_CODE_HASH: "65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6",
+    };
+    expect(() =>
+      loadConfig({ ...base, CYNEX_SANDBOX_RPC_URL: "http://localhost:3030" }),
+    ).toThrow();
+  });
+
+  test("sandbox mode refuses a remote URL, a missing hash, and both RPC variables", () => {
+    const base = {
+      CYNEX_VAULT: VAULT,
+      CYNEX_AGENT: "cynex-agent.cynexmaster.testnet",
+      CYNEX_AGENT_KEY_FILE: "/tmp/agent-key.json",
+    };
+    expect(() =>
+      loadConfig({
+        ...base,
+        CYNEX_SANDBOX_RPC_URL: "https://rpc.testnet.fastnear.com",
+        CYNEX_SANDBOX_VAULT_CODE_HASH: "65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6",
+      }),
+    ).toThrow(/not a loopback sandbox RPC URL/);
+    expect(() =>
+      loadConfig({
+        ...base,
+        CYNEX_SANDBOX_RPC_URL: "http://127.0.0.1:3030",
+      }),
+    ).toThrow(/not a base58 vault code hash/);
+    expect(() =>
+      loadConfig({
+        ...base,
+        CYNEX_SANDBOX_RPC_URL: "http://127.0.0.1:3030",
+        CYNEX_SANDBOX_VAULT_CODE_HASH: "65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6",
+        CYNEX_RPC_URL: "https://rpc.testnet.fastnear.com",
+      }),
+    ).toThrow(/both set/);
   });
 });
 

@@ -123,6 +123,60 @@ The changed recipient must read ALLOW from the reputation gate, or the gate refu
 
 The vault refuses with `ERR_RECIPIENT_SUBSTITUTION`, no funds move, and the refusal (with its transaction hash) is the recorded result. The matching positive case, with the exact recipient and amount, settles to PAID with the receipt index and the balance delta equal to the amount.
 
+## Near-sandbox integration suite
+
+`services/mcp/sandbox.test.ts` re-proves the MCP server on a real local
+chain, with no testnet funds and no mocks. It starts a near-sandbox
+node (binary downloaded once to `~/.near`, the same place the
+near-sandbox Rust crate puts it), deploys the compiled vault wasm and
+the minimal test token from `contract/ft-test-token`, funds a policy,
+drives four PREIMAGE obligations to READY, and runs all six MCP tools
+through the real server in sandbox mode. The happy path must settle
+PAID with the exact balance delta and receipt, a changed recipient
+must be refused by the vault with `ERR_RECIPIENT_SUBSTITUTION` and a
+transaction hash, and a replay must be refused as not READY.
+
+Run it with:
+
+```sh
+CYNEX_SANDBOX_TESTS=1 npm run jest:sandbox
+```
+
+The default `npm run jest` skips it: the suite takes minutes on
+a first run (wasm builds, binary download) and is a local gate, not
+part of the fast unit loop. A cold first run can take several
+minutes; the Jest timeout is 30 minutes, and the standalone runner
+has no timeout. The standalone runner is
+`node dist-test/tests/integration/sandbox.js` after `npm run mcp:build`.
+
+Sandbox mode is explicit and loopback only. The server reads
+`CYNEX_SANDBOX_RPC_URL` (an `http://127.0.0.1:<port>` URL) and
+`CYNEX_SANDBOX_VAULT_CODE_HASH` (the hash of the wasm actually
+deployed to the sandbox vault), and the per-settle runtime checks
+expect that hash and the chain id from `CYNEX_SANDBOX_CHAIN_ID`.
+The chain id is a variable, not a constant, because near-sandbox
+randomizes it on every init (`test-chain-XXXXX`); the suite reads it
+live from the node it started. A remote URL is refused, and
+`CYNEX_RPC_URL` must be unset while sandbox mode is on. The testnet
+path is unchanged when the sandbox variables are absent.
+
+One setup step is honest, not hidden: the reputation gate WARNs on a
+fresh account (no prior vault interactions), so no MCP settle could
+ever succeed on a brand-new recipient. The suite settles twice
+directly with the agent key first, bypassing MCP and the gate, so both
+recipients hold a prior receipt and the gate can ALLOW them. That
+mirrors the testnet matrix one-time setup, where the same bootstrap
+runs through the console with `CYNEX_APPROVE_WARN=1`. The bootstrap
+settles are recorded as transactions like every other step. The
+genesis account's key is read from the node's own
+`validator_key.json` after init, because near-sandbox generates a
+fresh one on every init.
+
+The vault wasm the suite deploys hashes to
+`65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6`, the same hash as the
+deployed testnet vaults, so the sandbox run exercises byte-identical
+contract code. The suite asserts that hash.
+
 ## Layout
 
 - `config.ts`: `CYNEX_*` configuration, key file reading, the testnet RPC allowlist, the expected vault code hash, and the startup scope check.

@@ -60,6 +60,58 @@ describe("verifyRuntimeState", () => {
     expect(out.reason).toMatch(/not a testnet RPC URL/);
   });
 
+  test("passes in sandbox mode on loopback RPC with the sandbox chain and hash", () => {
+    const state = passingState();
+    state.chainId = "sandbox";
+    const out = verifyRuntimeState(state, {
+      rpcUrl: "http://127.0.0.1:3030",
+      vaultId: VAULT,
+      agentPublicKey: PUBKEY,
+      sandbox: true,
+      expectedChainId: "sandbox",
+      expectedVaultCodeHash: CODE_HASH,
+    });
+    expect(out.ok).toBe(true);
+    expect(out.reason).toMatch(/sandbox RPC, chain sandbox/);
+  });
+
+  test("sandbox mode refuses a remote RPC, the testnet chain, and a wrong hash", () => {
+    const sandboxOpts = {
+      rpcUrl: "http://127.0.0.1:3030",
+      vaultId: VAULT,
+      agentPublicKey: PUBKEY,
+      sandbox: true,
+      expectedChainId: "sandbox",
+      expectedVaultCodeHash: CODE_HASH,
+    };
+    const remote = verifyRuntimeState(passingState(), { ...sandboxOpts, rpcUrl: "https://example.com:3030" });
+    expect(remote.ok).toBe(false);
+    expect(remote.reason).toMatch(/not a loopback sandbox RPC URL/);
+    const wrongChain = verifyRuntimeState(passingState(), sandboxOpts);
+    expect(wrongChain.ok).toBe(false);
+    expect(wrongChain.reason).toMatch(/expected sandbox/);
+    const wrongHashState = passingState();
+    wrongHashState.chainId = "sandbox";
+    wrongHashState.vaultCodeHash = "11111111111111111111111111111111";
+    const wrongHash = verifyRuntimeState(wrongHashState, sandboxOpts);
+    expect(wrongHash.ok).toBe(false);
+    expect(wrongHash.reason).toMatch(/does not equal the expected deployed hash/);
+  });
+
+  test("sandbox mode fails closed with no expected code hash", () => {
+    const state = passingState();
+    state.chainId = "sandbox";
+    const out = verifyRuntimeState(state, {
+      rpcUrl: "http://127.0.0.1:3030",
+      vaultId: VAULT,
+      agentPublicKey: PUBKEY,
+      sandbox: true,
+      expectedChainId: "sandbox",
+    });
+    expect(out.ok).toBe(false);
+    expect(out.reason).toMatch(/no expected vault code hash/);
+  });
+
   test("refuses when the network id could not be read", () => {
     const out = check({ ...passingState(), chainId: null });
     expect(out.ok).toBe(false);
