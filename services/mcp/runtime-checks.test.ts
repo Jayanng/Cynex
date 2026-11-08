@@ -8,6 +8,7 @@
 import {
   assertSettleTarget,
   checkBudget,
+  parseChainTimestampNs,
   parseGasPrice,
   settleGasCostYocto,
   toChainBigInt,
@@ -336,9 +337,47 @@ describe("toChainBigInt", () => {
     expect(() => toChainBigInt("10.5", "spent")).toThrow(/not a readable integer/);
   });
 
-  test("throws on unsafe JSON numbers, which lose precision above 2^53", () => {
+  test("throws on unsafe JSON numbers for exact figures, which lose precision above 2^53", () => {
+    // This strictness is for policy figures (money and identity),
+    // where a one-unit error matters. It is wrong for nanosecond
+    // timestamps, where every realistic value is above 2^53: those
+    // go through parseChainTimestampNs, tested below, not this helper.
     expect(() => toChainBigInt(2 ** 53, "spent")).toThrow(/not a readable integer/);
     expect(toChainBigInt(2 ** 53 - 1, "spent")).toBe(9007199254740991n);
+  });
+});
+
+describe("parseChainTimestampNs", () => {
+  test("reads the live expiry as a JSON number, a decimal string, and a bigint", () => {
+    expect(parseChainTimestampNs(1893456000000000000, "expires_at_ns")).toBe(1893456000000000000n);
+    expect(parseChainTimestampNs("1893456000000000000", "expires_at_ns")).toBe(1893456000000000000n);
+    expect(parseChainTimestampNs(1893456000000000000n, "expires_at_ns")).toBe(1893456000000000000n);
+  });
+
+  test("accepts unsafe JSON numbers above 2^53, which every realistic ns timestamp is", () => {
+    expect(parseChainTimestampNs(2 ** 53, "expires_at_ns")).toBe(9007199254740992n);
+    const nowPlusOneHour = BigInt(Date.now() + 3600000) * 1000000n;
+    const parsed = parseChainTimestampNs(Number(nowPlusOneHour), "expires_at_ns");
+    const drift = parsed > nowPlusOneHour ? parsed - nowPlusOneHour : nowPlusOneHour - parsed;
+    expect(drift).toBeLessThanOrEqual(256n);
+    expect(parsed).toBeGreaterThan(BigInt(Date.now()) * 1000000n);
+  });
+
+  test("throws on floats, negatives, and non-numeric strings", () => {
+    expect(() => parseChainTimestampNs(1.5, "expires_at_ns")).toThrow(/not a readable timestamp/);
+    expect(() => parseChainTimestampNs(-1, "expires_at_ns")).toThrow(/not a readable timestamp/);
+    expect(() => parseChainTimestampNs(-1n, "expires_at_ns")).toThrow(/negative/);
+    expect(() => parseChainTimestampNs("10.5", "expires_at_ns")).toThrow(/not a readable timestamp/);
+    expect(() => parseChainTimestampNs(null, "expires_at_ns")).toThrow(/not a readable timestamp/);
+  });
+
+  test("throws outside the u64 range", () => {
+    expect(() => parseChainTimestampNs("18446744073709551616", "expires_at_ns")).toThrow(
+      /outside the u64 range/,
+    );
+    expect(() => parseChainTimestampNs(2n ** 64n, "expires_at_ns")).toThrow(/outside the u64 range/);
+    expect(() => parseChainTimestampNs(2 ** 64, "expires_at_ns")).toThrow(/outside the u64 range/);
+    expect(parseChainTimestampNs("18446744073709551615", "expires_at_ns")).toBe(2n ** 64n - 1n);
   });
 });
 

@@ -84,7 +84,12 @@ export function parseGasPrice(raw: unknown): bigint | null {
 /**
  * Read a chain integer that may arrive as a JSON number, a decimal
  * string, or a bigint. Anything else throws, so a malformed policy
- * figure can never be read as a passing value.
+ * figure can never be read as a passing value. A JSON number is
+ * accepted only when it is a safe integer: money and identity
+ * figures must be exact, and a value above 2^53 cannot be read
+ * exactly from a JSON number. Nanosecond timestamps are the
+ * exception, and they must not use this helper: every realistic
+ * ns timestamp is above 2^53. Use parseChainTimestampNs for those.
  */
 export function toChainBigInt(value: unknown, name: string): bigint {
   if (typeof value === "bigint") {
@@ -105,6 +110,54 @@ export function toChainBigInt(value: unknown, name: string): bigint {
   }
   throw new Error(
     "policy field " + name + " is not a readable integer: " + JSON.stringify(value),
+  );
+}
+
+/**
+ * Read a nanosecond timestamp from the chain, as a JSON number, a
+ * decimal string, or a bigint. The chain returns expires_at_ns as
+ * a JSON number, and every realistic ns timestamp is above 2^53,
+ * so the safe-integer strictness of toChainBigInt can never pass
+ * for one: this is the same split agent/console.ts already makes
+ * for create_obligation inputs (audit finding 6-2). A JSON number
+ * is read with BigInt(value), the exact integer the double holds;
+ * the rounding JSON.parse applies is at most half a Number spacing,
+ * 128 ns at a realistic timestamp, far below the 60 second skew
+ * tolerance the expiry check allows and far below block production
+ * granularity, so it cannot change whether a settlement at any real
+ * block timestamp is before or after expiry. Floats, negatives,
+ * non-numeric strings, and values outside the u64 range still
+ * throw, so a malformed expiry can never be read as a passing
+ * value, and the contract stays the authority on the exact
+ * boundary with ERR_OBLIGATION_EXPIRED.
+ */
+export function parseChainTimestampNs(value: unknown, name: string): bigint {
+  const U64_MAX = (1n << 64n) - 1n;
+  if (typeof value === "bigint") {
+    if (value < 0n) {
+      throw new Error("policy field " + name + " is negative: " + value.toString());
+    }
+    if (value > U64_MAX) {
+      throw new Error("policy field " + name + " is outside the u64 range: " + value.toString());
+    }
+    return value;
+  }
+  if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
+    const parsed = BigInt(value);
+    if (parsed > U64_MAX) {
+      throw new Error("policy field " + name + " is outside the u64 range: " + JSON.stringify(value));
+    }
+    return parsed;
+  }
+  if (typeof value === "string" && /^[0-9]+$/.test(value)) {
+    const parsed = BigInt(value);
+    if (parsed > U64_MAX) {
+      throw new Error("policy field " + name + " is outside the u64 range: " + JSON.stringify(value));
+    }
+    return parsed;
+  }
+  throw new Error(
+    "policy field " + name + " is not a readable timestamp: " + JSON.stringify(value),
   );
 }
 

@@ -25,6 +25,7 @@ import type { ReputationReport } from "../reputation/reputation.js";
 import type { McpConfig } from "./config.js";
 import {
   checkBudget,
+  parseChainTimestampNs,
   toChainBigInt,
   verifyEcho,
   verifyRuntimeState,
@@ -716,11 +717,14 @@ export async function requestSettlement(
   // refuses when the obligation expired more than 60 seconds ago:
   // that bounds any host clock skew, and the contract stays the
   // authority on the exact boundary (it refuses when the block
-  // timestamp passes expires_at_ns).
+  // timestamp passes expires_at_ns). The expiry is read with
+  // parseChainTimestampNs, not toChainBigInt: the chain returns it
+  // as a JSON number above 2^53, and the strict helper would refuse
+  // every live obligation at stage "read" with an unreadable expiry.
   const nowNs = BigInt(ctx.nowMs ? ctx.nowMs() : Date.now()) * 1000000n;
   let expiresAt: bigint;
   try {
-    expiresAt = toChainBigInt(obligation.expires_at_ns, "expires_at_ns");
+    expiresAt = parseChainTimestampNs(obligation.expires_at_ns, "expires_at_ns");
   } catch (error) {
     return refusedAt(
       "obligation " +

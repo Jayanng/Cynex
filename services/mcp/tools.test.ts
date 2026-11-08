@@ -512,6 +512,37 @@ describe("cynex_request_settlement gate wiring", () => {
     expect(receiptRows[0].obligation_id).toBe("mcp-obl-001");
   });
 
+  test("a live-shaped expiry read as a JSON number settles, regression for the 2^53 refusal", async () => {
+    // The chain returns expires_at_ns as a JSON number, and
+    // 1893456000000000000 is far above Number.MAX_SAFE_INTEGER.
+    // The settle path used to parse it with toChainBigInt and
+    // refused every live obligation at stage "read" with an
+    // unreadable expiry. The string form was already covered by
+    // readyObligation; this test feeds the number form the chain
+    // actually returns, through the whole settle path.
+    const client = fakeClient();
+    const numberExpiry = { ...readyObligation("READY"), expires_at_ns: 1893456000000000000 };
+    client.getObligationMock
+      .mockResolvedValueOnce(numberExpiry)
+      .mockResolvedValueOnce({ ...readyObligation("PAID"), expires_at_ns: 1893456000000000000 });
+    client.receiptsMock.mockResolvedValueOnce([
+      { index: "23", obligation_id: "mcp-obl-001", recipient: AGENT, amount: "100", token_id: TOKEN, timestamp: "1794000000000000000", tx_ref: "settle-tx-hash" },
+    ]);
+    const ctx = fakeContext(client, "ALLOW");
+    (ctx.tokenBalance as jest.Mock).mockResolvedValueOnce(1900n).mockResolvedValueOnce(2000n);
+    const out = await dispatchTool(ctx, createSettleRateLimiter(), "cynex_request_settlement", {
+      obligation_id: "mcp-obl-001",
+      proposed_recipient: AGENT,
+      proposed_amount: "100",
+      evidence_ref: "ref-001",
+    });
+    expect(out.ok).toBe(true);
+    const data = out.data as Record<string, unknown>;
+    expect(data.state).toBe("PAID");
+    expect(data.settle_tx_hash).toBe("settle-tx-hash");
+    expect(ctx.settleWithKey).toHaveBeenCalledTimes(1);
+  });
+
   test("a vault refusal is returned with no funds moved", async () => {
     const client = fakeClient();
     client.getObligationMock
