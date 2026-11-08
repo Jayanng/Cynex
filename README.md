@@ -35,7 +35,7 @@ Three layers prove a payment is right, and no layer trusts another:
 
 Live proof, verified on testnet 2026-11-08: both vaults run code hash
 65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6. The test vault policy
-p6-001 has spent 5200 of a 10000 limit, and the test vault has 29
+p6-001 has spent 5300 of a 10000 limit, and the test vault has 30
 receipts. The production vault policy p5-prod-001 has spent 500 of
 a 1000 limit, and the production vault has 13 receipts. Four TEE
 executions carry independently verified TDX attestations, three on
@@ -77,12 +77,12 @@ goes public on 13 November 2026.
 
 Live state, last verified 2026-11-08: both vaults run code hash
 65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6. Test vault policy
-p6-001: funded 10000, spent 5200, reserved 0, frozen false. The test
-vault has 29 receipts. Production vault policy p5-prod-001: funded
+p6-001: funded 10000, spent 5300, reserved 0, frozen false. The test
+vault has 30 receipts. Production vault policy p5-prod-001: funded
 1000, spent 500, reserved 0, frozen false. The production vault has
 13 receipts. Production policy-001:
 funded 1,000,000,000, spent 975,001,000, reserved 0, frozen false.
-The agent's token balance is 2500, and the second agent
+The agent's token balance is 2600, and the second agent
 (`cynex-agent2.cynexmaster.testnet`) holds 100, paid from the test
 vault by the use-case settlement `usecase-report-003`. The token is `usdc.fakes.testnet`
 (USDC.e, 6 decimals). The full ledger is in `docs/ledger.md`.
@@ -417,7 +417,8 @@ RUSTUP_TOOLCHAIN=1.93.0 cargo near build non-reproducible-wasm
 
 3. Frontend, from `frontend/`. Install dependencies first; a fresh
 checkout has no `node_modules`. See a clean install, a clean
-typecheck, and 13 suites with 159 tests, all passed:
+typecheck, and 19 suites with 359 tests passed, the gated
+near-sandbox suite skipped:
 
 ```sh
 npm install
@@ -447,7 +448,7 @@ scripts/verify-tee-attestation.sh --bundle docs/attestation-proofs/attestation-p
 `frontend/`, run the `tsc` line below. See 5 known `near-api-js`
 type errors (TS2307) and exit 2, but the emitted `dist-test/` is
 working JavaScript; the errors are expected. Then, from the repo
-root, run verify-live for each vault. See a CSV of receipts, 29
+root, run verify-live for each vault. See a CSV of receipts, 30
 rows on the test vault and 13 on the production vault, every row
 verified_ok=true, exit 0. This reads chain state only and spends
 nothing:
