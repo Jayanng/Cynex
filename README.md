@@ -12,6 +12,46 @@ the budget, or repeats an obligation. The agent is assumed compromised:
 it holds a key that can only call settle, and the vault, not the agent,
 decides whether the money moves.
 
+## For judges: the whole project in one minute
+
+Cynex is a purpose-bound settlement vault for AI agents on NEAR. A
+human authorizes an obligation with a fixed recipient, token, amount,
+evidence requirement, and budget, and the vault itself enforces those
+terms on chain. The agent is assumed compromised and holds only a
+scoped settle key.
+
+Three layers prove a payment is right, and no layer trusts another:
+
+- Layer 1, on-chain integrity: for evidence up to 64 KiB, the
+  vault hashes the evidence bytes itself with SHA-256 and compares
+  them to the digest committed at authorization.
+- Layer 2, TEE provenance: a guest program fetches the evidence
+  inside an Intel TDX enclave and hashes it there, and the
+  per-execution TDX quote binds what ran, what went in, and what came
+  out.
+- Layer 3, VRF anchor: the guest requests VRF randomness during
+  execution and the vault verifies the signature on chain, bound to
+  the pending request.
+
+Live proof, verified on testnet 2026-11-08: both vaults run code hash
+65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6. The test vault policy
+p6-001 has spent 4600 of a 10000 limit, and the test vault has 23
+receipts. The production vault policy p5-prod-001 has spent 400 of
+a 1000 limit, and the production vault has 12 receipts. Four TEE
+executions carry independently verified TDX attestations, three on
+the test vault and one on the production vault.
+
+Verify it yourself, no key and no account needed. Install the
+verifier once with the cargo install line in Verifying the TEE
+attestation below, then run:
+
+```sh
+scripts/verify-tee-attestation.sh --bundle docs/attestation-proofs/attestation-proof-10640.json
+```
+
+It prints PASS when the attestation verifies. The full do X, see Y
+steps are in Reproduce it below.
+
 ## Trust, in one paragraph
 
 Integrity is on-chain and trustless: for small evidence the vault hashes
@@ -35,10 +75,16 @@ Testnet throughout. The vault is deployed at
 `cynex-vault.cynexmaster.testnet`. Phases 0 through 9 are closed. The repo
 goes public on 13 November 2026.
 
-Live state, last verified 2026-11-07: policy-001 funded 1,000,000,000,
-spent 975,001,000, reserved 0, frozen false, 11 receipts. The token is
-`usdc.fakes.testnet` (USDC.e, 6 decimals). The full ledger is in
-`docs/ledger.md`.
+Live state, last verified 2026-11-08: both vaults run code hash
+65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6. Test vault policy
+p6-001: funded 10000, spent 4600, reserved 0, frozen false. The test
+vault has 23 receipts. Production vault policy p5-prod-001: funded
+1000, spent 400, reserved 0, frozen false. The production vault has
+12 receipts. Production policy-001:
+funded 1,000,000,000, spent 975,001,000, reserved 0, frozen false.
+The agent's token balance is 2000, up from 1900 when the production
+TEE proof paid it 100 units. The token is `usdc.fakes.testnet`
+(USDC.e, 6 decimals). The full ledger is in `docs/ledger.md`.
 
 ## How a settlement works
 
@@ -300,25 +346,65 @@ compiling the TypeScript (see Reproduce it below):
 - `cynex playground <vaultId> <obligationId...>` runs the recorded
   scenarios in `demo/playground-obligations.json`.
 
+A real run on the test vault, 2026-11-08. The attack runner
+simulates a compromised agent: it tries to settle obligation
+p6-obl-001 to unregistered-xyz.testnet instead of the authorized
+recipient, the way an agent acting on an injected prompt would. The
+vault refuses it on chain with ERR_RECIPIENT_SUBSTITUTION, and zero
+tokens move. The same run also refuses a changed amount, a replayed
+nonce, and a budget breach:
+
+| scenario | obligation | proposed recipient | proposed amount | tx hash | reason code | state after | moved |
+|---|---|---|---|---|---|---|---|
+| recipient substitution | p6-obl-001 | unregistered-xyz.testnet | 1000 | Fq3kmnkneg6pqMjw5vauMy9byKkbqfbzJyta2nmBDG5y | ERR_RECIPIENT_SUBSTITUTION | READY | 0 |
+| terms mismatch | p6-obl-002 | acme-supplies.testnet | 1001 | 59XtAnUcYXEQtWxVAEiRtBJj8dVqa5KQsoz6KqiAYiXq | ERR_TERMS_MISMATCH | READY | 0 |
+| nonce replay | p6-obl-006 | acme-supplies.testnet | 1000 | 8UAxAjNi3vv4zW6qXSsxPkeQoEcDSAzPzvRsX3GKv1o6 | ERR_NONCE_ALREADY_CONSUMED | PAID | 0 |
+| budget exceeded | p6-obl-004 | acme-supplies.testnet | 9001 | HsFZDCfSjKbVmecn3Lhq7pK2rcSJBzJx5iPbUEStaSyF | ERR_BUDGET_EXCEEDED | READY | 0 |
+
+The recipient balance read before and after each call was 977006100
+both times, so nothing moved. Run it yourself with no key, after
+compiling the TypeScript (see Reproduce it below):
+
+```sh
+node frontend/dist-test/cli/cynex.js attack cynex-testvault.cynexmaster.testnet demo/attack-scenarios.json --dry-run
+```
+
+The dry run prints what each scenario would settle and the code it
+expects, and sends no transaction. The live run needs the agent key.
+
 The attack transcript is in `docs/phase6-attack-transcript.md`. The
 compromised-agent scenario is the point: the agent is assumed hostile,
 and the vault still does not pay.
 
 ## Reproduce it
 
-Do X, see Y. Every step below was run on testnet; the fresh-clone test
-in Phase 9 pins the exact console invocation and fixes this section
-where it is wrong.
+Do X, see Y. The build and verification commands below were run
+from a fresh clone on 2026-11-08, and the expected result is what the
+run printed. Rust 1.93.0, cargo-near, and the attestation verifier
+were already installed on that machine, so their install lines are
+prerequisites, not commands the run executed. Steps 1 to 6 spend
+nothing and create nothing on chain: tests, type checks, view calls,
+an offline attestation verify, and a dry run. They do create local
+build output (node_modules, contract target, dist-test), but no
+on-chain state. The console run at the end is the full demo path and
+needs keys.
+
+1. Clone and enter the repo. See a clean checkout of the
+default branch. The steps below were verified against 61db7a2.
 
 ```sh
 git clone https://github.com/Jayanng/Cynex.git
 cd Cynex
 ```
 
-Contract, from `contract/`. The repo targets Rust 1.93.0. A newer
-default toolchain fails `cargo clippy` on a lint that did not exist
-in 1.93 (`clippy::chunks_exact_to_as_chunks`, on the `chunks_exact(2)`
-call in `src/lib.rs`), so run the commands with 1.93.0:
+2. Contract, from `contract/`. The repo targets Rust 1.93.0. Rust
+1.93.0 and cargo-near must already be installed; the commands below
+assume they are. A newer default toolchain fails `cargo clippy` on a
+lint that did not exist in 1.93 (`clippy::chunks_exact_to_as_chunks`,
+on the `chunks_exact(2)` call in `src/lib.rs`), so run the commands
+with 1.93.0. See 142
+passed with 0 failed, a clean clippy with no warnings, and a built
+wasm binary:
 
 ```sh
 RUSTUP_TOOLCHAIN=1.93.0 cargo test --lib
@@ -326,32 +412,70 @@ RUSTUP_TOOLCHAIN=1.93.0 cargo clippy --all-targets -- -D warnings
 RUSTUP_TOOLCHAIN=1.93.0 cargo near build non-reproducible-wasm
 ```
 
-Frontend, from `frontend/`. Install dependencies first; a fresh
-checkout has no `node_modules`:
+3. Frontend, from `frontend/`. Install dependencies first; a fresh
+checkout has no `node_modules`. See a clean install, a clean
+typecheck, and 13 suites with 159 tests, all passed:
 
 ```sh
 npm install
 npm run typecheck
+NODE_PATH=$PWD/node_modules npm run jest
 ```
 
 `npm run jest` needs `NODE_PATH` set to the frontend `node_modules`
 in a fresh checkout, or the three suites that import `near-api-js`
-fail to load with "Cannot find module 'near-api-js'":
+fail to load with "Cannot find module 'near-api-js'".
+
+4. Verify a TEE attestation offline, from the repo root. Install
+the verifier once first. This install needs network access:
 
 ```sh
-NODE_PATH=$PWD/node_modules npm run jest
+cargo install --git https://github.com/out-layer/outlayer-verify outlayer-verify
 ```
 
-Console, from `frontend/`: compile the TypeScript with the frontend
-`tsc` binary, then run the console with the environment below. The
-`tsc` line emits known `near-api-js` type errors (TS2307) and exits
-non-zero, but it still emits working JavaScript; the errors are
-expected, the emitted `dist-test/` is what matters. The
-console creates the obligation, requests evidence, verifies the
-evidence, and settles with the agent's scoped key, reading the
-obligation and the recipient balance back from chain after each step.
-The settle transaction print is not the proof; the PAID read and the
-balance delta are. The evidence step branches on the obligation's
+Then run the script. The script itself runs offline and needs no
+key. See PASS with exit 0:
+
+```sh
+scripts/verify-tee-attestation.sh --bundle docs/attestation-proofs/attestation-proof-10640.json
+```
+
+5. Compile the TypeScript and check the live vaults. From
+`frontend/`, run the `tsc` line below. See 5 known `near-api-js`
+type errors (TS2307) and exit 2, but the emitted `dist-test/` is
+working JavaScript; the errors are expected. Then, from the repo
+root, run verify-live for each vault. See a CSV of receipts, 23
+rows on the test vault and 12 on the production vault, every row
+verified_ok=true, exit 0. This reads chain state only and spends
+nothing:
+
+```sh
+npx tsc --outDir dist-test --rootDir .. --module NodeNext --moduleResolution NodeNext --target ES2022 --strict --skipLibCheck --esModuleInterop --lib es2022,dom --typeRoots ./node_modules/@types ../agent/console.ts ../cli/cynex.ts ../services/verifier/verifier.ts ../services/verifier/verify.test.ts ../services/executor/executor.ts ../services/executor/executor.test.ts ../services/console/console.test.ts ../services/reputation/reputation.ts ../services/reputation/snapshot.ts ../services/reputation/live-sources.ts
+```
+
+```sh
+node frontend/dist-test/cli/cynex.js verify-live cynex-testvault.cynexmaster.testnet
+node frontend/dist-test/cli/cynex.js verify-live cynex-vault.cynexmaster.testnet
+```
+
+6. Attack dry run, from the repo root. See four DRY-RUN lines, one
+per scenario, each with the code it expects, and no transaction
+sent:
+
+```sh
+node frontend/dist-test/cli/cynex.js attack cynex-testvault.cynexmaster.testnet demo/attack-scenarios.json --dry-run
+```
+
+The full demo run below is separate from steps 1 to 6: it creates
+obligations and settles with real keys.
+
+Console, from `frontend/`: use the compiled `dist-test/` from step
+5, then run the console with the environment below. The console
+creates the obligation, requests evidence, verifies the evidence,
+and settles with the agent's scoped key, reading the obligation and
+the recipient balance back from chain after each step. The settle
+transaction print is not the proof; the PAID read and the balance
+delta are. The evidence step branches on the obligation's
 evidence_type: PREIMAGE submits the artifact bytes on chain with
 `submit_evidence_preimage` (no verifier key needed, and no verifier
 check can substitute for it); TEE files a `request_tee_verification`
@@ -361,7 +485,6 @@ any other type runs the real verifier check and submits the signed
 evidence. Evidence over 64 KiB falls back to the verifier path.
 
 ```sh
-npx tsc --outDir dist-test --rootDir .. --module NodeNext --moduleResolution NodeNext --target ES2022 --strict --skipLibCheck --esModuleInterop --lib es2022,dom --typeRoots ./node_modules/@types ../agent/console.ts ../cli/cynex.ts ../services/verifier/verifier.ts ../services/verifier/verify.test.ts ../services/executor/executor.ts ../services/executor/executor.test.ts ../services/console/console.test.ts ../services/reputation/reputation.ts ../services/reputation/snapshot.ts ../services/reputation/live-sources.ts
 node dist-test/agent/console.js
 ```
 
