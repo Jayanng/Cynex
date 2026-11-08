@@ -340,10 +340,10 @@ in `docs/phase7-lane-b.md`, and the fifth signal is in
 The CLI proves the vault rejects bad terms. From the repo root, after
 compiling the TypeScript (see Reproduce it below):
 
-- `cynex attack-one <vaultId> <obligationId> <proposedRecipient> <proposedAmount> <evidenceRef> [--dry-run]`
+- `node frontend/dist-test/cli/cynex.js attack-one <vaultId> <obligationId> <proposedRecipient> <proposedAmount> <evidenceRef> [--dry-run]`
   fires one deliberate bad settle, a substituted recipient, a changed
   amount, or a replayed nonce, and shows the vault refusing it.
-- `cynex playground <vaultId> <obligationId...>` runs the recorded
+- `node frontend/dist-test/cli/cynex.js playground <vaultId> <obligationId...>` runs the recorded
   scenarios in `demo/playground-obligations.json`.
 
 A real run on the test vault, 2026-11-08. The attack runner
