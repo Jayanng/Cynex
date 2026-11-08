@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    name: Contract (fmt, clippy, tests, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contract
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust 1.93.0
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.93.0"
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+      - name: Install cargo-near 0.22.0
+        run: cargo install cargo-near --locked --version 0.22.0
+      - name: Check formatting
+        # Non-blocking for now: one pre-existing spot in contract/src/lib.rs
+        # (line 1512) is not formatted, and fixing it changes the wasm hash,
+        # because line numbers are embedded in panic locations. That breaks
+        # the source-to-deployed-code-hash correspondence, so the fix lands
+        # with the next contract change and redeploy, not in a docs change.
+        # Remove continue-on-error once that redeploy lands.
+        continue-on-error: true
+        run: cargo fmt --check
+      - name: Clippy (warnings denied)
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Unit tests
+        run: cargo test --lib
+      - name: Build wasm
+        run: cargo near build non-reproducible-wasm
+
+  frontend:
+    name: Frontend (typecheck, tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Tests
+        run: NODE_PATH=$PWD/node_modules npm run jest
