@@ -35,9 +35,9 @@ Three layers prove a payment is right, and no layer trusts another:
 
 Live proof, verified on testnet 2026-11-08: both vaults run code hash
 65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6. The test vault policy
-p6-001 has spent 4600 of a 10000 limit, and the test vault has 23
-receipts. The production vault policy p5-prod-001 has spent 400 of
-a 1000 limit, and the production vault has 12 receipts. Four TEE
+p6-001 has spent 5200 of a 10000 limit, and the test vault has 29
+receipts. The production vault policy p5-prod-001 has spent 500 of
+a 1000 limit, and the production vault has 13 receipts. Four TEE
 executions carry independently verified TDX attestations, three on
 the test vault and one on the production vault.
 
@@ -77,13 +77,14 @@ goes public on 13 November 2026.
 
 Live state, last verified 2026-11-08: both vaults run code hash
 65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6. Test vault policy
-p6-001: funded 10000, spent 4600, reserved 0, frozen false. The test
-vault has 23 receipts. Production vault policy p5-prod-001: funded
-1000, spent 400, reserved 0, frozen false. The production vault has
-12 receipts. Production policy-001:
+p6-001: funded 10000, spent 5200, reserved 0, frozen false. The test
+vault has 29 receipts. Production vault policy p5-prod-001: funded
+1000, spent 500, reserved 0, frozen false. The production vault has
+13 receipts. Production policy-001:
 funded 1,000,000,000, spent 975,001,000, reserved 0, frozen false.
-The agent's token balance is 2000, up from 1900 when the production
-TEE proof paid it 100 units. The token is `usdc.fakes.testnet`
+The agent's token balance is 2500, and the second agent
+(`cynex-agent2.cynexmaster.testnet`) holds 100, paid from the test
+vault by the use-case settlement `usecase-report-003`. The token is `usdc.fakes.testnet`
 (USDC.e, 6 decimals). The full ledger is in `docs/ledger.md`.
 
 ## How a settlement works
@@ -209,8 +210,10 @@ of the other two.
 enclave, fetches the evidence from its claimed source, computes SHA-256,
 and returns the digest plus the source. The per-execution TDX quote
 binds the guest code hash, the input hash, and the output hash, and
-anyone can verify it through OutLayer's attestation endpoint; the vault
-itself does not verify the quote on-chain. This
+anyone can verify it through the live attestation host,
+`https://testnet-api.outlayer.ai`, with the commands in Verifying the
+TEE attestation below; the vault itself does not verify the quote
+on-chain, by design. This
 answers the question layer 1 cannot: a digest proves which bytes were
 checked, not where they came from.
 
@@ -225,8 +228,8 @@ as the verifier, named as trusted, never presented as trustless. Layers 2
 and 3 shipped in Phase 9 and were proven live on testnet: a TEE obligation
 went READY through the full guest fetch and VRF path on OutLayer request
 10640, with a real TDX quote binding the input and output hashes. The
-fallback stays for oversized evidence, not as a substitute for a broken
-TEE layer.
+fallback stays for oversized evidence, not as a substitute for the
+TEE layer, which is live and independently attested.
 
 ## Verifying the TEE attestation
 
@@ -444,8 +447,8 @@ scripts/verify-tee-attestation.sh --bundle docs/attestation-proofs/attestation-p
 `frontend/`, run the `tsc` line below. See 5 known `near-api-js`
 type errors (TS2307) and exit 2, but the emitted `dist-test/` is
 working JavaScript; the errors are expected. Then, from the repo
-root, run verify-live for each vault. See a CSV of receipts, 23
-rows on the test vault and 12 on the production vault, every row
+root, run verify-live for each vault. See a CSV of receipts, 29
+rows on the test vault and 13 on the production vault, every row
 verified_ok=true, exit 0. This reads chain state only and spends
 nothing:
 
