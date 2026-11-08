@@ -3,6 +3,12 @@
 For the demo video, the frontend Demo page, and for judges reading the
 repo. This is the concrete use case, item 3 of the survival plan. It
 ran live on the test vault on 2026-11-08, with real transaction hashes.
+The two-agent run is described in its own section below. Obligation
+`usecase-report-003`, settled 2026-11-08, pays the research agent
+`cynex-agent2.cynexmaster.testnet` exactly 100 while the procurement
+agent `cynex-agent.cynexmaster.testnet` receives nothing. The earlier
+single-account run, `usecase-report-002`, is kept as the prior proof
+and as the canonical attack sequence.
 The transaction, receipt, balance, policy, key-scope, and artifact
 values below are from the verified testnet run. Nothing here is
 mocked, canned, or hardcoded.
@@ -25,24 +31,29 @@ The actors:
 
 - Human (owner): `cynexmaster.testnet`. Authorizes the obligation and
   submits the evidence owner-side. Holds the full-access key.
-- Procurement agent: the agent that requests settlement. Holds only a
-  scoped settle-only function-call key for the test vault.
-- Research agent (recipient): `cynex-agent.cynexmaster.testnet`. Delivers
-  the named report and receives the payment. In this demo the research
-  agent is the agent account, and the procurement agent requests
-  settlement using the agent's scoped settle-only key for the test
-  vault. The vault enforces the obligation terms regardless of which
-  agent requests settlement.
+- Procurement agent: `cynex-agent.cynexmaster.testnet`. The agent that
+  requests settlement. Holds only a scoped settle-only key for the test
+  vault.
+- Research agent (recipient): `cynex-agent2.cynexmaster.testnet`.
+  Delivers the named report and receives the payment. Created
+  2026-11-08 as a subaccount of the master, funded with 1 NEAR, public
+  key `ed25519:7uWPpfosyMNTsYfz4P1cx7GBjpm88fhiVBSiW7cnG2CR`.
 
-This live run uses one NEAR account, `cynex-agent.cynexmaster.testnet`,
-  in both agent roles: it is the settlement requester, holding the
-  scoped settle-only key, and it is the recipient. The demo exercises
-  the vault authorization and settlement controls using one agent
-  account in both roles; it does not demonstrate payment between two
-  distinct agent accounts. The control proof is valid, because the
-  vault enforces the recorded terms no matter which account calls
-  settle, but a payment between two distinct agent accounts is a
-  separate demonstration.
+The two-agent run, obligation `usecase-report-003`, is the canonical
+demonstration of payment between two distinct agent accounts: the
+procurement agent requests settlement and the research agent receives
+exactly 100, while the requester receives nothing. See the two-agent
+run section below.
+
+The earlier run, obligation `usecase-report-002`, used one NEAR
+account, `cynex-agent.cynexmaster.testnet`, in both agent roles: it was
+the settlement requester, holding the scoped settle-only key, and it
+was the recipient. That run exercises the vault authorization and
+settlement controls using one agent account in both roles; it does not
+demonstrate payment between two distinct agent accounts. The control
+proof is valid, because the vault enforces the recorded terms no
+matter which account calls settle, and the attack sequence in that run
+is kept below as the canonical attack proof.
 
 The token is USDC.e testnet, `usdc.fakes.testnet`, 6 decimals, no
 mainnet value. The amount is 100 base units (0.0001 USDC.e). The policy
@@ -88,7 +99,95 @@ because the proof tool failed to extract them from the error objects.
 `usecase-report-002` is the canonical obligation for this demo script
 because every transaction hash was captured. Both runs are on chain.
 
-## The 12-step sequence, with the live proof
+## The two-agent run: payment between two distinct agent accounts
+
+On 2026-11-08, after the `usecase-report-002` run, the same scenario
+ran again with two distinct agent accounts, obligation
+`usecase-report-003`. This is the run that demonstrates payment
+between two distinct agent accounts. The procurement agent is
+`cynex-agent.cynexmaster.testnet`, which requests settlement with its
+scoped settle-only key for the test vault. The research agent is the
+new account `cynex-agent2.cynexmaster.testnet`, created the same day
+as a subaccount of `cynexmaster.testnet`, funded with 1 NEAR from the
+master account, and registered with the token before settlement. The
+research agent receives exactly 100, and the procurement agent
+receives nothing.
+
+- New account: `cynex-agent2.cynexmaster.testnet`, public key
+  `ed25519:7uWPpfosyMNTsYfz4P1cx7GBjpm88fhiVBSiW7cnG2CR`, 1 NEAR at
+  creation. No private key or seed phrase is included in the repository.
+- Account creation: transaction
+  `JBph4fKi9hzX3VTUhQ9NtexrbPMZ8fX2GyJXgXwUyy8d`, block 276798966,
+  signer `cynexmaster.testnet`.
+- Token registration: `storage_deposit` for the new account on
+  `usdc.fakes.testnet`, 0.00125 NEAR from the master, transaction
+  `92MGUi1ikp5LVTGKBfVnGYgYfV6Yp2hzakqufQYdX4pH`. Registration is
+  required before the vault can pay the account, and it was confirmed
+  on chain (`storage_balance_of` total 1250000000000000000000)
+  before the obligation was created.
+- Obligation ID: `usecase-report-003`
+- Policy: `p6-001`
+- Recipient: `cynex-agent2.cynexmaster.testnet` (the research agent)
+- Amount: 100 base units, USDC.e testnet
+- Evidence type: PREIMAGE, same artifact, same digest `2a8bddcb...`
+- Expires: 2030-01-01 (1893456000000000000 nanoseconds)
+- Nonce: 30003
+- Pending request ID: `usecase-report-003-30003`
+
+The four transactions, all RECORDED ON TESTNET, all status
+SuccessValue:
+
+- Create: `2WJF2vZDwWQoyrtpA2p2veUnVMHwTz6HPABxC68tiV4i`,
+  2026-11-08 16:16:56 UTC, block 276799089, signer
+  `cynexmaster.testnet` (owner). State after: CREATED. Policy
+  `p6-001` before: spent 5100, limit 10000, funded 10000, frozen
+  false, remaining 4900.
+- Request evidence: `ENzaWdGLj688rvgwrL99ccbGsYvVSiz4WD1bYsu9f1W2`,
+  2026-11-08 16:17:11 UTC, block 276799114, signer
+  `cynexmaster.testnet` (owner). State after: EVIDENCE_PENDING,
+  pending request ID `usecase-report-003-30003`.
+- Submit evidence preimage:
+  `GGyymoK4K8jouvai2LYBfq5iHAQAgwACnzhGbuEsVBAm`, 2026-11-08
+  16:17:32 UTC, block 276799149, signer `cynexmaster.testnet`
+  (owner, as courier; the method is permissionless). The vault hashed
+  the exact report bytes and matched the committed digest. State
+  after: READY.
+- Settle: `GSD8NfrJhpFzchDcPM75v56QaFge6twdKHa4YJ9ktBur`,
+  2026-11-08 16:17:58 UTC, block 276799191, signer
+  `cynex-agent.cynexmaster.testnet` with its test-vault-scoped
+  settle-only key (receiver the test vault, method `settle` only,
+  allowance 0.25 NEAR, public key
+  `ed25519:2MBdiB9ayS1SREqAvZFC6ZuzdA9TuAjEFHV8HYPjZKgn`). The settle
+  used the exact authorized recipient and amount, with evidence ref
+  `usecase-report-003-30003`. State after: PAID.
+
+Verified live from chain after settlement:
+
+- Research agent `cynex-agent2.cynexmaster.testnet` token balance: 0
+  to 100, delta exactly 100.
+- Procurement agent `cynex-agent.cynexmaster.testnet` token balance:
+  2500, unchanged. The requester is paid nothing.
+- Policy `p6-001`: spent 5100 to 5200, limit 10000, funded 10000,
+  frozen false. Remaining headroom 4800.
+- Receipt index: 28. Receipt: obligation `usecase-report-003`,
+  recipient `cynex-agent2.cynexmaster.testnet`, amount 100, token
+  `usdc.fakes.testnet`, timestamp 1794154680050968600 nanoseconds
+  (2026-11-08 16:18:00 UTC). The receipt `tx_ref` field is empty on
+  the automatic settle path, as in the earlier runs; the settle
+  transaction hash above is the link to the explorer.
+- Test vault receipts: 29 (indices 0 to 28). Vault `state()` receipt
+  index 29.
+- Obligation `usecase-report-003`: PAID.
+
+The earlier run, `usecase-report-002`, remains the canonical attack
+sequence in this document, with all four rejections captured. It used
+one account in both agent roles. The `usecase-report-003` run is the
+canonical two-agent payment: same artifact, same digest, same policy,
+same amount, two distinct agent accounts, and the payment lands in
+the research agent account only.
+
+
+## The 12-step sequence, with the live proof (obligation `usecase-report-002`)
 
 All transactions below are RECORDED ON TESTNET, network testnet, with
 the transaction hash, timestamp, attempted mutation, and rejection
@@ -357,10 +456,11 @@ account needed for these:
 node frontend/dist-test/cli/cynex.js verify-live cynex-testvault.cynexmaster.testnet
 ```
 
-That prints a CSV of receipts. Receipt index 24 is this use case:
-obligation `usecase-report-002`, recipient
-`cynex-agent.cynexmaster.testnet`, amount 100, token
-`usdc.fakes.testnet`. Every row reports `verified_ok=true`.
+That prints a CSV of receipts. Receipt index 28 is the two-agent run:
+obligation `usecase-report-003`, recipient
+`cynex-agent2.cynexmaster.testnet`, amount 100, token
+`usdc.fakes.testnet`. Receipt index 24 is the attack-sequence run,
+obligation `usecase-report-002`. Every row reports `verified_ok=true`.
 
 To verify a single transaction, look it up on the testnet explorer
 with its hash, or query it by RPC. For example, the changed-recipient
@@ -375,10 +475,13 @@ altered settlement on chain.
 
 ## Final live state after this run
 
-- Test vault policy `p6-001`: limit 10000, funded 10000, spent 4800,
-  reserved 0, frozen false. Remaining headroom 5200.
-- Agent token balance: 2200.
-- Test vault receipts: 25 (indices 0 to 24), all verified.
+- Test vault policy `p6-001`: limit 10000, funded 10000, spent 5200,
+  reserved 0, frozen false. Remaining headroom 4800.
+- Research agent token balance (`cynex-agent2.cynexmaster.testnet`): 100.
+- Procurement agent token balance (`cynex-agent.cynexmaster.testnet`):
+  2500, unchanged by the two-agent settle.
+- Test vault receipts: 29 (indices 0 to 28), all verified.
+- Obligation `usecase-report-003`: PAID, receipt index 28.
 - Obligation `usecase-report-002`: PAID, receipt index 24.
 - Obligation `usecase-report-001`: PAID, receipt index 23 (the first
   run of the same scenario).
@@ -401,4 +504,6 @@ altered settlement on chain.
   submitted bytes match the authorized digest. It does not prove the
   report is true.
 - Do not settle to `acme-supplies.testnet`. It does not exist on
-  chain. The recipient throughout is the agent account.
+  chain. The recipient in the two-agent run is the research agent
+  `cynex-agent2.cynexmaster.testnet`; in the earlier single-account
+  run it was the agent account.
