@@ -27,6 +27,7 @@
  * environment set. Build: npm run mcp:build, from frontend/.
  */
 import { JsonRpcProvider, Account, KeyPairSigner } from "near-api-js";
+import { fileURLToPath } from "node:url";
 import type { SettleArgs } from "../../frontend/src/cynex/api.js";
 import type { KeyPairString } from "near-api-js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -74,11 +75,15 @@ export function createSettleWithKey(
     if (!target.ok) {
       throw new Error(target.reason);
     }
+    // Settle attaches no deposit: the vault attaches the 1 yoctoNEAR
+    // for its own ft_transfer. Stating 0n keeps the call from
+    // silently inheriting a default.
     const outcome = await agent.callFunctionRaw({
       contractId,
       methodName,
       args: { ...args, proposed_amount: args.proposed_amount.toString() },
       gas: SETTLE_CALL_GAS,
+      deposit: 0n,
     });
     return txHashOf(outcome);
   };
@@ -204,7 +209,7 @@ async function main(): Promise<number> {
   return 0;
 }
 
-if (import.meta.url === "file://" + process.argv[1]) {
+if (fileURLToPath(import.meta.url) === process.argv[1]) {
   main()
     .then((code) => {
       process.exitCode = code;

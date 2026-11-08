@@ -42,14 +42,20 @@ export interface ToolResult {
   ok: boolean;
   reason: string;
   data?: unknown;
+  /** Stage of the settle path a refusal stopped at, requestSettlement only. The test client reads it to tell whether an attempt reached the runtime checks, instead of guessing from the reason string. */
+  stage?: string;
 }
 
 function refused(reason: string): ToolResult {
   return { ok: false, reason };
 }
 
-function succeeded(reason: string, data: unknown): ToolResult {
-  return { ok: true, reason, data };
+function refusedAt(reason: string, stage: string): ToolResult {
+  return { ok: false, reason, stage };
+}
+
+function succeeded(reason: string, data: unknown, stage?: string): ToolResult {
+  return stage === undefined ? { ok: true, reason, data } : { ok: true, reason, data, stage };
 }
 
 export function isValidAccountId(value: unknown): value is string {
@@ -221,7 +227,7 @@ export const TOOL_SCHEMAS = {
     obligation_id: z.string().describe("Obligation id to settle"),
     proposed_recipient: z.string().describe("Proposed recipient NEAR account id"),
     proposed_amount: z.string().describe("Proposed amount as a decimal string in the token smallest units"),
-    evidence_ref: z.string().describe("Evidence reference kept for the off-chain audit record; the contract discards it on chain"),
+    evidence_ref: z.string().describe("Evidence reference for the caller's own records; it is passed to the settle call but the contract discards it on chain and nothing persists it"),
   },
   cynex_get_obligation: {
     obligation_id: z.string().describe("Obligation id to read"),
@@ -263,6 +269,11 @@ export async function checkCounterparty(
   }
   try {
     const report = await ctx.checkCounterparty(args.account_id);
+    if (report.accountId !== args.account_id) {
+      return refused(
+        "counterparty check failed: the report is for " + JSON.stringify(report.accountId) + ", not the requested " + JSON.stringify(args.account_id),
+      );
+    }
     return succeeded("counterparty checked, verdict " + report.verdict, report);
   } catch (error) {
     return refused(
@@ -388,6 +399,10 @@ export async function prepareObligation(
   if (policy.frozen === true) {
     return refused("policy " + input.policy_id + " is frozen, the contract rejects creation with ERR_POLICY_FROZEN");
   }
+  const policyEcho = verifyEcho(policyRow, "policy_id", input.policy_id as string);
+  if (!policyEcho.ok) {
+    return refused(policyEcho.reason + ", the policy read cannot be trusted");
+  }
   let existing: unknown;
   try {
     existing = await ctx.client.getObligation(input.obligation_id as string);
@@ -398,6 +413,10 @@ export async function prepareObligation(
     );
   }
   if (obligationRow(existing) !== null) {
+    const existingEcho = verifyEcho(existing, "obligation_id", input.obligation_id as string);
+    if (!existingEcho.ok) {
+      return refused(existingEcho.reason + ", the obligation read cannot be trusted");
+    }
     return refused(
       "obligation_id " + input.obligation_id + " already exists on chain, the contract rejects it with ERR_OBLIGATION_EXISTS",
     );
@@ -470,6 +489,10 @@ export async function getObligation(
   if (record === null) {
     return refused("obligation " + args.obligation_id + " not found on chain");
   }
+  const echo = verifyEcho(row, "obligation_id", args.obligation_id as string);
+  if (!echo.ok) {
+    return refused(echo.reason + ", the obligation read cannot be trusted");
+  }
   return succeeded("obligation " + args.obligation_id + " read, state " + rowState(row), record);
 }
 
@@ -513,6 +536,10 @@ export async function getPolicy(
     if (obligationRow(policy) === null) {
       return refused("policy " + args.policy_id + " does not exist on the vault");
     }
+    const echo = verifyEcho(policy, "policy_id", args.policy_id as string);
+    if (!echo.ok) {
+      return refused(echo.reason + ", the policy read cannot be trusted");
+    }
     return succeeded("policy " + args.policy_id + " read", {
       policy,
       balances,
@@ -544,7 +571,13 @@ export interface RequestSettlementInput {
  * rate limit; build the settle arguments with buildSettle; read
  * the recipient balance; submit settle with the scoped key; poll
  * until PAID; read the receipt and the balance delta, which must
- * equal the obligation amount.
+ * equal the obligation amount. Before any submit it also refuses
+ * off chain when the obligation is expired or the policy is
+ * frozen. Every refusal carries the stage it stopped at
+ * (validation, read, ready, echo, terms, budget, runtime,
+ * reputation, rate-limit, balance, submit), so a caller can tell
+ * whether the attempt reached the runtime checks without parsing
+ * the reason string.
  *
  * Changed terms are deliberately not refused here: the vault
  * must see the attempt and reject it on chain with
@@ -559,53 +592,55 @@ export async function requestSettlement(
   limiter: SettleRateLimiter,
 ): Promise<ToolResult> {
   if (!isValidObligationId(input.obligation_id)) {
-    return refused("obligation_id is not valid: " + JSON.stringify(input.obligation_id));
+    return refusedAt("obligation_id is not valid: " + JSON.stringify(input.obligation_id), "validation");
   }
   if (!isValidAccountId(input.proposed_recipient)) {
-    return refused("proposed_recipient is not a valid NEAR account id: " + JSON.stringify(input.proposed_recipient));
+    return refusedAt("proposed_recipient is not a valid NEAR account id: " + JSON.stringify(input.proposed_recipient), "validation");
   }
   if (!isDecimalString(input.proposed_amount)) {
-    return refused("proposed_amount must be a decimal string: " + JSON.stringify(input.proposed_amount));
+    return refusedAt("proposed_amount must be a decimal string: " + JSON.stringify(input.proposed_amount), "validation");
   }
   let proposedAmount: bigint;
   try {
     proposedAmount = BigInt(input.proposed_amount);
   } catch {
-    return refused("proposed_amount is not a valid decimal string: " + JSON.stringify(input.proposed_amount));
+    return refusedAt("proposed_amount is not a valid decimal string: " + JSON.stringify(input.proposed_amount), "validation");
   }
   if (proposedAmount <= 0n) {
-    return refused("proposed_amount must be greater than zero");
+    return refusedAt("proposed_amount must be greater than zero", "validation");
   }
   if (proposedAmount > (1n << 128n) - 1n) {
-    return refused("proposed_amount is outside the u128 range");
+    return refusedAt("proposed_amount is outside the u128 range", "validation");
   }
   if (typeof input.evidence_ref !== "string" || input.evidence_ref.length > 256) {
-    return refused("evidence_ref must be a string of at most 256 characters");
+    return refusedAt("evidence_ref must be a string of at most 256 characters", "validation");
   }
   const obligationId = input.obligation_id as string;
   let row: unknown;
   try {
     row = await ctx.client.getObligation(obligationId);
   } catch (error) {
-    return refused(
+    return refusedAt(
       "obligation read failed: " + (error instanceof Error ? error.message : String(error)),
+      "read",
     );
   }
   const obligation = obligationRow(row);
   if (obligation === null) {
-    return refused("obligation " + obligationId + " not found on chain, no settle attempted");
+    return refusedAt("obligation " + obligationId + " not found on chain, no settle attempted", "read");
   }
   const state = rowState(row);
   if (state !== "READY") {
-    return refused(
+    return refusedAt(
       "obligation " + obligationId + " is " + state + ", not READY; the server settles READY obligations only, no settle attempted",
+      "ready",
     );
   }
   const recipient = String(obligation.recipient);
   const policyId = String(obligation.policy_id);
   const obligationEcho = verifyEcho(row, "obligation_id", obligationId);
   if (!obligationEcho.ok) {
-    return refused(obligationEcho.reason + ", no settle attempted");
+    return refusedAt(obligationEcho.reason + ", no settle attempted", "echo");
   }
   // The obligation fields are validated before they are trusted: a
   // malformed view response must refuse with a named reason, never
@@ -615,32 +650,36 @@ export async function requestSettlement(
   try {
     amount = toChainBigInt(obligation.amount, "amount");
   } catch (error) {
-    return refused(
+    return refusedAt(
       "obligation " +
         obligationId +
         " has an unreadable amount on chain, no settle attempted: " +
         (error instanceof Error ? error.message : String(error)),
+      "read",
     );
   }
   if (amount <= 0n || amount > (1n << 128n) - 1n) {
-    return refused(
+    return refusedAt(
       "obligation " +
         obligationId +
         " has an amount outside the u128 range on chain, no settle attempted",
+      "read",
     );
   }
   if (!isValidAccountId(recipient)) {
-    return refused(
+    return refusedAt(
       "obligation " +
         obligationId +
         " has an unreadable recipient on chain, no settle attempted",
+      "read",
     );
   }
   if (!isValidPolicyId(policyId)) {
-    return refused(
+    return refusedAt(
       "obligation " +
         obligationId +
         " has an unreadable policy id on chain, no settle attempted",
+      "read",
     );
   }
   // The policy is read here, before the gate and the rate limit, so
@@ -652,34 +691,70 @@ export async function requestSettlement(
   try {
     policyRow = await ctx.client.getPolicy(policyId);
   } catch (error) {
-    return refused(
+    return refusedAt(
       "policy read failed, no settle attempted: " +
         (error instanceof Error ? error.message : String(error)),
+      "read",
     );
   }
   const policy = obligationRow(policyRow);
   if (policy === null) {
-    return refused("policy " + policyId + " does not exist on the vault, no settle attempted");
+    return refusedAt("policy " + policyId + " does not exist on the vault, no settle attempted", "read");
   }
   const policyEcho = verifyEcho(policyRow, "policy_id", policyId);
   if (!policyEcho.ok) {
-    return refused(policyEcho.reason + ", no settle attempted");
+    return refusedAt(policyEcho.reason + ", no settle attempted", "echo");
   }
   if (typeof policy.token_id !== "string") {
-    return refused("policy " + policyId + " has no token_id on chain, no settle attempted");
+    return refusedAt("policy " + policyId + " has no token_id on chain, no settle attempted", "read");
+  }
+  // Off-chain expiry and frozen checks, before any submit: the
+  // contract enforces both with ERR_OBLIGATION_EXPIRED and
+  // ERR_POLICY_FROZEN, but refusing here saves a doomed submission
+  // and its gas, and names the reason in plain terms. The expiry
+  // check uses host time, which is not chain time, so it only
+  // refuses when the obligation expired more than 60 seconds ago:
+  // that bounds any host clock skew, and the contract stays the
+  // authority on the exact boundary (it refuses when the block
+  // timestamp passes expires_at_ns).
+  const nowNs = BigInt(ctx.nowMs ? ctx.nowMs() : Date.now()) * 1000000n;
+  let expiresAt: bigint;
+  try {
+    expiresAt = toChainBigInt(obligation.expires_at_ns, "expires_at_ns");
+  } catch (error) {
+    return refusedAt(
+      "obligation " +
+        obligationId +
+        " has an unreadable expiry on chain, no settle attempted: " +
+        (error instanceof Error ? error.message : String(error)),
+      "read",
+    );
+  }
+  if (expiresAt + 60_000_000_000n < nowNs) {
+    return refusedAt(
+      "obligation " + obligationId + " expired more than 60 seconds ago, no settle attempted",
+      "terms",
+    );
+  }
+  if (policy.frozen === true) {
+    return refusedAt(
+      "policy " + policyId + " is frozen on chain, no settle attempted",
+      "terms",
+    );
   }
   let budget: { ok: boolean; reason: string };
   try {
     budget = checkBudget(policy, amount);
   } catch (error) {
-    return refused(
+    return refusedAt(
       "budget check failed, the policy figures could not be read: " +
         (error instanceof Error ? error.message : String(error)) +
         ", no settle attempted",
+      "budget",
     );
   }
   if (!budget.ok) {
-    return refused(budget.reason + ", no settle attempted");
+    return refusedAt(budget.reason + ", no settle attempted", "budget");
   }
   // Runtime integrity checks, re-read for every settle: network,
   // vault existence and code hash, signing key scope and allowance
@@ -689,10 +764,11 @@ export async function requestSettlement(
   try {
     runtime = await ctx.runtimeState();
   } catch (error) {
-    return refused(
+    return refusedAt(
       "runtime checks could not be read from the chain: " +
         (error instanceof Error ? error.message : String(error)) +
         ", no settle attempted; retrying the call re-runs the checks",
+      "runtime",
     );
   }
   const integrity = verifyRuntimeState(runtime, {
@@ -704,15 +780,16 @@ export async function requestSettlement(
     expectedVaultCodeHash: ctx.config.expectedVaultCodeHash,
   });
   if (!integrity.ok) {
-    return refused(integrity.reason + ", no settle attempted");
+    return refusedAt(integrity.reason + ", no settle attempted", "runtime");
   }
   let report: ReputationReport;
   try {
     report = await ctx.checkCounterparty(input.proposed_recipient as string);
   } catch (error) {
-    return refused(
+    return refusedAt(
       "counterparty check failed, no settle attempted: " +
         (error instanceof Error ? error.message : String(error)),
+      "reputation",
     );
   }
   // approve_warning is not named in the escalation on purpose: it moves a
@@ -721,26 +798,28 @@ export async function requestSettlement(
   // CYNEX_APPROVE_WARN=1 is the owner path for a reputation WARN.
   const gate = gateSettleOnReputation(report, { approveWarn: false });
   if (gate.decision !== "proceed") {
-    return refused(
+    return refusedAt(
       "MCP reputation gate refused the request: " +
         gate.reason +
         (gate.decision === "escalate"
           ? ". The owner must approve the warning through the console with CYNEX_APPROVE_WARN=1; this server never approves a warning itself."
           : ""),
+      "reputation",
     );
   }
   const rate = limiter.check(obligationId);
   if (!rate.allowed) {
-    return refused(rate.reason + ", no settle attempted");
+    return refusedAt(rate.reason + ", no settle attempted", "rate-limit");
   }
   const tokenId = policy.token_id as string;
   let beforeBalance: bigint;
   try {
     beforeBalance = await ctx.tokenBalance(tokenId, recipient);
   } catch (error) {
-    return refused(
+    return refusedAt(
       "recipient balance read failed, no settle attempted: " +
         (error instanceof Error ? error.message : String(error)),
+      "balance",
     );
   }
   const settle = buildSettle({
@@ -760,10 +839,11 @@ export async function requestSettlement(
       // reached the chain or its outcome may have been lost in transit.
       // That is not evidence the vault refused, and it is not evidence
       // the settle failed, so neither claim is made here.
-      return refused(
+      return refusedAt(
         "settle submission outcome is unknown, no transaction hash was returned: " +
           message +
           ". The settle may or may not have executed; do not treat this as a refusal or a success. Check the obligation with cynex_get_obligation and the receipts with cynex_list_receipts before retrying.",
+        "submit",
       );
     }
     // A hash means the transaction reached the chain. Re-read the
@@ -773,9 +853,11 @@ export async function requestSettlement(
     // A readable non-PAID state on its own proves neither a refusal
     // nor a failure: the callback that marks PAID can still land
     // after the re-read. Only an error that names a contract refusal
-    // (an ERR_ code, or a contract panic) proves the vault refused,
-    // because a panicked settle receipt creates no promise and no
-    // callback can follow it.
+    // code (an ERR_ code) proves the vault refused: every check that
+    // panics with an ERR_ code runs before the ft_transfer promise,
+    // so the receipt created no promise and no callback can follow
+    // it. A bare panic names no check site, so it proves nothing
+    // about where the panic happened, and the outcome is unknown.
     let current: unknown = null;
     let readFailed = false;
     try {
@@ -784,29 +866,36 @@ export async function requestSettlement(
       readFailed = true;
     }
     if (!readFailed && current !== null && rowState(current) === "PAID") {
-      return refused(
+      return refusedAt(
         "settle submitted (transaction hash " + hash + ") but the submission returned an error: " +
           message +
           ". The obligation now reads PAID, so the settle may have succeeded despite the error; do not treat this as a refusal. Check the receipt with cynex_list_receipts and the balance before reporting success.",
+        "submit",
       );
     }
     if (readFailed || current === null) {
-      return refused(
+      return refusedAt(
         "settle submitted (transaction hash " + hash + ") but the submission returned an error: " +
           message +
           ". The obligation could not be re-read, so the outcome is unknown; do not treat this as a refusal or a success. Check the obligation and the receipts on chain before retrying.",
+        "submit",
       );
     }
     const contractCode = /ERR_[A-Z_]+/.exec(message);
-    if (contractCode === null && !/panicked/i.test(message)) {
-      return refused(
-        "settle submitted (transaction hash " + hash + ") but the submission returned an error: " +
-          message +
-          ". The obligation still reads " + rowState(current) + ", not PAID, and the error names no contract refusal, so the outcome is unknown; the callback that marks PAID can arrive late. Do not treat this as a refusal or a success. Check the obligation with cynex_get_obligation and the receipts with cynex_list_receipts before retrying.",
+    if (contractCode !== null) {
+      return refusedAt(
+        "the vault refused the settle, no funds moved: " + message + " (settle transaction hash " + hash + ")",
+        "submit",
       );
     }
-    return refused(
-      "the vault refused the settle, no funds moved: " + message + " (settle transaction hash " + hash + ")",
+    // No ERR_ code: the error names no contract refusal. A bare
+    // panic is not evidence either way, it names no check site, so
+    // the outcome is unknown and no "no funds moved" claim is made.
+    return refusedAt(
+      "settle submitted (transaction hash " + hash + ") but the submission returned an error: " +
+        message +
+        ". The obligation still reads " + rowState(current) + ", not PAID, and the error names no contract refusal code, so the outcome is unknown; the callback that marks PAID can arrive late. Do not treat this as a refusal or a success. Check the obligation with cynex_get_obligation and the receipts with cynex_list_receipts before retrying.",
+      "submit",
     );
   }
   const intervalMs = ctx.pollIntervalMs ?? 2000;
@@ -828,32 +917,36 @@ export async function requestSettlement(
     }
   }
   if (paidRow === null) {
-    return refused(
+    return refusedAt(
       "settle submitted (transaction hash " + txHash + ") but the obligation did not read PAID within the poll window; do not treat this as a success. Recover manually: check the obligation with cynex_get_obligation and the receipts with cynex_list_receipts. There is no idempotency or lookup-by-tx-hash tool, so do not retry blindly until the on-chain state is known",
+      "submit",
     );
   }
   let afterBalance: bigint;
   try {
     afterBalance = await ctx.tokenBalance(tokenId, recipient);
   } catch (error) {
-    return refused(
+    return refusedAt(
       "settle submitted (transaction hash " + txHash + ") and the obligation reads PAID, but the recipient balance could not be read: " +
         (error instanceof Error ? error.message : String(error)),
+      "balance",
     );
   }
   const delta = afterBalance - beforeBalance;
   if (delta !== amount) {
-    return refused(
-      "accounting break: the obligation reads PAID (settle transaction hash " +
+    return refusedAt(
+      "the obligation reads PAID (settle transaction hash " +
         txHash +
         ") but the recipient balance delta " +
         delta.toString() +
         " does not equal the obligation amount " +
         amount.toString() +
-        "; do not report success",
+        "; a concurrent settle to the same recipient, or a transfer outside the vault, can produce this. Do not report success; check the receipts on chain before retrying",
+      "submit",
     );
   }
   let receiptIndex: unknown = null;
+  let receiptIndexUnreadable = false;
   try {
     let start = 0n;
     for (;;) {
@@ -863,7 +956,11 @@ export async function requestSettlement(
       }
       const found = page.find((r) => r.obligation_id === obligationId);
       if (found !== undefined) {
-        receiptIndex = found.index;
+        if ((typeof found.index === "number" && Number.isSafeInteger(found.index) && found.index >= 0) || (typeof found.index === "string" && /^[0-9]+$/.test(found.index))) {
+          receiptIndex = found.index;
+        } else {
+          receiptIndexUnreadable = true;
+        }
         break;
       }
       start += BigInt(page.length);
@@ -874,11 +971,20 @@ export async function requestSettlement(
   } catch {
     receiptIndex = null;
   }
+  if (receiptIndexUnreadable) {
+    return refusedAt(
+      "settle submitted (transaction hash " + txHash + ") and the obligation reads PAID with the correct balance delta, but the receipt for " +
+        obligationId +
+        " has an unreadable index; do not report success without a receipt index",
+      "submit",
+    );
+  }
   if (receiptIndex === null) {
-    return refused(
+    return refusedAt(
       "settle submitted (transaction hash " + txHash + ") and the obligation reads PAID with the correct balance delta, but no receipt for " +
         obligationId +
         " could be read; do not report success without the receipt",
+      "submit",
     );
   }
   return succeeded("obligation " + obligationId + " settled and PAID", {
@@ -890,7 +996,7 @@ export async function requestSettlement(
     balance_after: afterBalance.toString(),
     balance_delta: delta.toString(),
     amount: amount.toString(),
-  });
+  }, "success");
 }
 
 /**

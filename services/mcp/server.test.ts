@@ -147,5 +147,11 @@ describe("createSettleWithKey", () => {
     expect(call.methodName).toBe("settle");
     expect((call.args as Record<string, unknown>).proposed_amount).toBe("100");
     expect(call.gas).toBe(100000000000000n);
+    expect(call.deposit).toBe(0n);
+    const args = call.args as Record<string, unknown>;
+    expect(args.obligation_id).toBe("mcp-obl-001");
+    expect(args.proposed_recipient).toBe(AGENT);
+    expect(args.proposed_amount).toBe("100");
+    expect(args.evidence_ref).toBe("ref-001");
   });
 });

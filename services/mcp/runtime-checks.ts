@@ -88,6 +88,9 @@ export function parseGasPrice(raw: unknown): bigint | null {
  */
 export function toChainBigInt(value: unknown, name: string): bigint {
   if (typeof value === "bigint") {
+    if (value < 0n) {
+      throw new Error("policy field " + name + " is negative: " + value.toString());
+    }
     return value;
   }
   if (
@@ -202,6 +205,12 @@ export function verifyRuntimeState(
       "runtime check failed: the signing key read has no permission shape, failing closed",
     );
   }
+  // The access key above was read with a query keyed by the agent
+  // public key (buildContext reads viewAccessKey for exactly
+  // opts.agentPublicKey), so the permission checked here is the
+  // permission of that key, not of any key on the account. The
+  // public-key binding comes from that keyed read, not from this
+  // function.
   const scope = verifyKeyScope(
     {
       keys: [
@@ -307,6 +316,9 @@ export function checkBudget(
   const reserved = toChainBigInt(policy.reserved, "reserved");
   const limit = toChainBigInt(policy.limit, "limit");
   const funded = toChainBigInt(policy.funded, "funded");
+  if (amount < 0n) {
+    return failed("budget check failed: the amount " + amount.toString() + " is negative");
+  }
   const total = spent + reserved + amount;
   if (total > limit) {
     return failed(

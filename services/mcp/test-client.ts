@@ -297,7 +297,7 @@ async function main(): Promise<number> {
   return 0;
 }
 
-if (import.meta.url === "file://" + process.argv[1]) {
+if (fileURLToPath(import.meta.url) === process.argv[1]) {
   main()
     .then((code) => {
       process.exitCode = code;
@@ -425,6 +425,95 @@ export function budgetLine(policy: Record<string, unknown>): string {
 }
 
 /**
+ * Verify one receipt row binds to the settled obligation: the row must
+ * be for the settled obligation, carry the reported index, and agree
+ * on recipient, amount, and token. A row with the right id and index
+ * but different terms does not prove the settle.
+ */
+export function verifyReceiptRow(
+  row: Record<string, unknown> | undefined,
+  expected: { obligationId: string; recipient: string; amount: string; tokenId: string; index: string },
+): { ok: boolean; reason: string } {
+  if (row === undefined) {
+    return { ok: false, reason: "no receipt row for " + expected.obligationId + " could be read" };
+  }
+  if (String(row.obligation_id ?? "") !== expected.obligationId) {
+    return { ok: false, reason: "the receipt row is for a different obligation" };
+  }
+  if (String(row.index ?? "") !== expected.index || expected.index === "") {
+    return { ok: false, reason: "the receipt row index does not match the reported receipt index" };
+  }
+  if (String(row.recipient ?? "") !== expected.recipient) {
+    return { ok: false, reason: "the receipt row recipient does not match the settled recipient" };
+  }
+  if (String(row.amount ?? "") !== expected.amount) {
+    return { ok: false, reason: "the receipt row amount does not match the settled amount" };
+  }
+  if (String(row.token_id ?? "") !== expected.tokenId) {
+    return { ok: false, reason: "the receipt row token does not match the policy token" };
+  }
+  if (row.timestamp === undefined || row.timestamp === null || String(row.timestamp) === "") {
+    return { ok: false, reason: "the receipt row has no timestamp" };
+  }
+  return { ok: true, reason: "the receipt row matches the settled obligation" };
+}
+
+/**
+ * Verify the policy spent delta from two policy reads: both rows must
+ * be for the same policy and carry a readable spent figure. A missing
+ * spent field is a verification failure, never zero.
+ */
+export function verifySpentDelta(
+  before: Record<string, unknown> | null | undefined,
+  after: Record<string, unknown> | null | undefined,
+  policyId: string,
+  amount: string,
+): { ok: boolean; reason: string } {
+  if (before === null || before === undefined || after === null || after === undefined) {
+    return { ok: false, reason: "the policy " + policyId + " could not be read before and after the settle" };
+  }
+  if (String(before.policy_id ?? "") !== policyId || String(after.policy_id ?? "") !== policyId) {
+    return { ok: false, reason: "the policy rows are not for policy " + policyId };
+  }
+  const spentBefore = before.spent;
+  const spentAfter = after.spent;
+  if (spentBefore === undefined || spentBefore === null || spentAfter === undefined || spentAfter === null) {
+    return { ok: false, reason: "the policy spent figure is missing on one of the reads" };
+  }
+  let beforeValue: bigint;
+  let afterValue: bigint;
+  try {
+    beforeValue = BigInt(String(spentBefore));
+    afterValue = BigInt(String(spentAfter));
+  } catch {
+    return { ok: false, reason: "the policy spent figure is not a readable integer on one of the reads" };
+  }
+  let amountValue: bigint;
+  try {
+    amountValue = BigInt(amount);
+  } catch {
+    return { ok: false, reason: "the settled amount is not a readable integer" };
+  }
+  if (afterValue - beforeValue !== amountValue) {
+    return { ok: false, reason: "policy spent rose by " + (afterValue - beforeValue).toString() + ", not by the settled amount " + amount };
+  }
+  return { ok: true, reason: "policy spent rose by the settled amount" };
+}
+
+/**
+ * Claim one production-negative use for this run. The first claim
+ * succeeds and the count rises; any later claim is refused, so the
+ * caller must not submit or print. The caller, not this helper,
+ * enforces that the flag was passed at all.
+ */
+export function claimProductionNegativeUse(used: number): { allowed: boolean; used: number } {
+  if (used >= 1) {
+    return { allowed: false, used };
+  }
+  return { allowed: true, used: used + 1 };
+}
+
+/**
  * Production acceptance matrix runner. Each row records one
  * result with its layer, expected outcome, and transaction hash
  * when a transaction was submitted. Rows without a fixture are
@@ -496,14 +585,17 @@ async function runMatrix(client: Client, argv: string[]): Promise<number> {
     }
   }
 
-  // A settle outcome reached the runtime checks unless its refusal
-  // names a step that runs before them: malformed input, an unreadable
-  // or missing obligation or policy, a failed echo check, a non-READY
-  // obligation, or the off-chain budget refusal.
-  function reachedRuntimeChecks(reason: string): boolean {
-    return !/not valid|must be a decimal string|must be greater than zero|outside the u128 range|evidence_ref must be|obligation read failed|not found on chain|not READY|echo check failed|policy read failed|does not exist on the vault|has no token_id|budget check failed/.test(
-      reason,
-    );
+  // Stages of the settle path that run at or after the runtime
+  // checks. A refusal carries its stage in the tool result, so
+  // whether an attempt reached the runtime checks is read from the
+  // stage, not guessed from the reason string. A success reached
+  // them too: the runtime checks run before any submit.
+  const RUNTIME_STAGES = new Set(["runtime", "reputation", "rate-limit", "balance", "submit", "success"]);
+  function reachedRuntimeChecks(out: Record<string, unknown>): boolean {
+    if (out.ok === true) {
+      return true;
+    }
+    return typeof out.stage === "string" && RUNTIME_STAGES.has(out.stage);
   }
   const outFile = flagValue(argv, argv.indexOf("--matrix-out"));
   const vaultId = process.env.CYNEX_VAULT ?? TEST_VAULT;
@@ -558,6 +650,7 @@ async function runMatrix(client: Client, argv: string[]): Promise<number> {
   let runtimeChecksReached = false;
   let liveAttempts = 0;
   let budgetLines = 0;
+  let productionNegativeUsed = 0;
   let settledEvidenceType = "";
   let settledId: string | undefined;
   let settledRecipient = "";
@@ -677,6 +770,16 @@ async function runMatrix(client: Client, argv: string[]): Promise<number> {
     budgetLines += 1;
     const guard = guardSettle(vaultId, obligationData, recipient, amount, allowProductionNegative);
     console.log("GUARD vault " + vaultId + ": " + guard.reason);
+    if (vaultId === PROD_VAULT && allowProductionNegative && guard.allowed && !guard.termsMatch) {
+      const claim = claimProductionNegativeUse(productionNegativeUsed);
+      if (!claim.allowed) {
+        return {
+          out: { ok: false, reason: "production vault guard: a production-negative use already ran in this run, at most one is allowed; refusing without submitting", guardRefused: true },
+          guard,
+        };
+      }
+      productionNegativeUsed = claim.used;
+    }
     if (!guard.allowed) {
       return { out: { ok: false, reason: guard.reason, guardRefused: true }, guard };
     }
@@ -687,7 +790,7 @@ async function runMatrix(client: Client, argv: string[]): Promise<number> {
       proposed_amount: amount,
       evidence_ref: evidenceRef,
     });
-    if (reachedRuntimeChecks(String(out.reason ?? ""))) {
+    if (reachedRuntimeChecks(out)) {
       runtimeChecksReached = true;
     }
     return { out, guard };
@@ -697,6 +800,23 @@ async function runMatrix(client: Client, argv: string[]): Promise<number> {
       return { outcome: "skipped", detail: "needs --matrix-settle <id> <recipient> <amount> <evidence-ref>" };
     }
     const [id, recipient, amount, evidenceRef] = settleFixture as [string, string, string, string];
+    // Independent verification: read the obligation and the policy
+    // before the settle, then re-read both after it, instead of
+    // trusting the settle response. The obligation must read PAID
+    // with the fixture terms, a receipt row must exist for it with
+    // the reported index, and the policy spent must have risen by
+    // exactly the settled amount.
+    const beforeObligation = await call(client, "cynex_get_obligation", { obligation_id: id });
+    const beforeObligationData = (beforeObligation.data ?? {}) as Record<string, unknown>;
+    const policyId = String(beforeObligationData.policy_id ?? "");
+    if (policyId === "") {
+      return { outcome: "fail", detail: "the fixture obligation could not be read before the settle, its policy is unknown" };
+    }
+    const beforePolicy = await call(client, "cynex_get_policy", { policy_id: policyId });
+    const beforePolicyRow = ((beforePolicy.data ?? {}) as Record<string, unknown>).policy as Record<string, unknown> | undefined;
+    if (beforePolicyRow === undefined) {
+      return { outcome: "fail", detail: "the policy " + policyId + " could not be read before the settle" };
+    }
     const { out } = await settleWithBudget(id, recipient, amount, evidenceRef);
     if ((out as Record<string, unknown>).guardRefused === true) {
       return { outcome: "skipped", detail: String(out.reason) };
@@ -705,14 +825,59 @@ async function runMatrix(client: Client, argv: string[]): Promise<number> {
       return { outcome: "fail", detail: String(out.reason), txHash: txHashFromReason(String(out.reason)) };
     }
     const data = (out.data ?? {}) as Record<string, unknown>;
+    const txHash = typeof data.settle_tx_hash === "string" ? data.settle_tx_hash : undefined;
+    if (txHash === undefined) {
+      return { outcome: "fail", detail: "the settle reported success but returned no transaction hash" };
+    }
+    const afterObligation = await call(client, "cynex_get_obligation", { obligation_id: id });
+    const afterObligationData = (afterObligation.data ?? {}) as Record<string, unknown>;
+    if (afterObligation.ok !== true || String(afterObligationData.state ?? "") !== "PAID") {
+      return { outcome: "fail", detail: "the obligation does not read PAID after the settle", txHash };
+    }
+    if (String(afterObligationData.recipient ?? "") !== recipient || String(afterObligationData.amount ?? "") !== amount) {
+      return { outcome: "fail", detail: "the PAID obligation terms do not match the fixture", txHash };
+    }
+    const receiptIndex = String(data.receipt_index ?? "");
+    let receiptRow: Record<string, unknown> | undefined;
+    let start = 0;
+    for (;;) {
+      const receiptsOut = await call(client, "cynex_list_receipts", { start, limit: 100 });
+      const rows = (((receiptsOut.data ?? {}) as Record<string, unknown>).receipts ?? []) as Array<Record<string, unknown>>;
+      if (!Array.isArray(rows) || rows.length === 0) {
+        break;
+      }
+      const found = rows.find((r) => r.obligation_id === id);
+      if (found !== undefined) {
+        receiptRow = found;
+        break;
+      }
+      start += rows.length;
+      if (rows.length < 100) {
+        break;
+      }
+    }
+    const tokenId = String(beforePolicyRow.token_id ?? "");
+    const receiptCheck = verifyReceiptRow(receiptRow, { obligationId: id, recipient, amount, tokenId, index: receiptIndex });
+    if (!receiptCheck.ok) {
+      return { outcome: "fail", detail: receiptCheck.reason, txHash };
+    }
+    const afterPolicy = await call(client, "cynex_get_policy", { policy_id: policyId });
+    const afterPolicyRow = ((afterPolicy.data ?? {}) as Record<string, unknown>).policy as Record<string, unknown> | undefined;
+    if (afterPolicyRow === undefined) {
+      return { outcome: "fail", detail: "the policy " + policyId + " could not be read after the settle", txHash };
+    }
+    const spentCheck = verifySpentDelta(beforePolicyRow, afterPolicyRow, policyId, amount);
+    if (!spentCheck.ok) {
+      return { outcome: "fail", detail: spentCheck.reason, txHash };
+    }
     settledId = id;
     settledRecipient = recipient;
     settledAmount = amount;
-    settledTxHash = typeof data.settle_tx_hash === "string" ? data.settle_tx_hash : undefined;
+    settledTxHash = txHash;
     return {
       outcome: "pass",
-      detail: "PAID receipt " + String(data.receipt_index ?? "?") + " delta " + String(data.balance_delta ?? "?"),
-      txHash: settledTxHash,
+      detail: "PAID receipt " + receiptIndex + " delta " + String(data.balance_delta ?? "?") + ", obligation, receipt, and policy spent re-read from the chain",
+      txHash,
     };
   });
   await row("M2", "vault", "changed recipient is refused by the vault with ERR_RECIPIENT_SUBSTITUTION", async () => {
@@ -725,7 +890,11 @@ async function runMatrix(client: Client, argv: string[]): Promise<number> {
       return { outcome: "skipped", detail: String(out.reason) };
     }
     if (out.ok === false && /vault refused/.test(String(out.reason)) && /ERR_RECIPIENT_SUBSTITUTION/.test(String(out.reason))) {
-      return { outcome: "pass", detail: String(out.reason), txHash: txHashFromReason(String(out.reason)) };
+      const txHash = txHashFromReason(String(out.reason));
+      if (txHash === undefined) {
+        return { outcome: "fail", detail: "the vault refused with ERR_RECIPIENT_SUBSTITUTION but no transaction hash was recorded" };
+      }
+      return { outcome: "pass", detail: String(out.reason), txHash };
     }
     return {
       outcome: "fail",
@@ -750,7 +919,11 @@ async function runMatrix(client: Client, argv: string[]): Promise<number> {
       return { outcome: "skipped", detail: String(out.reason) };
     }
     if (out.ok === false && /vault refused/.test(String(out.reason)) && /ERR_TERMS_MISMATCH/.test(String(out.reason))) {
-      return { outcome: "pass", detail: String(out.reason), txHash: txHashFromReason(String(out.reason)) };
+      const txHash = txHashFromReason(String(out.reason));
+      if (txHash === undefined) {
+        return { outcome: "fail", detail: "the vault refused with ERR_TERMS_MISMATCH but no transaction hash was recorded" };
+      }
+      return { outcome: "pass", detail: String(out.reason), txHash };
     }
     return {
       outcome: "fail",
@@ -758,7 +931,7 @@ async function runMatrix(client: Client, argv: string[]): Promise<number> {
       txHash: txHashFromReason(String(out.reason)),
     };
   });
-  await row("M4", "evidence layer", "an obligation whose evidence was not accepted never reaches READY", async () => {
+  await row("M4", "evidence layer", "an obligation whose evidence was not accepted is not READY at attempt time", async () => {
     if (matrixObligation === undefined) {
       return { outcome: "skipped", detail: "needs --matrix-obligation <id> in EVIDENCE_PENDING" };
     }
@@ -780,6 +953,10 @@ async function runMatrix(client: Client, argv: string[]): Promise<number> {
       return { outcome: "skipped", detail: String(out.reason) };
     }
     if (out.ok === false && /budget check failed/.test(String(out.reason))) {
+      const txHash = txHashFromReason(String(out.reason));
+      if (txHash !== undefined) {
+        return { outcome: "fail", detail: "the budget refusal names a transaction hash, but no settle should have been submitted", txHash };
+      }
       return { outcome: "pass", detail: String(out.reason) };
     }
     return {
@@ -805,6 +982,16 @@ async function runMatrix(client: Client, argv: string[]): Promise<number> {
     if (settledId === undefined) {
       return { outcome: "skipped", detail: "needs M1 to settle first" };
     }
+    if (vaultId === PROD_VAULT && !allowProductionNegative) {
+      return { outcome: "skipped", detail: "production vault: the replay attack command is not printed without --allow-production-negative" };
+    }
+    if (vaultId === PROD_VAULT) {
+      const claim = claimProductionNegativeUse(productionNegativeUsed);
+      if (!claim.allowed) {
+        return { outcome: "skipped", detail: "production vault: a production-negative use already ran in this run, the replay attack command is not printed" };
+      }
+      productionNegativeUsed = claim.used;
+    }
     return {
       outcome: "external",
       detail:
@@ -813,6 +1000,16 @@ async function runMatrix(client: Client, argv: string[]): Promise<number> {
   });
 
   await row("M7", "Access-key layer, not the vault", "a function-call key scoped to another receiver is rejected at the access-key layer", async () => {
+    if (vaultId === PROD_VAULT && !allowProductionNegative) {
+      return { outcome: "skipped", detail: "production vault: the unauthorized-caller command is not printed without --allow-production-negative" };
+    }
+    if (vaultId === PROD_VAULT) {
+      const claim = claimProductionNegativeUse(productionNegativeUsed);
+      if (!claim.allowed) {
+        return { outcome: "skipped", detail: "production vault: a production-negative use already ran in this run, the unauthorized-caller command is not printed" };
+      }
+      productionNegativeUsed = claim.used;
+    }
     return {
       outcome: "external",
       detail:
@@ -834,6 +1031,16 @@ async function runMatrix(client: Client, argv: string[]): Promise<number> {
   await row("M8-vault", "vault", "a pre-READY settle reaches the vault and fails with ERR_INVALID_STATE", async () => {
     if (matrixObligation === undefined || (matrixState !== "CREATED" && matrixState !== "EVIDENCE_PENDING")) {
       return { outcome: "skipped", detail: "needs --matrix-obligation <id> in CREATED or EVIDENCE_PENDING" };
+    }
+    if (vaultId === PROD_VAULT && !allowProductionNegative) {
+      return { outcome: "skipped", detail: "production vault: the pre-READY attack command is not printed without --allow-production-negative" };
+    }
+    if (vaultId === PROD_VAULT) {
+      const claim = claimProductionNegativeUse(productionNegativeUsed);
+      if (!claim.allowed) {
+        return { outcome: "skipped", detail: "production vault: a production-negative use already ran in this run, the pre-READY attack command is not printed" };
+      }
+      productionNegativeUsed = claim.used;
     }
     return {
       outcome: "external",
@@ -885,7 +1092,7 @@ async function runMatrix(client: Client, argv: string[]): Promise<number> {
     return {
       outcome: "external",
       detail:
-        "verify the VRF signature from the attestation bundle for --tx " + settledTxHash + "; it proves determinism and binding to the pending request, not TEE execution",
+        "verify the VRF signature from the attestation bundle for --tx " + settledTxHash + "; it provides an independently verified randomness anchor bound to the pending request, not proof of TEE execution",
       txHash: settledTxHash,
     };
   });
@@ -901,6 +1108,26 @@ async function runMatrix(client: Client, argv: string[]): Promise<number> {
     const data = (out.data ?? {}) as Record<string, unknown>;
     if (data.evidence_hash === null || data.evidence_hash === undefined) {
       return { outcome: "fail", detail: "the settled obligation has no evidence_hash on chain, the receipt cannot be linked to an evidence digest" };
+    }
+    let receiptFound = false;
+    let start = 0;
+    for (;;) {
+      const receiptsOut = await call(client, "cynex_list_receipts", { start, limit: 100 });
+      const rows = (((receiptsOut.data ?? {}) as Record<string, unknown>).receipts ?? []) as Array<Record<string, unknown>>;
+      if (!Array.isArray(rows) || rows.length === 0) {
+        break;
+      }
+      if (rows.some((r) => r.obligation_id === settledId)) {
+        receiptFound = true;
+        break;
+      }
+      start += rows.length;
+      if (rows.length < 100) {
+        break;
+      }
+    }
+    if (!receiptFound) {
+      return { outcome: "fail", detail: "no receipt row for " + settledId + " could be read", txHash: settledTxHash };
     }
     return {
       outcome: "pass",
@@ -936,6 +1163,15 @@ async function runMatrix(client: Client, argv: string[]): Promise<number> {
       detail: budgetLines.toString() + " BUDGET lines printed before " + liveAttempts.toString() + " live settle attempts; see above",
     };
   });
+  if (productionNegativeUsed > 1) {
+    record({
+      row: "PROD-GUARD",
+      layer: "runner",
+      expected: "at most one production-negative use per run",
+      outcome: "fail",
+      detail: productionNegativeUsed.toString() + " production-negative uses ran; only one carefully selected security failure is allowed per run on the production vault",
+    });
+  }
   const failed = results.filter((r) => r.outcome === "fail").length;
   const passed = results.filter((r) => r.outcome === "pass").length;
   const skipped = results.filter((r) => r.outcome === "skipped").length;

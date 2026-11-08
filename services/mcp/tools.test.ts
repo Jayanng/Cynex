@@ -65,7 +65,7 @@ function readyObligation(state = "READY"): Record<string, unknown> {
     amount: "100",
     evidence_type: "PREIMAGE",
     evidence_hash: "f23aeaa4efc068df8a05ef97c1ade88022575ad5ea52dbe9af218028462d4e27",
-    expires_at_ns: "1794000000000000000",
+    expires_at_ns: "1893456000000000000",
     nonce: "90001",
     state,
     in_flight: false,
@@ -216,6 +216,15 @@ describe("cynex_check_counterparty validation", () => {
       expect(ctx.checkCounterparty).not.toHaveBeenCalled();
     },
   );
+
+  test("refuses when the report is for a different account", async () => {
+    const client = fakeClient();
+    const ctx = fakeContext(client);
+    (ctx.checkCounterparty as jest.Mock).mockResolvedValueOnce({ ...report("ALLOW"), accountId: "someone-else.testnet" });
+    const out = await dispatchTool(ctx, createSettleRateLimiter(), "cynex_check_counterparty", { account_id: AGENT });
+    expect(out.ok).toBe(false);
+    expect(out.reason).toMatch(/not the requested/);
+  });
 });
 
 describe("cynex_prepare_obligation", () => {
@@ -239,6 +248,7 @@ describe("cynex_prepare_obligation", () => {
     expect((args.evidence_hash as number[]).length).toBe(32);
     expect(client.getPolicyMock).toHaveBeenCalledWith("p6-001");
     expect(client.getObligationMock).toHaveBeenCalledWith("mcp-prep-001");
+    expect(ctx.settleWithKey).not.toHaveBeenCalled();
   });
 
   test.each([
@@ -296,11 +306,20 @@ describe("cynex_prepare_obligation", () => {
 
   test("refuses an obligation id already on chain", async () => {
     const client = fakeClient();
-    client.getObligationMock.mockResolvedValueOnce(readyObligation());
+    client.getObligationMock.mockResolvedValueOnce({ ...readyObligation(), obligation_id: "mcp-prep-001" });
     const ctx = fakeContext(client);
     const out = await dispatchTool(ctx, createSettleRateLimiter(), "cynex_prepare_obligation", GOOD_PREPARE);
     expect(out.ok).toBe(false);
     expect(out.reason).toMatch(/already exists/);
+  });
+
+  test("refuses when the policy row does not echo the requested id", async () => {
+    const client = fakeClient();
+    client.getPolicyMock.mockResolvedValueOnce({ ...policyRow(), policy_id: "p6-999" });
+    const ctx = fakeContext(client);
+    const out = await dispatchTool(ctx, createSettleRateLimiter(), "cynex_prepare_obligation", GOOD_PREPARE);
+    expect(out.ok).toBe(false);
+    expect(out.reason).toMatch(/echo/);
   });
 });
 
@@ -319,6 +338,8 @@ describe("cynex_get_obligation and cynex_get_policy and cynex_list_receipts", ()
     const out = await dispatchTool(ctx, createSettleRateLimiter(), "cynex_get_obligation", { obligation_id: "nope-001" });
     expect(out.ok).toBe(false);
     expect(out.reason).toMatch(/not found/);
+    expect(client.getObligationMock).toHaveBeenCalledWith("nope-001");
+    expect(out.data).toBeUndefined();
   });
 
   test("get_obligation returns the row as read", async () => {
@@ -328,6 +349,15 @@ describe("cynex_get_obligation and cynex_get_policy and cynex_list_receipts", ()
     const out = await dispatchTool(ctx, createSettleRateLimiter(), "cynex_get_obligation", { obligation_id: "mcp-obl-001" });
     expect(out.ok).toBe(true);
     expect((out.data as Record<string, unknown>).state).toBe("READY");
+  });
+
+  test("get_obligation refuses when the row does not echo the requested id", async () => {
+    const client = fakeClient();
+    client.getObligationMock.mockResolvedValueOnce({ ...readyObligation(), obligation_id: "mcp-other-001" });
+    const ctx = fakeContext(client);
+    const out = await dispatchTool(ctx, createSettleRateLimiter(), "cynex_get_obligation", { obligation_id: "mcp-obl-001" });
+    expect(out.ok).toBe(false);
+    expect(out.reason).toMatch(/echo/);
   });
 
   test("list_receipts refuses a limit over 100 with no view call", async () => {
@@ -368,6 +398,19 @@ describe("cynex_get_obligation and cynex_get_policy and cynex_list_receipts", ()
     expect((data.policy as Record<string, unknown>).policy_id).toBe("p6-001");
     expect(data.balances).toBeDefined();
     expect(data.vault_state).toBeDefined();
+    expect(client.balancesMock).toHaveBeenCalledWith("p6-001");
+    expect(client.stateMock).toHaveBeenCalled();
+    expect((data.balances as Record<string, unknown>).spent).toBe("4600");
+    expect((data.vault_state as Record<string, unknown>).owner).toBe("cynexmaster.testnet");
+  });
+
+  test("get_policy refuses when the policy row does not echo the requested id", async () => {
+    const client = fakeClient();
+    client.getPolicyMock.mockResolvedValueOnce({ ...policyRow(), policy_id: "p6-999" });
+    const ctx = fakeContext(client);
+    const out = await dispatchTool(ctx, createSettleRateLimiter(), "cynex_get_policy", { policy_id: "p6-001" });
+    expect(out.ok).toBe(false);
+    expect(out.reason).toMatch(/echo/);
   });
 });
 
@@ -464,6 +507,9 @@ describe("cynex_request_settlement gate wiring", () => {
     expect(data.balance_before).toBe("1900");
     expect(data.balance_after).toBe("2000");
     expect(ctx.settleWithKey).toHaveBeenCalledTimes(1);
+    expect(client.receiptsMock).toHaveBeenCalledWith(0n, 100n);
+    const receiptRows = (await client.receiptsMock.mock.results[0].value) as Array<Record<string, unknown>>;
+    expect(receiptRows[0].obligation_id).toBe("mcp-obl-001");
   });
 
   test("a vault refusal is returned with no funds moved", async () => {
@@ -486,6 +532,202 @@ describe("cynex_request_settlement gate wiring", () => {
     expect(out.reason).toMatch(/ERR_RECIPIENT_SUBSTITUTION/);
     expect(out.reason).toMatch(/no funds moved/);
     expect(out.reason).toMatch(/settle-tx-hash/);
+  });
+
+  test("a bare panic with no ERR_ code is an unknown outcome, not a vault refusal", async () => {
+    const client = fakeClient();
+    client.getObligationMock
+      .mockResolvedValueOnce(readyObligation("READY"))
+      .mockResolvedValueOnce(readyObligation("READY"));
+    const ctx = fakeContext(client, "ALLOW");
+    (ctx.settleWithKey as jest.Mock).mockRejectedValueOnce(
+      Object.assign(new Error("Smart contract panicked: something went wrong"), { transaction: { hash: "settle-tx-hash" } }),
+    );
+    const out = await dispatchTool(ctx, createSettleRateLimiter(), "cynex_request_settlement", {
+      obligation_id: "mcp-obl-001",
+      proposed_recipient: AGENT,
+      proposed_amount: "100",
+      evidence_ref: "ref-001",
+    });
+    expect(out.ok).toBe(false);
+    expect(out.reason).not.toMatch(/vault refused/);
+    expect(out.reason).not.toMatch(/no funds moved/);
+    expect(out.reason).toMatch(/unknown/);
+    expect(out.reason).toMatch(/settle-tx-hash/);
+  });
+
+  test("an expired obligation refuses off chain with no submit", async () => {
+    const client = fakeClient();
+    client.getObligationMock.mockResolvedValueOnce({ ...readyObligation("READY"), expires_at_ns: "1000000000000000000" });
+    const ctx = fakeContext(client, "ALLOW");
+    const out = await dispatchTool(ctx, createSettleRateLimiter(), "cynex_request_settlement", {
+      obligation_id: "mcp-obl-001",
+      proposed_recipient: AGENT,
+      proposed_amount: "100",
+      evidence_ref: "ref-001",
+    });
+    expect(out.ok).toBe(false);
+    expect(out.reason).toMatch(/expired/);
+    expect(ctx.settleWithKey).not.toHaveBeenCalled();
+  });
+
+  test("an obligation expiring within the 60 second clock-skew tolerance is not refused off chain", async () => {
+    const client = fakeClient();
+    const expiresSoon = (BigInt(Date.parse("2026-11-08T12:00:00.000Z")) * 1000000n + 30000000000n).toString();
+    client.getObligationMock
+      .mockResolvedValueOnce({ ...readyObligation("READY"), expires_at_ns: expiresSoon })
+      .mockResolvedValueOnce(readyObligation("PAID"));
+    client.receiptsMock.mockResolvedValueOnce([
+      { index: "23", obligation_id: "mcp-obl-001", recipient: AGENT, amount: "100", token_id: TOKEN, timestamp: "1794000000000000000", tx_ref: "settle-tx-hash" },
+    ]);
+    const ctx = fakeContext(client, "ALLOW");
+    (ctx.tokenBalance as jest.Mock).mockResolvedValueOnce(1900n).mockResolvedValueOnce(2000n);
+    const out = await dispatchTool(ctx, createSettleRateLimiter(), "cynex_request_settlement", {
+      obligation_id: "mcp-obl-001",
+      proposed_recipient: AGENT,
+      proposed_amount: "100",
+      evidence_ref: "ref-001",
+    });
+    expect(out.ok).toBe(true);
+  });
+
+  test("an obligation expired exactly 60 seconds ago is not refused off chain, the contract decides", async () => {
+    const client = fakeClient();
+    const expiresAtBoundary = (BigInt(Date.parse("2026-11-08T12:00:00.000Z")) * 1000000n - 60000000000n).toString();
+    client.getObligationMock
+      .mockResolvedValueOnce({ ...readyObligation("READY"), expires_at_ns: expiresAtBoundary })
+      .mockResolvedValueOnce(readyObligation("PAID"));
+    client.receiptsMock.mockResolvedValueOnce([
+      { index: "23", obligation_id: "mcp-obl-001", recipient: AGENT, amount: "100", token_id: TOKEN, timestamp: "1794000000000000000", tx_ref: "settle-tx-hash" },
+    ]);
+    const ctx = fakeContext(client, "ALLOW");
+    (ctx.tokenBalance as jest.Mock).mockResolvedValueOnce(1900n).mockResolvedValueOnce(2000n);
+    const out = await dispatchTool(ctx, createSettleRateLimiter(), "cynex_request_settlement", {
+      obligation_id: "mcp-obl-001",
+      proposed_recipient: AGENT,
+      proposed_amount: "100",
+      evidence_ref: "ref-001",
+    });
+    expect(out.ok).toBe(true);
+  });
+
+  test("a frozen policy refuses off chain with no submit", async () => {
+    const client = fakeClient();
+    client.getObligationMock.mockResolvedValueOnce(readyObligation("READY"));
+    client.getPolicyMock.mockResolvedValueOnce(policyRow(true));
+    const ctx = fakeContext(client, "ALLOW");
+    const out = await dispatchTool(ctx, createSettleRateLimiter(), "cynex_request_settlement", {
+      obligation_id: "mcp-obl-001",
+      proposed_recipient: AGENT,
+      proposed_amount: "100",
+      evidence_ref: "ref-001",
+    });
+    expect(out.ok).toBe(false);
+    expect(out.reason).toMatch(/frozen/);
+    expect(ctx.settleWithKey).not.toHaveBeenCalled();
+  });
+
+  test("a PAID settle whose receipt row has no readable index is not reported as a success", async () => {
+    const client = fakeClient();
+    client.getObligationMock
+      .mockResolvedValueOnce(readyObligation("READY"))
+      .mockResolvedValueOnce(readyObligation("PAID"));
+    client.receiptsMock.mockResolvedValueOnce([
+      { obligation_id: "mcp-obl-001", recipient: AGENT, amount: "100", token_id: TOKEN, timestamp: "1794000000000000000", tx_ref: "settle-tx-hash" },
+    ]);
+    const ctx = fakeContext(client, "ALLOW");
+    (ctx.tokenBalance as jest.Mock).mockResolvedValueOnce(1900n).mockResolvedValueOnce(2000n);
+    const out = await dispatchTool(ctx, createSettleRateLimiter(), "cynex_request_settlement", {
+      obligation_id: "mcp-obl-001",
+      proposed_recipient: AGENT,
+      proposed_amount: "100",
+      evidence_ref: "ref-001",
+    });
+    expect(out.ok).toBe(false);
+    expect(out.reason).toMatch(/unreadable index/);
+  });
+
+  test("a PAID settle whose receipt row has a negative numeric index is not reported as a success", async () => {
+    const client = fakeClient();
+    client.getObligationMock
+      .mockResolvedValueOnce(readyObligation("READY"))
+      .mockResolvedValueOnce(readyObligation("PAID"));
+    client.receiptsMock.mockResolvedValueOnce([
+      { index: -1, obligation_id: "mcp-obl-001", recipient: AGENT, amount: "100", token_id: TOKEN, timestamp: "1794000000000000000", tx_ref: "settle-tx-hash" },
+    ]);
+    const ctx = fakeContext(client, "ALLOW");
+    (ctx.tokenBalance as jest.Mock).mockResolvedValueOnce(1900n).mockResolvedValueOnce(2000n);
+    const out = await dispatchTool(ctx, createSettleRateLimiter(), "cynex_request_settlement", {
+      obligation_id: "mcp-obl-001",
+      proposed_recipient: AGENT,
+      proposed_amount: "100",
+      evidence_ref: "ref-001",
+    });
+    expect(out.ok).toBe(false);
+    expect(out.reason).toMatch(/unreadable index/);
+  });
+
+  test("a settle that reads READY then PAID succeeds", async () => {
+    const client = fakeClient();
+    client.getObligationMock
+      .mockResolvedValueOnce(readyObligation("READY"))
+      .mockResolvedValueOnce(readyObligation("READY"))
+      .mockResolvedValueOnce(readyObligation("PAID"));
+    client.receiptsMock.mockResolvedValueOnce([
+      { index: "23", obligation_id: "mcp-obl-001", recipient: AGENT, amount: "100", token_id: TOKEN, timestamp: "1794000000000000000", tx_ref: "settle-tx-hash" },
+    ]);
+    const ctx = fakeContext(client, "ALLOW");
+    (ctx.tokenBalance as jest.Mock).mockResolvedValueOnce(1900n).mockResolvedValueOnce(2000n);
+    const out = await dispatchTool(ctx, createSettleRateLimiter(), "cynex_request_settlement", {
+      obligation_id: "mcp-obl-001",
+      proposed_recipient: AGENT,
+      proposed_amount: "100",
+      evidence_ref: "ref-001",
+    });
+    expect(out.ok).toBe(true);
+    expect((out.data as Record<string, unknown>).state).toBe("PAID");
+    expect(ctx.settleWithKey).toHaveBeenCalledTimes(1);
+  });
+
+  test("refusals name the stage they stopped at", async () => {
+    const validationClient = fakeClient();
+    const validationCtx = fakeContext(validationClient, "ALLOW");
+    const bad = await dispatchTool(validationCtx, createSettleRateLimiter(), "cynex_request_settlement", {
+      obligation_id: "mcp-obl-001",
+      proposed_recipient: "not-an-account!",
+      proposed_amount: "100",
+      evidence_ref: "ref-001",
+    });
+    expect(bad.ok).toBe(false);
+    expect(bad.stage).toBe("validation");
+    expect(validationCtx.settleWithKey).not.toHaveBeenCalled();
+
+    const readyClient = fakeClient();
+    readyClient.getObligationMock.mockResolvedValueOnce(readyObligation("CREATED"));
+    const readyCtx = fakeContext(readyClient, "ALLOW");
+    const notReady = await dispatchTool(readyCtx, createSettleRateLimiter(), "cynex_request_settlement", {
+      obligation_id: "mcp-obl-001",
+      proposed_recipient: AGENT,
+      proposed_amount: "100",
+      evidence_ref: "ref-001",
+    });
+    expect(notReady.ok).toBe(false);
+    expect(notReady.stage).toBe("ready");
+    expect(readyCtx.settleWithKey).not.toHaveBeenCalled();
+
+    const budgetClient = fakeClient();
+    budgetClient.getObligationMock.mockResolvedValueOnce(readyObligation("READY"));
+    budgetClient.getPolicyMock.mockResolvedValueOnce({ ...policyRow(), spent: "9950" });
+    const budgetCtx = fakeContext(budgetClient, "ALLOW");
+    const overBudget = await dispatchTool(budgetCtx, createSettleRateLimiter(), "cynex_request_settlement", {
+      obligation_id: "mcp-obl-001",
+      proposed_recipient: AGENT,
+      proposed_amount: "100",
+      evidence_ref: "ref-001",
+    });
+    expect(overBudget.ok).toBe(false);
+    expect(overBudget.stage).toBe("budget");
+    expect(budgetCtx.settleWithKey).not.toHaveBeenCalled();
   });
 
   test("a submission with no transaction hash is indeterminate, not a vault refusal", async () => {
@@ -558,6 +800,7 @@ describe("cynex_request_settlement gate wiring", () => {
 
   test("a PAID settle with no readable receipt is not reported as a success", async () => {
     const client = fakeClient();
+    client.receiptsMock.mockResolvedValue([]);
     client.getObligationMock
       .mockResolvedValueOnce(readyObligation("READY"))
       .mockResolvedValueOnce(readyObligation("PAID"));
@@ -608,7 +851,7 @@ describe("cynex_request_settlement gate wiring", () => {
     expect(client.receiptsMock).toHaveBeenCalledWith(100n, 100n);
   });
 
-  test("a balance delta that does not equal the amount is an accounting break", async () => {
+  test("a balance delta that does not equal the amount refuses success and names a concurrent settle as a likely cause", async () => {
     const client = fakeClient();
     client.getObligationMock
       .mockResolvedValueOnce(readyObligation("READY"))
@@ -622,7 +865,7 @@ describe("cynex_request_settlement gate wiring", () => {
       evidence_ref: "ref-001",
     });
     expect(out.ok).toBe(false);
-    expect(out.reason).toMatch(/accounting break/);
+    expect(out.reason).toMatch(/concurrent settle/);
   });
 
   test("refuses when the obligation is missing, with no settle submitted", async () => {
@@ -712,6 +955,26 @@ describe("cynex_request_settlement runtime checks", () => {
       { index: "23", obligation_id: "mcp-obl-001", recipient: AGENT, amount: "100", token_id: TOKEN, timestamp: "1794000000000000000", tx_ref: "settle-tx-hash" },
     ]);
   }
+
+  test("a signing key with a broad method list refuses, with no submit", async () => {
+    const client = fakeClient();
+    client.getObligationMock.mockResolvedValueOnce(readyObligation("READY"));
+    const ctx = runtimeCtx(client, {
+      accessKey: {
+        permission: {
+          FunctionCall: {
+            allowance: "250000000000000000000000",
+            method_names: ["settle", "transfer"],
+            receiver_id: VAULT,
+          },
+        },
+      },
+    });
+    const out = await dispatchTool(ctx, createSettleRateLimiter(), "cynex_request_settlement", SETTLE_ARGS);
+    expect(out.ok).toBe(false);
+    expect(out.reason).toMatch(/scope/);
+    expect(ctx.settleWithKey).not.toHaveBeenCalled();
+  });
 
   test("refuses when the vault code hash differs, no settle attempted", async () => {
     const client = fakeClient();
@@ -1020,6 +1283,7 @@ describe("cynex_request_settlement runtime checks", () => {
     expect(long.ok).toBe(false);
     expect(long.reason).toMatch(/evidence_ref/);
     expect(ctx.settleWithKey).not.toHaveBeenCalled();
+    expect(client.getObligationMock).not.toHaveBeenCalled();
     const emptyClient = fakeClient();
     successSetup(emptyClient);
     const emptyCtx = fakeContext(emptyClient, "ALLOW");

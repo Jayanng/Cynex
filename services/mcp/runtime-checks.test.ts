@@ -258,7 +258,7 @@ describe("verifyRuntimeState", () => {
 });
 
 describe("settleGasCostYocto", () => {
-  test("100 TGas at the live gas price costs 0.01 NEAR", () => {
+  test("100 TGas at gas price 100000000 costs 0.01 NEAR", () => {
     expect(settleGasCostYocto(100000000n)).toBe(10000000000000000000000n);
   });
 });
@@ -309,6 +309,12 @@ describe("checkBudget", () => {
     expect(out.reason).toMatch(/exceeds the funded amount/);
   });
 
+  test("refuses a negative amount", () => {
+    const out = checkBudget({ spent: "4600", reserved: "0", limit: "10000", funded: "10000" }, -100n);
+    expect(out.ok).toBe(false);
+    expect(out.reason).toMatch(/negative/);
+  });
+
   test("throws on a malformed policy figure instead of passing it", () => {
     expect(() => checkBudget({ spent: "abc", reserved: "0", limit: "10000", funded: "10000" }, 100n)).toThrow(
       /not a readable integer/,
@@ -326,6 +332,7 @@ describe("toChainBigInt", () => {
   test("throws on floats, negatives, and non-numeric strings", () => {
     expect(() => toChainBigInt(1.5, "spent")).toThrow(/not a readable integer/);
     expect(() => toChainBigInt(-1, "spent")).toThrow(/not a readable integer/);
+    expect(() => toChainBigInt(-1n, "spent")).toThrow(/negative/);
     expect(() => toChainBigInt("10.5", "spent")).toThrow(/not a readable integer/);
   });
 

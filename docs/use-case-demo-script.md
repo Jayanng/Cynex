@@ -237,7 +237,7 @@ reached the contract and the contract rejected it.
 
 - Transaction: `BRXXhezVxYvze3imNHkrShnS8ujUvsShy4f3GtgwpCgQ`
 - Label: RECORDED ON TESTNET
-- Timestamp: 2026-11-08 14:19:56 UTC, block 276787146
+- Timestamp: 2026-11-08 14:19:55 UTC, block 276787145
 - Network: testnet
 - Attempted mutation: settle with the correct terms, before evidence
   was submitted
@@ -268,7 +268,7 @@ refusal.
 
 - Transaction: `EiBHjMBqZfBLZB33H4odbBfskGbVCX1Jor422t5S1cpX`
 - Label: RECORDED ON TESTNET
-- Timestamp: 2026-11-08 14:20:03 UTC, block 276787158
+- Timestamp: 2026-11-08 14:20:02 UTC, block 276787157
 - Network: testnet
 - Attempted mutation: proposed recipient `cynexmaster.testnet`
   instead of the authorized `cynex-agent.cynexmaster.testnet`
@@ -286,7 +286,7 @@ VAULT REFUSAL.
 
 - Transaction: `2NaWqCYiUnh9DMhRCR6JVSDQ3R7yD26U8Auf3qEer91f`
 - Label: RECORDED ON TESTNET
-- Timestamp: 2026-11-08 14:20:05 UTC, block 276787162
+- Timestamp: 2026-11-08 14:20:05 UTC, block 276787161
 - Network: testnet
 - Attempted mutation: proposed amount 200 instead of the authorized
   100
@@ -304,14 +304,14 @@ and the receipt is appended.
 
 - Transaction: `2VLL134m83x5fWZLr2qBbPkjJ7gL9YR7V7U9eur7qoVC`
 - Label: RECORDED ON TESTNET
-- Timestamp: 2026-11-08 14:20:08 UTC, block 276787167
+- Timestamp: 2026-11-08 14:20:08 UTC, block 276787166
 - Network: testnet
 - Signer: `cynex-agent.cynexmaster.testnet` (agent, scoped settle key)
 - State after: PAID
 - Receipt index: 24
 - Receipt: obligation `usecase-report-002`, recipient
   `cynex-agent.cynexmaster.testnet`, amount 100, token
-  `usdc.fakes.testnet`, timestamp 1794147610217529000 nanoseconds
+  `usdc.fakes.testnet`, timestamp 1794147610217529108 nanoseconds
   (2026-11-08 14:20:10 UTC). The receipt `tx_ref` field is empty on
   the automatic settle path; the settle transaction hash above is the
   link to the explorer, and the receipt index is the link to the
@@ -330,7 +330,7 @@ consumed. No second payment, no second receipt.
 
 - Transaction: `hG6uhpePR9ZcvCZXZprpXa8rvbAGGQPxD4ZyMpP91F6`
 - Label: RECORDED ON TESTNET
-- Timestamp: 2026-11-08 14:20:15 UTC, block 276787178
+- Timestamp: 2026-11-08 14:20:14 UTC, block 276787177
 - Network: testnet
 - Attempted mutation: settle an already-paid obligation again
 - Rejection outcome: `ERR_NONCE_ALREADY_CONSUMED`, transaction failed

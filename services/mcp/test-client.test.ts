@@ -6,11 +6,14 @@
  */
 import {
   budgetLine,
+  claimProductionNegativeUse,
   flagValue,
   guardSettle,
   pickMatrixResolverObligationId,
   pickResolverObligationId,
   resolvePolicyId,
+  verifyReceiptRow,
+  verifySpentDelta,
 } from "./test-client.js";
 
 const TEST_VAULT = "cynex-testvault.cynexmaster.testnet";
@@ -168,5 +171,85 @@ describe("resolvePolicyId", () => {
     await expect(resolvePolicyId(reader, { obligationId: "obl-001" })).rejects.toThrow(
       /has no policy id on chain/,
     );
+  });
+});
+
+describe("verifyReceiptRow", () => {
+  const expected = { obligationId: "mcp-obl-001", recipient: AGENT, amount: "100", tokenId: "usdc.fakes.testnet", index: "24" };
+  const goodRow = { obligation_id: "mcp-obl-001", recipient: AGENT, amount: "100", token_id: "usdc.fakes.testnet", index: "24", timestamp: "1794000000000000000", tx_ref: "settle-tx-hash" };
+
+  test("a row matching the settled obligation passes", () => {
+    expect(verifyReceiptRow(goodRow, expected).ok).toBe(true);
+  });
+
+  test("a missing row fails, it is not treated as a receipt", () => {
+    expect(verifyReceiptRow(undefined, expected).ok).toBe(false);
+  });
+
+  test("a row with the right id and index but a different recipient fails", () => {
+    expect(verifyReceiptRow({ ...goodRow, recipient: "cynexmaster.testnet" }, expected).ok).toBe(false);
+  });
+
+  test("a row with the right id and index but a different amount fails", () => {
+    expect(verifyReceiptRow({ ...goodRow, amount: "200" }, expected).ok).toBe(false);
+  });
+
+  test("a row with the right id and index but a different token fails", () => {
+    expect(verifyReceiptRow({ ...goodRow, token_id: "usdc.other.testnet" }, expected).ok).toBe(false);
+  });
+
+  test("a row with a different index fails", () => {
+    expect(verifyReceiptRow({ ...goodRow, index: "23" }, expected).ok).toBe(false);
+  });
+
+  test("a row with no timestamp fails", () => {
+    expect(verifyReceiptRow({ ...goodRow, timestamp: undefined }, expected).ok).toBe(false);
+  });
+});
+
+describe("verifySpentDelta", () => {
+  test("a spent rise equal to the settled amount passes", () => {
+    const out = verifySpentDelta({ policy_id: "p6-001", spent: "5000" }, { policy_id: "p6-001", spent: "5100" }, "p6-001", "100");
+    expect(out.ok).toBe(true);
+  });
+
+  test("a missing spent field fails, it is not treated as zero", () => {
+    const out = verifySpentDelta({ policy_id: "p6-001" }, { policy_id: "p6-001", spent: "5100" }, "p6-001", "100");
+    expect(out.ok).toBe(false);
+    expect(out.reason).toMatch(/missing/);
+  });
+
+  test("a policy row for a different policy fails", () => {
+    const out = verifySpentDelta({ policy_id: "p6-001", spent: "5000" }, { policy_id: "p6-002", spent: "5100" }, "p6-001", "100");
+    expect(out.ok).toBe(false);
+  });
+
+  test("a spent rise different from the settled amount fails", () => {
+    const out = verifySpentDelta({ policy_id: "p6-001", spent: "5000" }, { policy_id: "p6-001", spent: "5050" }, "p6-001", "100");
+    expect(out.ok).toBe(false);
+  });
+
+  test("an unreadable spent figure fails", () => {
+    const out = verifySpentDelta({ policy_id: "p6-001", spent: "abc" }, { policy_id: "p6-001", spent: "5100" }, "p6-001", "100");
+    expect(out.ok).toBe(false);
+  });
+
+  test("a malformed settled amount fails instead of throwing", () => {
+    const out = verifySpentDelta({ policy_id: "p6-001", spent: "5000" }, { policy_id: "p6-001", spent: "5100" }, "p6-001", "abc");
+    expect(out.ok).toBe(false);
+  });
+});
+
+describe("claimProductionNegativeUse", () => {
+  test("the first claim is allowed and the count rises", () => {
+    const out = claimProductionNegativeUse(0);
+    expect(out.allowed).toBe(true);
+    expect(out.used).toBe(1);
+  });
+
+  test("a second claim is refused and the count does not rise", () => {
+    const out = claimProductionNegativeUse(1);
+    expect(out.allowed).toBe(false);
+    expect(out.used).toBe(1);
   });
 });

@@ -114,7 +114,7 @@ When the settle transaction was submitted but the receipt polling was interrupte
 3. If the obligation does not read PAID and no receipt exists, the transfer did not complete. Wait, then read again, because the callback that marks PAID lands after the transfer. Only once the on-chain state is known should anyone decide whether to retry.
 4. There is no idempotency or lookup-by-tx-hash tool. Recovery is through the obligation and receipt reads above, never through the transaction hash alone.
 
-A submission error is reported as a vault refusal only when the error names a contract refusal, an `ERR_` code or a contract panic, because a panicked settle receipt creates no promise and no callback can follow it. Any other submission error with a transaction hash is indeterminate: the obligation may still read READY only because the callback that marks PAID has not landed yet, so the server reports the outcome as unknown with the hash and the recovery steps above, never as "no funds moved".
+A submission error is reported as a vault refusal only when the error names a contract refusal code, an `ERR_` code. Every check that panics with an `ERR_` code runs before the ft_transfer promise, so the receipt created no promise and no callback can follow it. A bare panic names no check site, so it proves nothing about where the panic happened, and the outcome is reported as unknown. Any other submission error with a transaction hash is indeterminate: the obligation may still read READY only because the callback that marks PAID has not landed yet, so the server reports the outcome as unknown with the hash and the recovery steps above, never as "no funds moved".
 
 ## 6. What is still proven live, not by these tests
 
