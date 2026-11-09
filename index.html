@@ -716,7 +716,7 @@ const BREAK_IT = [
   {key:'recipient', label:'Change the recipient', code:'ERR_RECIPIENT_SUBSTITUTION', tx:'AFYAq8Sju41NjBFwPmTHbJ1psmsYQWjVdBhmXBZbpa7S',
    attempt:'settle p10-demo-attack-001 to an attacker-controlled recipient · 100 USDC · nonce 1002',
    why:'The obligation fixes the recipient on chain. The settle call asked for a different recipient, so the vault refused before moving anything.',
-   live:{obligation:'ready', recipient:DEMO_ATTACKER, amount:'200000000', expectState:'READY'}},
+   live:{obligation:'ready', recipient:DEMO_ATTACKER, amount:'100000000', expectState:'READY'}},
   {key:'amount', label:'Change the amount', code:'ERR_TERMS_MISMATCH', tx:'43YaxJVggxuZ3E25WfjzkgGBsGAqLrj8nwdUU9RLAQRy',
    attempt:'settle p10-demo-attack-001 for 200 USDC instead of the fixed 100 USDC · nonce 1002',
    why:'The obligation fixes the amount at 100 USDC. The settle asked for 200, so the terms did not match and the vault refused.',
@@ -1210,7 +1210,7 @@ const DOCS = [
   +'<p class="dim leading-relaxed mb-3">Last verified 2026-11-08 @ master <span class="mono text-[12.5px] text-white">'+COMMIT+'</span>: both vaults ran code hash <span class="mono text-[12px] text-white">65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6</span>. <b class="text-white">This will have moved</b> — re-read it live (the status strip on Landing/Demo does exactly that):</p>'
   +'<pre class="codeblock dimc">'+esc(CP.curlProd)+'<button class="icbtn copyfloat" data-cp="curlProd" title="Copy">'+IC.copy+'</button></pre>'
   +'<p class="dim text-[13px] mt-4">RPC endpoint: <span class="mono text-[12.5px] text-white">'+RPC_URL+'</span> · verify receipts end-to-end on the <a href="#/proof">Proof page</a>.</p>'},
-{id:'p10demo', title:'Demo script', path:'docs/phase10-demo.md', body:
+{id:'p10demo', title:'Demo script', path:'docs/phase10-demo-script.md', body:
   '<p class="dim leading-relaxed mb-5">Executed on the test vault. Walk it interactively in the <a href="#/demo/guided">Guided demo</a>; every tx below links to the explorer.</p>'
   +'<div class="space-y-3">'
   + p10('1 · Happy path — PREIMAGE','p10-demo-preimage-001 · 100 USDC · nonce 1001 · artifact p6-001','3Gp3J2zZCKrne1PamDVf6PgXHk4qGc3a58GBvoFcNhrZ','PAID · receipt #11 · agent 700 → 800')
@@ -1223,7 +1223,7 @@ const DOCS = [
   +'</div>'
   +'<p class="dim text-[13px] mt-5">Step 4 — verification: <span class="mono text-[12.5px]" style="color:#9be7c4">cynex-verify</span> over the test vault, all rows verified_ok=true. See <a href="#/docs/p10proof">Proof</a>.</p>'
   },
-{id:'p10proof', title:'Proof', path:'docs/phase10-proof.md', body:
+{id:'p10proof', title:'Proof', path:'docs/phase10-demo-proof.md', body:
   '<p class="dim leading-relaxed mb-4">Receipts written by the demo run:</p>'
   +'<div class="overflow-x-auto mb-5"><table class="tbl"><thead><tr><th>receipt</th><th>obligation</th><th>settle tx</th></tr></thead><tbody>'
   +[[11,'p10-demo-preimage-001','3Gp3J2zZCKrne1PamDVf6PgXHk4qGc3a58GBvoFcNhrZ'],[12,'p10-demo-attack-001','Ho97UjQEDDfe7Go66uHrVSJvbF8narZJ2YBH3hWarxi'],[13,'p10-demo-tee-001','3QV2aCRSiJ8ZYqLECCpK6ZkXpYE4AdxJzmyP3JTaDqWB']]
@@ -1311,7 +1311,7 @@ function proofPage(){
   + j('1','Live vaults','<div class="flex flex-col gap-1.5 mt-1">'+acctChip(VAULT_PROD)+acctChip(VAULT_TEST)+'</div>')
   + j('2','One command','<div class="mt-2">'+cmdBlock('verify')+'</div>')
   + j('3','Four attestation bundles','<div class="mono text-[12px] dim mt-1">prod-tee-001 (request 13324) · 10640 · 11912 · 13040 — below, with verify commands.</div>')
-  + j('4','Demo script + live state','<div class="mt-1 flex flex-col gap-2"><a class="mono text-[12px]" href="#/docs/p10demo">docs/phase10-demo.md</a><span data-live-region="counts">'+countsHTML()+'</span></div>')
+  + j('4','Demo script + live state','<div class="mt-1 flex flex-col gap-2"><a class="mono text-[12px]" href="#/docs/p10demo">docs/phase10-demo-script.md</a><span data-live-region="counts">'+countsHTML()+'</span></div>')
   +'</div></div></section>'
 
   /* verify command */

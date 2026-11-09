@@ -144,8 +144,8 @@ Johnson accepted on 2026-11-09: Landing, Demo (Guided/Sandbox
 toggle), Docs, Proof. It presents Cynex as a product, not a
 hackathon entry or a build plan — no phase, hackathon, Track 6,
 submission, or repo-public copy anywhere (the only "phase" strings
-left are the repo file paths `docs/phase10-demo.md` and
-`docs/phase10-proof.md`).
+left are the repo file paths `docs/phase10-demo-script.md` and
+`docs/phase10-demo-proof.md`).
 
 What it does, all verified in the file before it was landed:
 
