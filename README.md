@@ -52,6 +52,59 @@ scripts/verify-tee-attestation.sh --bundle docs/attestation-proofs/attestation-p
 It prints PASS when the attestation verifies. The full do X, see Y
 steps are in Reproduce it below.
 
+## Hosted demo
+
+Live demo: [HOSTED URL] — the URL is added once hosting is chosen.
+This section ships now so the wording and the audit below are on
+record before go-live.
+
+The hosted demo is a static site. No backend, no database, no
+server-side state. It is a React + Vite + TypeScript app in `web/`
+(Tailwind bundled, fonts self-hosted, near-api-js for every chain
+read). It builds to static files: `cd web && npm install && npm run
+build`, then serve `web/dist/`. It works from a clean visit: no login,
+no wallet, no install, no command to run. It loads fast and works on
+mobile.
+
+What the hosted demo can do:
+
+- Walk the live chain: a real refusal first, then the tagline, then
+  a live status strip on every page (vault code hash, receipts
+  verified, agent balance, policy headroom, last settle).
+- Try to break it: pick an attack (change the recipient, change the
+  amount, replay a nonce, remove the evidence) and see why the vault
+  refuses, with the real error code and the real refusal transaction.
+- Live mode: a judge's chosen attack is signed in the judge's browser
+  with the demo token and refused on chain. Only attacks are offered
+  in live mode — never a correct settle.
+- Verify it yourself: one copy-paste command replays every receipt
+  from genesis and recomputes each hash link, with the live receipt
+  table and the four TEE attestation bundles on the Proof page.
+
+Every number on the site is either live from the chain or labelled
+as a historical fact. Nothing is canned.
+
+What requires a local command: a full local run, including the
+console and the MCP server, requires cloning the repo and running
+the commands in Reproduce it below. The hosted demo cannot create
+obligations, hold the owner key, or settle on anyone's behalf.
+
+Keys: the hosted site never holds a settlement key server-side.
+The only key involved is the demo token, which lives client-side
+in the page, by design: a fresh key, scoped to `settle` on the
+test vault only (`cynex-testvault.cynexmaster.testnet`), allowance
+0.05 NEAR, testnet only, low value. The page labels it clearly as
+a demo key. It can only attempt settles; the vault decides. The
+hosted site never contains the existing executor key, the owner
+key, or any full-access key, and never offers a generic settlement
+endpoint.
+
+Before the hosted demo goes live, run the expanded secrets audit
+(full Git history and artifacts) and confirm no secret is in the
+bundle, the source maps, or the hosted config. Anything ever
+committed gets rotated, not just deleted. The audit checklist is a
+Lane B working doc; the audit itself is a pre-go-live gate.
+
 ## Trust, in one paragraph
 
 Integrity is on-chain and trustless: for small evidence the vault hashes
@@ -72,8 +125,10 @@ authorization time.
 ## Status
 
 Testnet throughout. The vault is deployed at
-`cynex-vault.cynexmaster.testnet`. Phases 0 through 9 are closed. The repo
-goes public on 13 November 2026.
+`cynex-vault.cynexmaster.testnet`. Phases 0 through 9 are closed, the
+scorecard fifth reputation signal (code-change recency) is merged, and
+Phase 10 (demo and submission) is the final phase. The repo goes public
+on 13 November 2026.
 
 Live state, last verified 2026-11-08: both vaults run code hash
 65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6. Test vault policy
@@ -377,7 +432,11 @@ expects, and sends no transaction. The live run needs the agent key.
 
 The attack transcript is in `docs/phase6-attack-transcript.md`. The
 compromised-agent scenario is the point: the agent is assumed hostile,
-and the vault still does not pay.
+and the vault still does not pay. The Phase 10 demo runs the same story
+end to end on the test vault, happy path, three attack tries, TEE and
+VRF, and verification, each step with its real transaction hash: the
+script is in `docs/phase10-demo-script.md` and the proof record is in
+`docs/phase10-demo-proof.md`.
 
 ## Reproduce it
 
