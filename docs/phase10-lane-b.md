@@ -319,3 +319,16 @@ payload human-approved) is Johnson's to confirm.
 ## Sign-off
 
 Pending the section 2.6 audit.
+
+## Addendum, 2026-11-09
+
+The static index.html (1,459 lines, sha256
+159576a45c64700976dd5cd8529df31e998cba543f61d1d0ebd06e45707a3d7c) was
+replaced by a React + Vite + TypeScript app in web/ on Johnson's
+order, following the stack React 19, Vite 6, TypeScript, Tailwind
+bundled, fonts self-hosted, near-api-js for all chain reads. The
+three design audit defects are closed in the React version: Docs no
+longer scrolls sideways, hashes render as short hex, and the policy
+cell reads the real policy. The build exits 0 and the live data was
+verified in a headless Chromium render. The demo token remains empty
+and disabled.

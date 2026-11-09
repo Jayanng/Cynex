@@ -1,0 +1,117 @@
+/* Cynex web — app shell.
+   Hash routing matching the showcase URLs (#/landing, #/demo, #/docs,
+   #/proof) so existing links keep working. The header and the live
+   strip read from the same live store. */
+
+import { useEffect, useState } from "react";
+import { LiveProvider, useLive } from "./lib/live";
+import { Landing } from "./pages/Landing";
+import { Demo } from "./pages/Demo";
+import { Docs } from "./pages/Docs";
+import { Proof } from "./pages/Proof";
+
+function parseRoute(): string[] {
+  return (window.location.hash || "").replace(/^#\/?/, "").split("/").filter(Boolean);
+}
+
+function Header({ page }: { page: string }) {
+  const { live } = useLive();
+  const nettxt = live.blockHeight
+    ? "TESTNET · " + Number(live.blockHeight).toLocaleString()
+    : live.anyErr
+      ? "TESTNET · RETRYING"
+      : "TESTNET";
+  return (
+    <header
+      className="fixed top-0 left-0 right-0 z-50 border-b"
+      style={{ background: "rgba(4,6,10,.85)", backdropFilter: "blur(12px)", borderColor: "var(--line)" }}
+    >
+      <div className="wrap flex items-center justify-between h-16 gap-4">
+        <a href="#/" className="flex items-center gap-3 flex-none">
+          <span
+            className="grid place-items-center w-9 h-9 rounded-xl border"
+            style={{ borderColor: "rgba(52,211,153,.45)", background: "rgba(52,211,153,.08)" }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              <circle cx="12" cy="10" r="2.2" />
+              <path d="M12 12.2v3.3" />
+            </svg>
+          </span>
+          <span className="leading-tight">
+            <span className="block font-extrabold tracking-tight text-white text-[17px]">CYNEX</span>
+            <span className="hidden md:block text-[10px] mono dim2 tracking-widest uppercase">purpose-bound settlement vault</span>
+          </span>
+        </a>
+        <nav className="flex items-center gap-1" id="mainnav">
+          <a className={"navlink" + (page === "landing" ? " active" : "")} href="#/">
+            Landing
+          </a>
+          <a className={"navlink" + (page === "demo" ? " active" : "")} href="#/demo/guided">
+            Demo
+          </a>
+          <a className={"navlink" + (page === "docs" ? " active" : "")} href="#/docs">
+            Docs
+          </a>
+          <a className={"navlink" + (page === "proof" ? " active" : "")} href="#/proof">
+            Proof
+          </a>
+        </nav>
+        <div className="netpill mono flex-none" title="Live RPC: test.rpc.fastnear.com">
+          <span className={"livedot" + (live.anyErr ? " err" : "")} id="netdot"></span>
+          <span id="nettxt">{nettxt}</span>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+function Shell() {
+  const [route, setRoute] = useState<string[]>(() => parseRoute());
+  useEffect(() => {
+    const onHash = () => {
+      const p = parseRoute();
+      setRoute(p);
+      if (!p[2] && p[0] !== "docs") window.scrollTo(0, 0);
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  const page = route[0] || "landing";
+  useEffect(() => {
+    document.title =
+      page === "demo"
+        ? "Demo — Cynex"
+        : page === "docs"
+          ? "Docs — Cynex"
+          : page === "proof"
+            ? "Proof — Cynex"
+            : "Cynex — Pay the obligation. Not the prompt.";
+  }, [page]);
+
+  return (
+    <>
+      <Header page={page} />
+      <main className="pt-16 min-h-screen">
+        {page === "demo" ? (
+          <Demo mode={route[1] === "sandbox" ? "sandbox" : "guided"} anchor={route[2]} />
+        ) : page === "docs" ? (
+          <Docs active={route[1]} />
+        ) : page === "proof" ? (
+          <Proof />
+        ) : (
+          <Landing />
+        )}
+      </main>
+    </>
+  );
+}
+
+export function App() {
+  return (
+    <LiveProvider>
+      <Shell />
+    </LiveProvider>
+  );
+}

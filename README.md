@@ -59,8 +59,12 @@ This section ships now so the wording and the audit below are on
 record before go-live.
 
 The hosted demo is a static site. No backend, no database, no
-server-side state. It works from a clean visit: no login, no wallet,
-no install, no command to run. It loads fast and works on mobile.
+server-side state. It is a React + Vite + TypeScript app in `web/`
+(Tailwind bundled, fonts self-hosted, near-api-js for every chain
+read). It builds to static files: `cd web && npm install && npm run
+build`, then serve `web/dist/`. It works from a clean visit: no login,
+no wallet, no install, no command to run. It loads fast and works on
+mobile.
 
 What the hosted demo can do:
 

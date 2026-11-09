@@ -1,0 +1,171 @@
+/* Cynex web — live status strip (on every page).
+   The policy cell is wired to the real view method: get_policy with the
+   demo policy id p6-001 on the test vault. The old page called get_policy
+   with no arguments, which the contract rejects, so the cell showed a
+   permanent "Unavailable — retrying". That is fixed here.
+   Amounts are shown in base units so the numbers match the demo labels
+   (100, 2700); the decimal USDC value is in the title attribute. */
+
+import { VAULT_PROD, VAULT_TEST, TOKEN, RPC_URL } from "../lib/data";
+import { useLive, type LiveState } from "../lib/live";
+import { fmtToken, fmtTs, trunc } from "../lib/near";
+import { Icon, CopyButton, Unavail, LoadTxt } from "./ui";
+
+function policyText(p: NonNullable<LiveState["policy"]["v"]>): string {
+  const spent = p.spent;
+  const limit = p.limit;
+  if (spent != null && limit != null) {
+    try {
+      const head = (BigInt(limit) - BigInt(spent)).toString();
+      return "spent " + spent + " · headroom " + head + " units";
+    } catch {
+      /* fall through */
+    }
+  }
+  return "policy " + p.policy_id;
+}
+
+function policyTitle(p: NonNullable<LiveState["policy"]["v"]>): string {
+  try {
+    const head = (BigInt(p.limit) - BigInt(p.spent)).toString();
+    return "spent " + fmtToken(p.spent) + " USDC · headroom " + fmtToken(head) + " USDC · limit " + fmtToken(p.limit) + " USDC · " + TOKEN + ", 6 decimals";
+  } catch {
+    return "policy " + p.policy_id;
+  }
+}
+
+export function Strip() {
+  const { live: L } = useLive();
+  const cell = (label: string, inner: React.ReactNode) => (
+    <div className="strip-cell" key={label}>
+      <div className="strip-label">{label}</div>
+      <div className="strip-val">{inner}</div>
+    </div>
+  );
+  const f = <T,>(st: { err: boolean; v: T | null }, fn: (v: T) => React.ReactNode) =>
+    st.err ? <Unavail /> : st.v == null ? <LoadTxt /> : fn(st.v);
+
+  const recCell = () => {
+    if (L.recProd.err || L.recTest.err) return <Unavail />;
+    if (L.recProd.v == null || L.recTest.v == null) return <LoadTxt />;
+    const ok = L.recProd.link?.allOk && L.recTest.link?.allOk;
+    const icon = ok ? (
+      <span style={{ color: "var(--green)", width: 14, height: 14, display: "inline-grid", placeItems: "center" }}>
+        <Icon name="check" />
+      </span>
+    ) : (
+      <span style={{ color: "var(--amber)", width: 14, height: 14, display: "inline-grid", placeItems: "center" }}>
+        <Icon name="warn" />
+      </span>
+    );
+    return (
+      <>
+        {icon} prod {L.recProd.v} · test {L.recTest.v}{" "}
+        <span className="dim2" style={{ fontSize: 10 }}>
+          link-check
+        </span>
+      </>
+    );
+  };
+
+  const checked = L.checkedAt ? L.checkedAt.toLocaleTimeString() : null;
+  const lastSettle = () => {
+    if (L.recTest.err) return <Unavail />;
+    if (!L.recTest.rows || !L.recTest.rows.length) return <LoadTxt />;
+    const r = L.recTest.rows[L.recTest.rows.length - 1];
+    const when = fmtTs(r.timestamp);
+    const ref = r.tx_ref ? (
+      <a href={"https://testnet.nearblocks.io/txns/" + r.tx_ref} target="_blank" rel="noopener" title={r.tx_ref}>
+        {when}
+      </a>
+    ) : (
+      <span title="tx_ref is empty on chain for this receipt">{when}</span>
+    );
+    return (
+      <>
+        {ref} <span className="dim2">· #{r.index}</span>
+      </>
+    );
+  };
+
+  return (
+    <div className="strip">
+      {cell(
+        "LAST CHECKED",
+        checked == null && !L.anyErr ? (
+          <LoadTxt />
+        ) : L.anyErr && !checked ? (
+          <Unavail />
+        ) : (
+          <>
+            <span className={"livedot" + (L.anyErr ? " err" : "")}></span>
+            {checked || "—"}
+            {L.blockHeight ? <span className="dim2"> · block {Number(L.blockHeight).toLocaleString()}</span> : null}
+          </>
+        )
+      )}
+      {cell(
+        "CODE HASH — PROD",
+        f(L.codeProd, (v) => (
+          <>
+            <a
+              className="hover:text-white"
+              href={"https://testnet.nearblocks.io/address/" + VAULT_PROD}
+              target="_blank"
+              rel="noopener"
+              title={v}
+            >
+              {trunc(v, 10, 8)}
+            </a>
+            <CopyButton text={v} />
+          </>
+        ))
+      )}
+      {cell(
+        "CODE HASH — TEST",
+        f(L.codeTest, (v) => (
+          <>
+            <a
+              className="hover:text-white"
+              href={"https://testnet.nearblocks.io/address/" + VAULT_TEST}
+              target="_blank"
+              rel="noopener"
+              title={v}
+            >
+              {trunc(v, 10, 8)}
+            </a>
+            <CopyButton text={v} />
+          </>
+        ))
+      )}
+      {cell("RECEIPTS VERIFIED", recCell())}
+      {cell(
+        "AGENT BALANCE",
+        f(L.agent, (v) => (
+          <span title={"raw: " + String(v) + " · " + fmtToken(v) + " USDC · " + TOKEN + ", 6 decimals"}>
+            {String(v)} units
+          </span>
+        ))
+      )}
+      {cell(
+        "DEMO POLICY SPENT / HEADROOM",
+        f(L.policy, (v) => <span title={policyTitle(v)}>{policyText(v)}</span>)
+      )}
+      {cell("LAST SETTLE", lastSettle())}
+    </div>
+  );
+}
+
+export function StripSection() {
+  return (
+    <div className="wrap mt-8">
+      <div data-live-region="strip">
+        <Strip />
+      </div>
+      <div className="mono text-[10.5px] dim2 mt-2 flex flex-wrap gap-x-5 gap-y-1">
+        <span>live RPC reads · {RPC_URL}</span>
+        <span>on failure a field shows “Unavailable — retrying” — never a cached value</span>
+      </div>
+    </div>
+  );
+}
