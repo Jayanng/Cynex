@@ -653,3 +653,77 @@ Test deploy tx 458yqiPi6zufmXugVugSqLUkdvakDG4XciYrg45pRanE. Live proof: TEE flo
 Production deploy tx GxsGKQd6ypdDtDg3rsWRcRJXacuvsmEVHiaCGr8JipEE, code hash 65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6, matching the test vault. After: p5-prod-001 spent 300, reserved 0, funded 1000, unchanged. Both dead obligations p9-prod-preimage-001 and p9-prod-tee-001 still CANCELLED. cynex-verify on production: 11 receipts, all verified_ok=true. Nothing settled on production.
 
 Fifth-signal gate re-run against the new code hash: BLOCK, code changed within 1.0d (old G3Mt2gKs to new EChCjrf, age 18m at the check), exactly as expected. TEE balance-check live proof: request_tee_verification succeeded with headroom 0.202 NEAR against a 0.02 NEAR threshold (obligation looseends-tee-headroom-001, receipt 17). The failure path (headroom below threshold) was not proven live: the master holds only 1.238 NEAR, short of the ~2.68 NEAR needed to deploy a fresh vault, and draining the test vault would risk the concurrent Item 5 test. Item 5 (live TEE retry at the window boundary) was INCONCLUSIVE after three attempts: the OutLayer guest answers in 9 to 29 seconds, so every callback landed inside the original 1-hour window (71s, 7s, and 2.41s before the deadline); the fix never failed, the boundary case was not discriminated live. Full report at ~/workspace/cynex-system/remaining-loose-ends-fix-report.md.
+
+## Phase 10: Demo and submission (Lane B, 2026-11-09)
+
+Status: Lane B work done on branch `lane-b-phase10`, rebased onto
+Master 9f31347 on 2026-11-09. PR to Master pending. Lane B sign-off
+pending the section 2.6 audit.
+
+Lane B delivered:
+
+- The new frontend: `index.html` at the repo root, a standalone
+  static file with four pages (Landing, Demo with Guided/Sandbox
+  toggle, Docs, Proof). It presents Cynex as a product: no phase,
+  hackathon, Track 6, submission, or repo-public copy anywhere
+  (only the repo file paths `docs/phase10-demo.md` and
+  `docs/phase10-proof.md` still contain the word). Refusal panel
+  first on Landing with the real refusal tx
+  `AFYAq8Sju41NjBFwPmTHbJ1psmsYQWjVdBhmXBZbpa7S`
+  (`ERR_RECIPIENT_SUBSTITUTION`), "0 tokens moved", and a
+  "Read it from the chain" button. "Try to break it" panel with
+  the three executed attacks and their real refusal txs; the
+  remove-evidence case has no executed refusal tx and is labelled
+  as evaluated only. Live status strip on all four pages, polling
+  every 5 seconds, with a Last Settle cell. One verify command on
+  Landing. Hero tightened to the tagline plus one plain sentence.
+  Trust row: 19 suites / 369 tests passing, Sol audit pass, live
+  receipts, 4 TEE attestations verified.
+  File sha256 (v2, with demo-token scaffolding):
+  `510bdf0d42a8be7681cc58a6f652d35a2c6b7016c2f885bc3a6aa55724be5ab0`.
+- Demo-token live mode (scaffolding only): `DEMO_TOKEN` is empty
+  and `enabled: false` in the page. No key was invented. The page
+  loads near-api-js@7 on demand from the jsDelivr +esm build
+  (verified to return 200) and, once the key arrives, signs a real
+  settle call with the tampered terms, shows the refusal with its
+  real tx hash, and re-reads the obligation to prove nothing moved.
+  Only attacks are offered in live mode, never a correct settle.
+  Contract finding (verified against settle on origin/Master):
+  the vault checks nonce/state BEFORE recipient and amount, so a
+  live recipient/amount attack needs a READY demo obligation and
+  the remove-evidence attack needs a CREATED/EVIDENCE_PENDING one;
+  `p10-demo-attack-001` is PAID and serves the replay attack only.
+  Johnson must supply the demo key (fresh, settle-only on the
+  test vault, 0.05 NEAR allowance) plus those two obligation ids
+  before live mode can run. The existing executor key, owner key,
+  and any full-access key must never be embedded.
+- The polished playground (`demo/playground-obligations.json`,
+  `frontend/playground.html`): the three Phase 10 demo obligations
+  as read-only cases, 18 matrix rows.
+- The demo video (123 seconds, narrated slideshow of the real
+  flows, copy with the user): needs re-cutting to the 60-second
+  structure in Johnson's complete brief; a 60-second script from
+  the same demo run and tx hashes is drafted, the rough cut is not
+  yet recorded. Freeze a release candidate by Wed 11 Nov morning.
+- The README hosted-demo section (what the hosted demo can do vs
+  what requires a local command) is in the README; the hosted
+  demo URL is added once hosting is chosen, and the expanded
+  secrets audit runs before go-live.
+- Full Lane B record: `docs/phase10-lane-b.md`.
+
+Live state re-verified by Lane B, 2026-11-09, after the rebase
+(RPC `https://test.rpc.fastnear.com`, block ~276,933,56x): both
+vaults on code hash
+`65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6`; production 13
+receipts (last index 12, `mcp-prod-001`); test vault 31 receipts
+(last index 30, `mcp-working-check-001`); agent token balance
+2700; all three demo obligations PAID.
+
+Checks on the rebased branch: Jest 369 passed, 1 skipped, 370
+total, 19 suites passed, 1 skipped — run with
+`NODE_PATH=$PWD/node_modules`, as the README says. Without
+NODE_PATH the four MCP suites fail to load; that is the
+pre-existing NODE_PATH quirk, not a defect in Lane B code.
+Frontend typecheck clean. Conformance 6/6.
+
+Sign-off: pending the section 2.6 audit.
