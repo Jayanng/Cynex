@@ -332,3 +332,5 @@ longer scrolls sideways, hashes render as short hex, and the policy
 cell reads the real policy. The build exits 0 and the live data was
 verified in a headless Chromium render. The demo token remains empty
 and disabled.
+
+The React app in web/ at e1fccf7 has 22 files with 3766 lines in src, and the build (exit 0) and headless render were verified on 2026-11-09.
