@@ -72,8 +72,10 @@ authorization time.
 ## Status
 
 Testnet throughout. The vault is deployed at
-`cynex-vault.cynexmaster.testnet`. Phases 0 through 9 are closed. The repo
-goes public on 13 November 2026.
+`cynex-vault.cynexmaster.testnet`. Phases 0 through 9 are closed, the
+scorecard fifth reputation signal (code-change recency) is merged, and
+Phase 10 (demo and submission) is the final phase. The repo goes public
+on 13 November 2026.
 
 Live state, last verified 2026-11-08: both vaults run code hash
 65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6. Test vault policy
@@ -377,7 +379,11 @@ expects, and sends no transaction. The live run needs the agent key.
 
 The attack transcript is in `docs/phase6-attack-transcript.md`. The
 compromised-agent scenario is the point: the agent is assumed hostile,
-and the vault still does not pay.
+and the vault still does not pay. The Phase 10 demo runs the same story
+end to end on the test vault, happy path, three attack tries, TEE and
+VRF, and verification, each step with its real transaction hash: the
+script is in `docs/phase10-demo-script.md` and the proof record is in
+`docs/phase10-demo-proof.md`.
 
 ## Reproduce it
 

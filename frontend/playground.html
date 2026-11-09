@@ -25,6 +25,9 @@ th { background: #f4f4f4; }
 <h1>Cynex playground: break it yourself</h1>
 <p class="hint">Every settle here is a real transaction against the live vault, signed by the agent key on the executor host. A wrong payee or amount is rejected on chain with a reason code and a transaction hash. Nothing here is simulated. The executor token authenticates you to the executor; the agent key never leaves the executor host and the owner key is never here.</p>
 
+<h2>Demo</h2>
+<p class="hint">The Phase 10 demo video follows this playground: the happy path, the three attack tries, and the TEE and VRF path, each with its real transaction hash. The full script is in <code>docs/phase10-demo-script.md</code> and the proof record, with before and after chain state, is in <code>docs/phase10-demo-proof.md</code>. The three demo obligations are in the test matrix below as read-only cases; the playground reads them live but never settles them.</p>
+
 <label for="token">Executor token</label>
 <input id="token" type="password" autocomplete="off" placeholder="operator token from CYNEX_EXECUTOR_TOKEN">
 <button id="authenticate" type="button">Authenticate</button>
