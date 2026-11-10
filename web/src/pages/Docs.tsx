@@ -56,11 +56,11 @@ function P10Step({
     <div className="attempt">
       <div className="min-w-0">
         <div className="att-label">{t}</div>
-        <div className="mono text-[11px] dim2 mt-0.5">{sub}</div>
+        <div className="mono text-xs dim2 mt-0.5">{sub}</div>
       </div>
       <span className={bad ? "" : ""}>{badge}</span>
       <HashChip hash={tx} />
-      <span className="mono text-[11px] dim2">{verdict}</span>
+      <span className="mono text-xs dim2">{verdict}</span>
     </div>
   );
 }
@@ -82,20 +82,20 @@ const DOCS: DocSection[] = [
     body: (
       <>
         <p className="dim leading-relaxed mb-4">
-          Cynex is a purpose-bound settlement vault for AI agents on NEAR. <b className="text-white">“Pay the obligation. Not the prompt.”</b>{" "}
+          Cynex is a purpose-bound settlement vault for AI agents on NEAR. <b className="text-ink">“Pay the obligation. Not the prompt.”</b>{" "}
           A prompt-injected agent can be talked into paying the wrong recipient, the wrong amount, or the same bill twice, so the payment
           decision is moved out of the model and onto the chain.
         </p>
         <p className="dim leading-relaxed mb-4">
           An obligation is created on-chain with fixed terms: recipient, token, amount, evidence requirement, and budget. Funding enters only
-          via <span className="mono text-[12.5px] text-white">ft_transfer_call</span>. Three layers prove a payment is right, and no layer
+          via <span className="mono text-[13px] text-ink">ft_transfer_call</span>. Three layers prove a payment is right, and no layer
           trusts another: Layer 1, on-chain integrity, the vault hashes the evidence bytes itself and compares them to the committed digest;
           Layer 2, TEE provenance, a guest fetches the evidence inside an Intel TDX enclave; Layer 3, VRF anchor, the guest requests VRF
           randomness and the vault verifies the signature on chain, bound to the pending request. Reputation is detection, not prevention: it
           informs the owner before settlement, it does not replace the on-chain checks. Every settle writes a hash-chained receipt (NEP-297
           event).
         </p>
-        <h3 className="text-white text-[15px] mt-6 mb-3">Cold run (README Reproduce it, frontend and verify-live steps)</h3>
+        <h3 className="text-ink text-[15px] mt-6 mb-3">Cold run (README Reproduce it, frontend and verify-live steps)</h3>
         <pre className="codeblock">
           {CP.coldrun}
           <button className="icbtn copyfloat" title="Copy">
@@ -123,22 +123,22 @@ const DOCS: DocSection[] = [
       <>
         <p className="dim leading-relaxed mb-4">
           Threat model: the agent is untrusted. It may be prompt-injected through any content it reads, invoices, web pages, emails, tool
-          output. Cynex assumes the agent <i>will</i> eventually be told to pay the wrong party, and makes that instruction worthless. The
+          output. Cynex assumes the agent will eventually be told to pay the wrong party, and makes that instruction worthless. The
           attacker model: the agent cannot sign as the owner and cannot add keys. What we protect: the authorized terms, the budget, and the
           receipt history.
         </p>
-        <h3 className="text-white text-[15px] mt-6 mb-3">
-          What function-call keys do <u>not</u> prevent
+        <h3 className="text-ink text-[15px] mt-6 mb-3">
+          What function-call keys do not prevent
         </h3>
         <p className="dim leading-relaxed mb-4">
-          NEAR function-call access keys restrict <b className="text-white">which methods</b> a key may call, on which contract, within an
-          allowance. They do <b className="text-white">not</b> restrict the arguments. An injected agent holding a key for{" "}
-          <span className="mono text-[12.5px] text-white">settle</span> can still be talked into calling it with a different recipient, an
+          NEAR function-call access keys restrict <b className="text-ink">which methods</b> a key may call, on which contract, within an
+          allowance. They do <b className="text-ink">not</b> restrict the arguments. An injected agent holding a key for{" "}
+          <span className="mono text-[13px] text-ink">settle</span> can still be talked into calling it with a different recipient, an
           inflated amount, or a duplicate settle, and the call is perfectly authorized at the key layer. That is why the terms live on-chain,
           fixed at obligation creation. The key does not prevent the owner from authorizing a bad obligation, and a TEE attestation does not
           prove a real-world delivery happened.
         </p>
-        <h3 className="text-white text-[15px] mt-6 mb-3">Settle refusal codes (all eleven)</h3>
+        <h3 className="text-ink text-[15px] mt-6 mb-3">Settle refusal codes (all eleven)</h3>
         <div className="overflow-x-auto mb-4">
           <table className="tbl">
             <thead>
@@ -164,25 +164,25 @@ const DOCS: DocSection[] = [
           mismatch or a policy version mismatch only. Settle has no token argument, and an unknown obligation id is
           ERR_OBLIGATION_MISSING. A bad VRF returns no error code at all: the obligation simply never becomes READY.
         </p>
-        <h3 className="text-white text-[15px] mt-6 mb-3">Evidence</h3>
+        <h3 className="text-ink text-[15px] mt-6 mb-3">Evidence</h3>
         <p className="dim leading-relaxed mb-3">
-          <b className="text-white">PREIMAGE</b>, the vault hashes the delivery artifact bytes itself and compares them to the digest
+          <b className="text-ink">PREIMAGE</b>, the vault hashes the delivery artifact bytes itself and compares them to the digest
           committed at creation, capped at 64 KiB (MAX_PREIMAGE_BYTES 65536, ERR_EVIDENCE_TOO_LARGE above it).{" "}
-          <b className="text-white">TEE</b>, verification via OutLayer, with a VRF signature bound to the pending request so it cannot be
-          replayed against a different obligation. <b className="text-white">delivery-note</b>, the allowlisted verifier path
+          <b className="text-ink">TEE</b>, verification via OutLayer, with a VRF signature bound to the pending request so it cannot be
+          replayed against a different obligation. <b className="text-ink">delivery-note</b>, the allowlisted verifier path
           (submit_evidence, TRUSTED_RELAYER), the fallback for oversized evidence. The vault does not verify the TDX quote on chain; quote
           verification is off chain and the VRF signature is the on-chain anchor.
         </p>
-        <div className="callout mono text-[13px]" style={{ color: "#fde68a" }}>
+        <div className="callout mono text-[13px]">
           The VRF signature does not prove TEE execution.
         </div>
-        <h3 className="text-white text-[15px] mt-6 mb-3">Reputation gate</h3>
+        <h3 className="text-ink text-[15px] mt-6 mb-3">Reputation gate</h3>
         <p className="dim leading-relaxed mb-3">
           Five signals are scored before any settle by the off-chain console gate, never by the vault, see{" "}
           <a href="#/docs/reputation">Reputation signals</a>. BLOCK refusals name the signal and its source; WARN escalates to a human
-          unless <span className="mono text-[12.5px] text-white">CYNEX_APPROVE_WARN=1</span>.
+          unless <span className="mono text-[13px] text-ink">CYNEX_APPROVE_WARN=1</span>.
         </p>
-        <h3 className="text-white text-[15px] mt-6 mb-3">Also in the threat model</h3>
+        <h3 className="text-ink text-[15px] mt-6 mb-3">Also in the threat model</h3>
         <p className="dim leading-relaxed">
           Callback failure and reconciliation: a failed transfer is retried up to 3 times, then goes to RECONCILIATION_REQUIRED for a human.
           Funding only by ft_transfer_call. Receipt tampering: genesis prev_hash is 32 zero bytes, and each receipt commits to its
@@ -230,27 +230,27 @@ const DOCS: DocSection[] = [
           </table>
         </div>
         <p className="dim leading-relaxed mb-3">
-          Last verified 2026-11-07 @ master <span className="mono text-[12.5px] text-white">{COMMIT}</span> (docs/deployment.md last updated d9cdf40): both vaults ran
-          code hash <span className="mono text-[12px] text-white">65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6</span>.{" "}
-          <b className="text-white">This will have moved</b>, re-read it live (the status strip on Landing/Demo does exactly that). Snapshot from docs/deployment.md, as of 2026-11-07: test policy p6-001 funded 10,000, spent 4,500, 22 receipts; agent balance 1,800; production policy
+          Last verified 2026-11-07 @ master <span className="mono text-[13px] text-ink">{COMMIT}</span> (docs/deployment.md last updated d9cdf40): both vaults ran
+          code hash <span className="mono text-xs text-ink">65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6</span>.{" "}
+          <b className="text-ink">This will have moved</b>, re-read it live (the status strip on Landing/Demo does exactly that). Snapshot from docs/deployment.md, as of 2026-11-07: test policy p6-001 funded 10,000, spent 4,500, 22 receipts; agent balance 1,800; production policy
           p5-prod-001 funded 1,000, spent 300.
         </p>
-        <h3 className="text-white text-[15px] mt-6 mb-3">How to verify (docs/deployment.md:19-38)</h3>
+        <h3 className="text-ink text-[15px] mt-6 mb-3">How to verify (docs/deployment.md:19-38)</h3>
         <pre className="codeblock dimc">
           {`near state cynex-vault.cynexmaster.testnet --networkId testnet
 near view cynex-vault.cynexmaster.testnet get_policy '{"policy_id":"p5-prod-001"}' --networkId testnet
 node frontend/dist-test/cli/cynex.js verify-live cynex-vault.cynexmaster.testnet`}
         </pre>
         <p className="dim text-[13px] mt-3">
-          The doc writes the last command as <span className="mono text-[12.5px] text-white">cynex verify-live</span> from frontend/; the
-          full invocation is the node form above. TEE guest version <span className="mono text-[12.5px] text-white">8abfe08b</span>, VRF
+          The doc writes the last command as <span className="mono text-[13px] text-ink">cynex verify-live</span> from frontend/; the
+          full invocation is the node form above. TEE guest version <span className="mono text-[13px] text-ink">8abfe08b</span>, VRF
           public key (testnet){" "}
-          <span className="mono text-[12.5px] text-white" style={{ overflowWrap: "anywhere" }}>
+          <span className="mono text-[13px] text-ink" style={{ overflowWrap: "anywhere" }}>
             c0c5aeae1688c2f7cc2350aae1ee3ce96eddc0de84d678db873de48268f8cfa8
           </span>
           .
         </p>
-        <h3 className="text-white text-[15px] mt-6 mb-3">Direct RPC check (not a doc command)</h3>
+        <h3 className="text-ink text-[15px] mt-6 mb-3">Direct RPC check (not a doc command)</h3>
         <pre className="codeblock dimc">
           {CP.curlProd}
           <button className="icbtn copyfloat" title="Copy">
@@ -258,7 +258,7 @@ node frontend/dist-test/cli/cynex.js verify-live cynex-vault.cynexmaster.testnet
           </button>
         </pre>
         <p className="dim text-[13px] mt-4">
-          RPC endpoint: <span className="mono text-[12.5px] text-white">{RPC_URL}</span> · verify receipts end-to-end on the{" "}
+          RPC endpoint: <span className="mono text-[13px] text-ink">{RPC_URL}</span> · verify receipts end-to-end on the{" "}
           <a href="#/proof">Proof page</a>.
         </p>
       </>
@@ -288,7 +288,7 @@ node frontend/dist-test/cli/cynex.js verify-live cynex-vault.cynexmaster.testnet
         </div>
         <p className="dim text-[13px] mt-5">
           Final state: test policy p6-001 spent 3,700, agent balance 1,000. Step 4, verification:{" "}
-          <span className="mono text-[12.5px]" style={{ color: "#9be7c4" }}>
+          <span className="mono text-[13px]" style={{ color: "var(--accent-text)" }}>
             node frontend/dist-test/cli/cynex.js verify-live cynex-testvault.cynexmaster.testnet
           </span>
           , all rows verified_ok=true. See <a href="#/docs/p10proof">Proof</a>.
@@ -321,7 +321,7 @@ node frontend/dist-test/cli/cynex.js verify-live cynex-vault.cynexmaster.testnet
               ].map(([n, ob, tx]) => (
                 <tr key={String(n)}>
                   <td className="dim">#{n}</td>
-                  <td style={{ color: "#dbe4ee" }}>{ob}</td>
+                  <td style={{ color: "var(--txt)" }}>{ob}</td>
                   <td>
                     <HashChip hash={tx as string} />
                   </td>
@@ -330,7 +330,7 @@ node frontend/dist-test/cli/cynex.js verify-live cynex-vault.cynexmaster.testnet
             </tbody>
           </table>
         </div>
-        <h3 className="text-white text-[15px] mb-3">Verifier output at time of run</h3>
+        <h3 className="text-ink text-[15px] mb-3">Verifier output at time of run</h3>
         <pre className="codeblock dimc">
           {`$ node frontend/dist-test/cli/cynex.js verify-live ${VAULT_TEST}
 index,prev_hash,obligation_id,recipient,amount,token_id,timestamp,tx_ref,verified_ok
@@ -353,7 +353,7 @@ index,prev_hash,obligation_id,recipient,amount,token_id,timestamp,tx_ref,verifie
         <p className="dim leading-relaxed mb-4">
           Five signals, scored before any settle by the off-chain console gate, never by the vault. A BLOCK refusal names the signal and its
           source. A WARN escalates to a human unless{" "}
-          <span className="mono text-[12.5px] text-white">CYNEX_APPROVE_WARN=1</span> is set. Signals show as unavailable when they cannot
+          <span className="mono text-[13px] text-ink">CYNEX_APPROVE_WARN=1</span> is set. Signals show as unavailable when they cannot
           be sourced, and ALLOW needs at least one prior receipt.
         </p>
         <p className="dim text-[13px] mt-3">
@@ -370,7 +370,7 @@ index,prev_hash,obligation_id,recipient,amount,token_id,timestamp,tx_ref,verifie
             <tbody>
               {SIGNALS.map(([s, what]) => (
                 <tr key={s}>
-                  <td className="mono text-[12px]" style={{ color: "#dbe4ee" }}>
+                  <td className="mono text-xs" style={{ color: "var(--txt)" }}>
                     {s}
                   </td>
                   <td className="dim">{what}</td>
@@ -379,7 +379,7 @@ index,prev_hash,obligation_id,recipient,amount,token_id,timestamp,tx_ref,verifie
             </tbody>
           </table>
         </div>
-        <h3 className="text-white text-[15px] mb-3">code_change_recency, thresholds</h3>
+        <h3 className="text-ink text-[15px] mb-3">code_change_recency, thresholds</h3>
         <pre className="codeblock dimc">
           {`source : on-chain code hash vs latest snapshot
 ALLOW : no change, or last change > 7 days ago
@@ -406,7 +406,7 @@ neutral: no contract, or first observation, not a penalty`}
           Every settle writes a receipt as a NEP-297 event. Receipts form a hash chain: each commits to its predecessor, so history cannot
           be edited, reordered, or truncated without breaking a link. The final receipt is anchored against state() last_receipt_hash.
         </p>
-        <h3 className="text-white text-[15px] mb-3">Frozen receipt hash</h3>
+        <h3 className="text-ink text-[15px] mb-3">Frozen receipt hash</h3>
         <pre className="codeblock">
           {`receipt_hash = SHA-256(
   index as u64 big-endian, prev_hash as 32 raw bytes,
@@ -418,10 +418,10 @@ neutral: no contract, or first observation, not a penalty`}
   tx_ref as u32 big-endian length-prefixed UTF-8, last
 )`}
         </pre>
-        <h3 className="text-white text-[15px] mt-6 mb-3">verify-live</h3>
+        <h3 className="text-ink text-[15px] mt-6 mb-3">verify-live</h3>
         <p className="dim leading-relaxed mb-3">
-          Replays from genesis via paginated <span className="mono text-[12.5px] text-white">receipts(start, limit)</span>, recomputes every
-          link, and detects gaps and mismatches. <b className="text-white">A tamper in receipt i is detected at receipt i+1</b>, because
+          Replays from genesis via paginated <span className="mono text-[13px] text-ink">receipts(start, limit)</span>, recomputes every
+          link, and detects gaps and mismatches. <b className="text-ink">A tamper in receipt i is detected at receipt i+1</b>, because
           receipt i+1 stores the hash of the original receipt i as its prev_hash; no per-receipt hash is stored on chain, only prev_hash in
           the next receipt and last_receipt_hash in state. The in-browser table checks index contiguity only; only the CLI recomputes the
           hash links.
@@ -430,7 +430,7 @@ neutral: no contract, or first observation, not a penalty`}
           <CmdBlock cmdKey="verify" />
           <CmdBlock cmdKey="verifyCsv" />
         </div>
-        <h3 className="text-white text-[15px] mb-3">--csv columns (frozen)</h3>
+        <h3 className="text-ink text-[15px] mb-3">--csv columns (frozen)</h3>
         <pre className="codeblock dimc">index, prev_hash, obligation_id, recipient, amount, token_id, timestamp, tx_ref, verified_ok</pre>
         <p className="dim text-[13px] mt-4">
           The live table with exactly these columns, plus a tamper-and-detect simulation, is on the{" "}
@@ -449,20 +449,27 @@ neutral: no contract, or first observation, not a penalty`}
         <p className="dim leading-relaxed mb-5">
           Repository health gates that must stay green. Reproduce any of them with the cold run in the <a href="#/docs/readme">README</a>.
         </p>
-        <div className="grid sm:grid-cols-2 gap-3 mb-5">
-          {[
-            ["Typecheck (web build, tsc -b)", "clean"],
-            ["Jest", "19 suites passed, 1 skipped · 369 tests passed, 1 skipped, 370 total"],
-            ["Conformance", "6 / 6"],
-          ].map(([k, v]) => (
-            <div key={k} className="panel p-4 flex flex-wrap items-center justify-between gap-2">
-              <span className="mono text-[12.5px] dim">{k}</span>
-              <span className="badge b-allow">
-                <span className="bdot"></span>
-                {v}
-              </span>
-            </div>
-          ))}
+        <div className="panel p-6 mb-5">
+          <div className="flex flex-col">
+            {[
+              ["Typecheck (web build, tsc -b)", "clean"],
+              ["Jest", "19 suites passed, 1 skipped · 369 tests passed, 1 skipped, 370 total"],
+              ["Conformance", "6 / 6"],
+            ].map(([k, v], i, arr) => (
+              <div
+                key={k}
+                className={
+                  "flex flex-wrap items-center justify-between gap-2 py-3" +
+                  (i === 0 ? " pt-0" : "") +
+                  (i === arr.length - 1 ? " pb-0" : " border-b")
+                }
+                style={{ borderColor: "var(--line2)" }}
+              >
+                <span className="mono text-xs dim">{k}</span>
+                <span className="text-sm font-medium text-ink">{v}</span>
+              </div>
+            ))}
+          </div>
         </div>
         <p className="dim text-[13px] leading-relaxed">
           Typecheck, qualified: the React web build (tsc -b) is clean. The console build tsc invocation is a different typecheck and exits
@@ -492,19 +499,19 @@ neutral: no contract, or first observation, not a penalty`}
             <tbody>
               {MCP_TOOLS.map(([name, what, moves]) => (
                 <tr key={name}>
-                  <td className="mono text-[12px]" style={{ color: "#dbe4ee" }}>
+                  <td className="mono text-xs" style={{ color: "var(--txt)" }}>
                     {name}
                   </td>
                   <td className="dim">{what}</td>
-                  <td>{moves ? <span className="mono text-[11px]" style={{ color: "var(--amber)" }}>yes, the only one</span> : <span className="mono text-[11px] dim2">no</span>}</td>
+                  <td>{moves ? <span className="mono text-xs" style={{ color: "var(--amber)" }}>yes, the only one</span> : <span className="mono text-xs dim2">no</span>}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
         <p className="dim text-[13px] leading-relaxed">
-          Run it from <span className="mono text-[12.5px] text-white">frontend/</span>:{" "}
-          <span className="mono text-[12.5px]" style={{ color: "#9be7c4" }}>
+          Run it from <span className="mono text-[13px] text-ink">frontend/</span>:{" "}
+          <span className="mono text-[13px]" style={{ color: "var(--accent-text)" }}>
             {MCP_RUN}
           </span>
           . Live proof: test matrix 16 pass, 0 fail, 2 skipped (M10/M11 TEE, by design); production happy path mcp-prod-001 PAID.
@@ -521,12 +528,12 @@ neutral: no contract, or first observation, not a penalty`}
       <>
         <p className="dim leading-relaxed mb-4">{CONSOLE_FACTS}</p>
         <p className="dim leading-relaxed mb-4">
-          Run it from <span className="mono text-[12.5px] text-white">frontend/</span>:{" "}
-          <span className="mono text-[12.5px]" style={{ color: "#9be7c4" }}>
+          Run it from <span className="mono text-[13px] text-ink">frontend/</span>:{" "}
+          <span className="mono text-[13px]" style={{ color: "var(--accent-text)" }}>
             {CONSOLE_RUN}
           </span>
         </p>
-        <h3 className="text-white text-[15px] mt-6 mb-3">CLI commands (node frontend/dist-test/cli/cynex.js &lt;command&gt;)</h3>
+        <h3 className="text-ink text-[15px] mt-6 mb-3">CLI commands (node frontend/dist-test/cli/cynex.js &lt;command&gt;)</h3>
         <div className="overflow-x-auto mb-4">
           <table className="tbl">
             <thead>
@@ -538,7 +545,7 @@ neutral: no contract, or first observation, not a penalty`}
             <tbody>
               {CLI_COMMANDS.map(([name, cmd]) => (
                 <tr key={name}>
-                  <td className="mono text-[12px]" style={{ color: "#dbe4ee" }}>
+                  <td className="mono text-xs" style={{ color: "var(--txt)" }}>
                     {name}
                   </td>
                   <td className="dim" style={{ overflowWrap: "anywhere" }}>
@@ -588,7 +595,7 @@ export function Docs({ active }: { active?: string }) {
       <section className="wrap pt-12">
         <div className="kicker mb-2">Docs</div>
         <h1 className="text-3xl md:text-4xl mb-2">What is already written</h1>
-        <p className="dim text-[14px] max-w-2xl mb-8">
+        <p className="dim text-sm max-w-2xl mb-8">
           A summary of the repo&apos;s own README and docs, with links to the real files. This page is not the docs as-is: each section
           condenses its source, names its source path and that file&apos;s last-updated commit, and keeps the material caveats in view.
           Claims link to their proof.
@@ -602,8 +609,8 @@ export function Docs({ active }: { active?: string }) {
             <input
               className="input w-full mb-4"
               id="docsearch"
-              placeholder="search docs…"
-              style={{ fontFamily: "Inter" }}
+              placeholder="Search"
+
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -620,7 +627,7 @@ export function Docs({ active }: { active?: string }) {
                 </a>
               ))}
             </nav>
-            <div className="mono text-[10.5px] dim2 mt-4" id="doccount">
+            <div className="mono text-xs dim2 mt-4" id="doccount">
               {q ? matchCount + " of " + DOCS.length + " sections match" : ""}
             </div>
           </aside>
@@ -628,7 +635,7 @@ export function Docs({ active }: { active?: string }) {
             {DOCS.map((d, i) => (
               <section
                 key={d.id}
-                className="docsec panel p-6 md:p-8"
+                className="docsec panel p-6"
                 id={"doc-" + d.id}
                 data-title={d.title.toLowerCase()}
                 style={{ display: matches[i] ? undefined : "none" }}

@@ -9,6 +9,7 @@ import { Landing } from "./pages/Landing";
 import { Demo } from "./pages/Demo";
 import { Docs } from "./pages/Docs";
 import { Proof } from "./pages/Proof";
+import { Logo } from "./components/Logo";
 
 function parseRoute(): string[] {
   return (window.location.hash || "").replace(/^#\/?/, "").split("/").filter(Boolean);
@@ -17,30 +18,20 @@ function parseRoute(): string[] {
 function Header({ page }: { page: string }) {
   const { live } = useLive();
   const nettxt = live.blockHeight
-    ? "TESTNET · " + Number(live.blockHeight).toLocaleString()
+    ? "Testnet \u00b7 " + String(live.blockHeight)
     : live.anyErr
-      ? "TESTNET · RETRYING"
-      : "TESTNET";
+      ? "Testnet \u00b7 retrying"
+      : "Testnet";
   return (
     <header
       className="md:fixed md:top-0 md:left-0 md:right-0 z-50 border-b"
-      style={{ background: "rgba(4,6,10,.85)", backdropFilter: "blur(12px)", borderColor: "var(--line)" }}
+      style={{ background: "var(--bg)", borderColor: "var(--line)" }}
     >
       <div className="wrap flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-2 md:flex-nowrap md:h-16 md:py-0">
         <a href="#/" className="flex items-center gap-3 flex-none">
-          <span
-            className="grid place-items-center w-9 h-9 rounded-xl border"
-            style={{ borderColor: "rgba(52,211,153,.45)", background: "rgba(52,211,153,.08)" }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-              <circle cx="12" cy="10" r="2.2" />
-              <path d="M12 12.2v3.3" />
-            </svg>
-          </span>
-          <span className="leading-tight">
-            <span className="block font-extrabold tracking-tight text-white text-[17px]">CYNEX</span>
-            <span className="hidden md:block text-[10px] mono dim2 tracking-widest uppercase">purpose-bound settlement vault</span>
+          <Logo markSize={28} />
+          <span className="hidden md:block text-xs dim2 leading-tight">
+            purpose-bound settlement vault
           </span>
         </a>
         <nav className="flex items-center gap-1" id="mainnav">

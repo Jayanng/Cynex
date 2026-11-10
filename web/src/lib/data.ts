@@ -103,7 +103,7 @@ export interface GuidedStep {
 }
 export const GUIDED: GuidedStep[] = [
   {
-    n: "01",
+    n: "1",
     anchor: "step1",
     cls: "",
     title: "Happy path, PREIMAGE evidence",
@@ -128,7 +128,7 @@ export const GUIDED: GuidedStep[] = [
     receipt: 11,
   },
   {
-    n: "02",
+    n: "2",
     anchor: "step2",
     cls: "attack",
     title: "Attack, substituted terms, then a replay",
@@ -171,7 +171,7 @@ export const GUIDED: GuidedStep[] = [
     receipt: 12,
   },
   {
-    n: "03",
+    n: "3",
     anchor: "step3",
     cls: "",
     title: "TEE evidence, OutLayer, VRF-bound",

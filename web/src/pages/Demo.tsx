@@ -36,7 +36,7 @@ function Guided({ anchor }: { anchor?: string }) {
             <div className={"node " + s.cls}>{s.n}</div>
             <div className="line"></div>
           </div>
-          <div className="panel p-6 md:p-7">
+          <div className="panel p-6">
             <div className="flex flex-wrap items-center gap-3 mb-2">
               <h3 className="text-lg md:text-xl">{s.title}</h3>
               <span className="hashchip" title="obligation id">
@@ -44,7 +44,7 @@ function Guided({ anchor }: { anchor?: string }) {
                 <CopyButton text={s.ob} />
               </span>
             </div>
-            <p className="dim text-[14px] leading-relaxed mb-5 max-w-3xl">{s.desc}</p>
+            <p className="dim text-sm leading-relaxed mb-5 max-w-3xl">{s.desc}</p>
             <div className="terms-grid mb-5">
               <TermsGrid terms={s.terms} />
             </div>
@@ -56,12 +56,12 @@ function Guided({ anchor }: { anchor?: string }) {
                     <Badge value={a.verdict} extra={a.code ?? null} />
                   </span>
                   <HashChip hash={a.tx} />
-                  {a.note ? <span className="mono text-[11px] dim2">{a.note}</span> : null}
+                  {a.note ? <span className="mono text-xs dim2">{a.note}</span> : null}
                 </div>
               ))}
             </div>
             <div className="flex flex-wrap items-center gap-4">
-              <span className="mono text-[12px] dim">{s.delta}</span>
+              <span className="mono text-xs dim">{s.delta}</span>
               <span className="dim2">·</span>
               <button className="btn sm" onClick={() => void run(s.receipt)}>
                 Read receipt #{s.receipt} from chain, now
@@ -77,20 +77,20 @@ function Guided({ anchor }: { anchor?: string }) {
       {/* step 5, verification (step 4 is the reputation gate) */}
       <div className="step" id="guided-step5">
         <div className="rail">
-          <div className="node">05</div>
+          <div className="node">5</div>
         </div>
-        <div className="panel p-6 md:p-7">
+        <div className="panel p-6">
           <div className="flex flex-wrap items-center gap-3 mb-2">
             <h3 className="text-lg md:text-xl">Verification, replay the whole chain</h3>
             <ReadOnlyBadge />
           </div>
-          <p className="dim text-[14px] leading-relaxed mb-4 max-w-3xl">
-            <span className="mono text-[13px]" style={{ color: "#9be7c4" }}>
+          <p className="dim text-sm leading-relaxed mb-4 max-w-3xl">
+            <span className="mono text-[13px]" style={{ color: "var(--accent-text)" }}>
               node frontend/dist-test/cli/cynex.js verify-live cynex-testvault.cynexmaster.testnet
             </span>{" "}
-            paginates <span className="mono text-[12.5px]">receipts(start, limit)</span> from genesis over the test vault, recomputes every
+            paginates <span className="mono text-[13px]">receipts(start, limit)</span> from genesis over the test vault, recomputes every
             hash link, and detects gaps and mismatches. Expected: every row{" "}
-            <span className="mono text-[12.5px]">verified_ok = true</span>.
+            <span className="mono text-[13px]">verified_ok = true</span>.
           </p>
           <div className="space-y-2 mb-4">
             <CmdBlock cmdKey="verify" />
@@ -100,10 +100,10 @@ function Guided({ anchor }: { anchor?: string }) {
             <span data-live-region="counts">
               <CountsLine />
             </span>
-            <a className="mono text-[12px] inline-flex items-center gap-2" style={{ color: "var(--green)" }} href="#/proof">
+            <a className="mono text-xs inline-flex items-center gap-2" style={{ color: "var(--accent-text)" }} href="#/proof">
               full proof page{" "}
-              <span style={{ width: 12, height: 12, display: "inline-grid", placeItems: "center" }}>
-                <Icon name="arrow" size={12} />
+              <span style={{ width: 16, height: 16, display: "inline-grid", placeItems: "center" }}>
+                <Icon name="arrow" />
               </span>
             </a>
           </div>
@@ -225,7 +225,7 @@ function Sandbox() {
       return (
         <tr className="clickable" data-row={i} key={r.id} onClick={() => setPgSelected(i)}>
           <td className="dim2">{i + 1}</td>
-          <td style={{ color: "#dbe4ee" }}>{r.id}</td>
+          <td style={{ color: "var(--txt)" }}>{r.id}</td>
           <td className="dim">{r.ev}</td>
           <td>{r.amount}</td>
           <td className="dim">{r.nonce}</td>
@@ -236,7 +236,7 @@ function Sandbox() {
                 <span className="bdot"></span>read-only
               </span>
             ) : (
-              <span className="mono text-[11px] dim2">explorable</span>
+              <span className="mono text-xs dim2">explorable</span>
             )}
           </td>
         </tr>
@@ -247,9 +247,9 @@ function Sandbox() {
   const pgDetail = (i: number) => {
     const r = playground[i];
     return (
-      <div className="p-5 fadein">
+      <div className="p-6 fadein">
         <div className="flex flex-wrap items-center gap-3 mb-3">
-          <span className="mono text-[15px] text-white">{r.id}</span>
+          <span className="mono text-[15px] text-ink">{r.id}</span>
           {pgBadge(r.expect)}
           {r.ro ? (
             <span className="badge b-dim">
@@ -272,7 +272,7 @@ function Sandbox() {
           />
         </div>
         {r.recipient === "acme-supplies.testnet" ? (
-          <p className="dim text-[13px] mb-3" style={{ color: "#fde68a" }}>
+          <p className="text-[13px] mb-3" style={{ color: "var(--warn-text)" }}>
             Warning: acme-supplies.testnet does not exist on chain. Its token balance exists only because ft_transfer credits the token contract map, so a settle naming it is not a payment to a real account.
           </p>
         ) : null}
@@ -280,9 +280,9 @@ function Sandbox() {
         {r.tx ? (
           <>
             <div className="flex flex-wrap items-center gap-3">
-              <span className="mono text-[11px] dim2 uppercase tracking-widest">settle tx</span>
+              <span className="mono text-xs dim2 ">settle tx</span>
               <HashChip hash={r.tx} />
-              <span className="mono text-[11px] dim2">receipt #{r.receipt}</span>
+              <span className="mono text-xs dim2">receipt #{r.receipt}</span>
               <button className="btn sm ghost" onClick={() => void run(Number(r.receipt))}>
                 chain read
               </button>
@@ -292,7 +292,7 @@ function Sandbox() {
             </div>
           </>
         ) : (
-          <div className="mono text-[11px] dim2">
+          <div className="mono text-xs dim2">
             no live settle from the browser, expected outcome shown against the on-chain terms.
             {r.receipt != null ? " Test receipt #" + r.receipt + "." : ""}
           </div>
@@ -312,7 +312,7 @@ function Sandbox() {
 
   return (
     <section className="wrap mt-10">
-      <div className="callout mono text-[12px] mb-8" style={{ color: "#fde68a" }}>
+      <div className="callout mono text-xs mb-8">
         Read / explore only. Playground obligations are owner-created, this page cannot create obligations and cannot settle. Fixture:{" "}
         {playgroundSource}.
       </div>
@@ -322,7 +322,7 @@ function Sandbox() {
         <div className="flex flex-wrap items-center justify-between gap-3 p-5 border-b" style={{ borderColor: "var(--line2)" }}>
           <div>
             <h2 className="text-xl">Playground matrix, 18 file obligations + 13 scenario fixtures</h2>
-            <div className="mono text-[11px] dim2 mt-1">
+            <div className="mono text-xs dim2 mt-1">
               demo/playground-obligations.json · the three demo rows are read-only (settleable: false) · pg-* rows are scenario fixtures,
               not file obligations · amounts are base units
             </div>
@@ -353,7 +353,7 @@ function Sandbox() {
         </div>
         <div id="pgdetail" className="border-t" style={{ borderColor: "var(--line2)" }}>
           {pgSelected == null ? (
-            <div className="p-5 mono text-[12px] dim2">select a row for the full result card.</div>
+            <div className="p-6 mono text-xs dim2">select a row for the full result card.</div>
           ) : (
             pgDetail(pgSelected)
           )}
@@ -362,52 +362,62 @@ function Sandbox() {
 
       {/* attack runner */}
       <div className="mb-4">
-        <div className="kicker mb-2" style={{ color: "var(--red)" }}>
+        <div className="kicker mb-2">
           Attack runner
         </div>
         <h2 className="text-xl">Six ways in. Six refusals.</h2>
-        <p className="dim text-[13.5px] mt-2 max-w-3xl">
+        <p className="dim text-sm mt-2 max-w-3xl">
           demo/attack-scenarios.json. Scenarios 1–3 were executed on the test vault, the refusal tx is linked. Scenarios 4–6 are evaluated
           against the same on-chain terms and show the expected verdict and reason code.
         </p>
       </div>
-      <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4 mb-12">
-        {ATTACKS.map((a, i) => (
-          <div className="panel p-5 flex flex-col gap-3" key={a.name}>
-            <div className="flex items-center justify-between gap-2">
-              <h3 className="text-[15px]">{a.name}</h3>
-              <span className="mono text-[10px] dim2">atk-{i + 1}</span>
-            </div>
-            <p className="dim text-[12.5px] leading-relaxed">{a.vector}</p>
-            <div className="mono text-[11px] dim2">attempt: {a.attempt}</div>
-            <div className="mt-auto flex flex-col gap-2">
-              <button className="btn sm" onClick={() => runAttack(i)} disabled={!!atkBusy[i]}>
-                Run evaluation
-              </button>
-              <div id={"atk-" + i}>
-                {atkOut[i]?.kind === "loading" ? (
-                  <div className="logline diml">
-                    <span className="spin g"></span>evaluating against on-chain terms…
-                  </div>
-                ) : atkOut[i]?.kind === "done" ? (
-                  <>
-                    <div className="logline bad fadein">
-                      <Badge value="REFUSED" extra={a.code} />
+      <div className="panel p-6 mb-12">
+        <div className="flex flex-col">
+          {ATTACKS.map((a, i) => (
+            <div
+              key={a.name}
+              className={
+                "flex flex-col gap-2 py-4" +
+                (i === 0 ? " pt-0" : "") +
+                (i === ATTACKS.length - 1 ? " pb-0" : " border-b")
+              }
+              style={{ borderColor: "var(--line2)" }}
+            >
+              <div className="flex flex-wrap items-center gap-3">
+                <h3 className="text-[15px]">{a.name}</h3>
+                <span className="mono text-xs dim2">atk-{i + 1}</span>
+                <span className="mono text-xs dim2">attempt: {a.attempt}</span>
+              </div>
+              <p className="dim text-[13px] leading-relaxed max-w-3xl">{a.vector}</p>
+              <div className="flex flex-wrap items-center gap-3">
+                <button className="btn sm" onClick={() => runAttack(i)} disabled={!!atkBusy[i]}>
+                  Run evaluation
+                </button>
+                <div id={"atk-" + i}>
+                  {atkOut[i]?.kind === "loading" ? (
+                    <div className="logline diml">
+                      <span className="spin g"></span>evaluating against on-chain terms…
                     </div>
-                    {a.tx ? (
-                      <div className="mt-2 flex flex-col gap-1.5 fadein">
-                        <span className="mono text-[10px] dim2 uppercase tracking-widest">executed on test vault</span>
-                        <HashChip hash={a.tx} />
-                      </div>
-                    ) : (
-                      <div className="mono text-[10.5px] dim2 mt-2 fadein">expected on-chain verdict, scenario fixture</div>
-                    )}
-                  </>
-                ) : null}
+                  ) : atkOut[i]?.kind === "done" ? (
+                    <span className="fadein inline-flex flex-wrap items-center gap-3">
+                      <span className="logline bad">
+                        <Badge value="REFUSED" extra={a.code} />
+                      </span>
+                      {a.tx ? (
+                        <>
+                          <span className="mono text-xs dim2">executed on test vault</span>
+                          <HashChip hash={a.tx} />
+                        </>
+                      ) : (
+                        <span className="mono text-xs dim2">expected on-chain verdict, scenario fixture</span>
+                      )}
+                    </span>
+                  ) : null}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
 
       <TamperPanel id="sandbox" />
@@ -425,17 +435,24 @@ export function Demo({ mode, anchor }: { mode: "guided" | "sandbox"; anchor?: st
   return (
     <>
       <section className="wrap pt-12">
+        <a
+          href="#/"
+          className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium mb-4"
+          style={{ borderColor: "var(--line)", background: "var(--raised)", color: "var(--secondary)" }}
+        >
+          ← Landing
+        </a>
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <div className="kicker mb-2">Demo · test vault</div>
             <h1 className="text-3xl md:text-4xl">Proof in motion</h1>
-            <p className="dim text-[14px] mt-2 max-w-2xl">
+            <p className="dim text-sm mt-2 max-w-2xl">
               Every action below already happened on{" "}
-              <span className="mono text-[12.5px]">{VAULT_TEST}</span>, each prints its real tx hash, explorer-linked, with a live chain
+              <span className="mono text-[13px]">{VAULT_TEST}</span>, each prints its real tx hash, explorer-linked, with a live chain
               read after it. No login, no wallet, no obligation creation.
             </p>
           </div>
-          <div className="inline-flex items-center gap-1 p-1 rounded-xl border" style={{ borderColor: "var(--line)", background: "rgba(7,11,17,.8)" }}>
+          <div className="inline-flex items-center gap-1 p-1 rounded-xl border" style={{ borderColor: "var(--line)", background: "var(--raised)" }}>
             <a className={"togglebtn " + (mode === "guided" ? "active" : "")} href="#/demo/guided">
               Guided
             </a>
