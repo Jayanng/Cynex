@@ -23,10 +23,10 @@ function Header({ page }: { page: string }) {
       : "TESTNET";
   return (
     <header
-      className="fixed top-0 left-0 right-0 z-50 border-b"
+      className="md:fixed md:top-0 md:left-0 md:right-0 z-50 border-b"
       style={{ background: "rgba(4,6,10,.85)", backdropFilter: "blur(12px)", borderColor: "var(--line)" }}
     >
-      <div className="wrap flex items-center justify-between h-16 gap-4">
+      <div className="wrap flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-2 md:flex-nowrap md:h-16 md:py-0">
         <a href="#/" className="flex items-center gap-3 flex-none">
           <span
             className="grid place-items-center w-9 h-9 rounded-xl border"
@@ -93,7 +93,7 @@ function Shell() {
   return (
     <>
       <Header page={page} />
-      <main className="pt-16 min-h-screen">
+      <main className="md:pt-16 min-h-screen">
         {page === "demo" ? (
           <Demo mode={route[1] === "sandbox" ? "sandbox" : "guided"} anchor={route[2]} />
         ) : page === "docs" ? (

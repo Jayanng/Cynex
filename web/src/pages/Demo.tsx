@@ -52,7 +52,7 @@ function Guided({ anchor }: { anchor?: string }) {
               {s.attempts.map((a) => (
                 <div className="attempt" key={a.label}>
                   <span className="att-label">{a.label}</span>
-                  <span className="flex items-center gap-2">
+                  <span className="flex flex-wrap items-center gap-2">
                     <Badge value={a.verdict} extra={a.code ?? null} />
                   </span>
                   <HashChip hash={a.tx} />

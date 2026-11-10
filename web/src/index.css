@@ -26,7 +26,7 @@ h1,h2,h3{font-weight:700;letter-spacing:-.02em}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;backdrop-filter:blur(6px)}
 .panel-h{transition:border-color .25s,transform .25s}
 .panel-h:hover{border-color:rgba(52,211,153,.35)}
-.btn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:10px 18px;font-weight:600;font-size:14px;color:var(--txt);background:rgba(255,255,255,.03);cursor:pointer;transition:all .2s;white-space:nowrap}
+.btn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:10px 18px;font-weight:600;font-size:14px;color:var(--txt);background:rgba(255,255,255,.03);cursor:pointer;transition:all .2s;white-space:normal}
 .btn:hover{border-color:rgba(52,211,153,.5);color:#fff;background:rgba(52,211,153,.06)}
 .btn-primary{background:linear-gradient(180deg,rgba(52,211,153,.2),rgba(52,211,153,.07));border-color:rgba(52,211,153,.5);color:#a7f3d0}
 .btn-primary:hover{background:linear-gradient(180deg,rgba(52,211,153,.3),rgba(52,211,153,.12));color:#d1fae5}
@@ -35,14 +35,15 @@ h1,h2,h3{font-weight:700;letter-spacing:-.02em}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 .input{background:#05090f;border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:13px;color:var(--txt);outline:none;font-family:'JetBrains Mono',monospace}
 .input:focus{border-color:rgba(52,211,153,.5)}
-.badge{display:inline-flex;align-items:center;gap:7px;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;letter-spacing:.1em;padding:4px 11px;border-radius:999px;border:1px solid;text-transform:uppercase;white-space:nowrap}
+.badge{display:inline-flex;align-items:center;gap:7px;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;letter-spacing:.1em;padding:4px 11px;border-radius:999px;border:1px solid;text-transform:uppercase;white-space:normal}
 .badge .bdot{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
 .b-paid,.b-allow,.b-ok{color:var(--green);border-color:rgba(52,211,153,.45);background:rgba(52,211,153,.08)}
 .b-refused,.b-blocked{color:var(--red);border-color:rgba(248,113,113,.45);background:rgba(248,113,113,.08)}
 .b-warn{color:var(--amber);border-color:rgba(251,191,36,.45);background:rgba(251,191,36,.08)}
 .b-dim{color:var(--dim);border-color:var(--line);background:rgba(148,163,184,.06)}
-.codechip{font-family:'JetBrains Mono',monospace;font-size:11px;color:#fca5a5;border:1px solid rgba(248,113,113,.35);background:rgba(248,113,113,.07);border-radius:7px;padding:3px 8px;white-space:nowrap}
-.hashchip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);background:rgba(2,6,12,.65);border-radius:8px;padding:3px 5px 3px 10px;font-size:12.5px;color:#a9c6de;font-family:'JetBrains Mono',monospace;max-width:100%}
+.codechip{font-family:'JetBrains Mono',monospace;font-size:11px;color:#fca5a5;border:1px solid rgba(248,113,113,.35);background:rgba(248,113,113,.07);border-radius:7px;padding:3px 8px;white-space:normal;overflow-wrap:anywhere}
+.hashchip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);background:rgba(2,6,12,.65);border-radius:8px;padding:3px 5px 3px 10px;font-size:12.5px;color:#a9c6de;font-family:'JetBrains Mono',monospace;max-width:100%;overflow:hidden;min-width:0}
+.hashchip>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .icbtn{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:6px;color:var(--dim);cursor:pointer;border:none;background:transparent;flex:none;transition:all .15s;padding:0}
 .icbtn:hover{background:rgba(255,255,255,.07);color:#fff}
 .icbtn svg{width:13px;height:13px}
@@ -54,7 +55,12 @@ h1,h2,h3{font-weight:700;letter-spacing:-.02em}
 .flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .flow-step{border:1px solid var(--line);background:rgba(2,6,12,.6);border-radius:9px;padding:8px 12px;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#c3d3e4;max-width:100%}
 .flow-arrow{color:var(--green);font-family:'JetBrains Mono',monospace;font-size:13px;flex:none}
-@media(max-width:640px){.wrap{padding:0 16px}.hero-h{font-size:clamp(36px,11vw,54px)}.hashchip{max-width:100%;overflow:hidden}.attempt{max-width:100%}}
+/* Wrap and ellipsis rules above are base rules, not mobile-only: a nowrap
+   badge or button overflows at any width where its container is narrower
+   than its content. Measured pre-fix, /docs overflowed at 641, 700, 767,
+   800, 860, 900, 926, 1000, 1100 and 1200px, so no media-query ceiling
+   (767 or 860) closes the gap. */
+@media(max-width:640px){.wrap{padding:0 16px}.hero-h{font-size:clamp(36px,11vw,54px)}.attempt{max-width:100%}.badge{text-align:left;line-height:1.6}.btn{text-align:left}}
 .strip{display:grid;grid-template-columns:repeat(7,1fr);border:1px solid var(--line);border-radius:14px;overflow:hidden;background:rgba(7,11,17,.85)}
 .strip-cell{padding:14px 16px;border-right:1px solid var(--line2);min-width:0}
 .strip-cell:last-child{border-right:0}
@@ -76,7 +82,8 @@ h1,h2,h3{font-weight:700;letter-spacing:-.02em}
 .tbl tbody tr{transition:background .15s;cursor:default}
 .tbl tbody tr:hover td{background:rgba(255,255,255,.025)}
 .tbl tbody tr.clickable{cursor:pointer}
-.step{display:grid;grid-template-columns:52px 1fr;gap:18px;position:relative}
+.step{display:grid;grid-template-columns:52px minmax(0,1fr);gap:18px;position:relative}
+.step>*{min-width:0}
 .rail{display:flex;flex-direction:column;align-items:center}
 .node{width:40px;height:40px;border-radius:12px;border:1px solid rgba(52,211,153,.4);display:grid;place-items:center;font-family:'JetBrains Mono',monospace;font-size:12.5px;color:var(--green);background:#070b11;flex:none}
 .node.attack{color:var(--red);border-color:rgba(248,113,113,.4)}

@@ -259,7 +259,7 @@ export function BreakIt() {
             <span className="att-label">
               live settle attempt · {sc.label.toLowerCase()} · obligation {targetId}
             </span>
-            <span className="flex items-center gap-2">
+            <span className="flex flex-wrap items-center gap-2">
               <Badge value="REFUSED" extra={code} />
             </span>
           </div>
@@ -316,7 +316,7 @@ export function BreakIt() {
             </div>
             <div className="attempt mb-3">
               <span className="att-label">{b.attempt}</span>
-              <span className="flex items-center gap-2">
+              <span className="flex flex-wrap items-center gap-2">
                 <Badge value="REFUSED" extra={b.code} />
               </span>
             </div>
