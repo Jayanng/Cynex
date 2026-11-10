@@ -1,8 +1,10 @@
-/* Live data hook. Every number the site shows as CHAIN READ flows through
-   here. Failures return null, and the UI shows Unavailable. A stale block
-   height freezes visibly rather than pretending freshness. */
+/* Live data. One shared source for every number the site shows as CHAIN READ.
+   A single LiveProvider fetches and polls; nav and pages all read the same
+   snapshot, so a block height never disagrees with itself across the page.
+   Failures return null and the UI shows Unavailable. A stale reading freezes
+   visibly rather than pretending freshness. */
 
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import {
   blockHeight,
   fetchReceipts,
@@ -28,19 +30,23 @@ export interface LiveState {
   ok: boolean;
 }
 
-export function useLive(): LiveState {
-  const [s, setS] = useState<LiveState>({
-    block: null,
-    codeHashTest: null,
-    codeHashProd: null,
-    receiptsTest: [],
-    receiptsProd: [],
-    balance: null,
-    agentUnits: null,
-    lastSettle: null,
-    checkedAt: "",
-    ok: false,
-  });
+const EMPTY: LiveState = {
+  block: null,
+  codeHashTest: null,
+  codeHashProd: null,
+  receiptsTest: [],
+  receiptsProd: [],
+  balance: null,
+  agentUnits: null,
+  lastSettle: null,
+  checkedAt: "",
+  ok: false,
+};
+
+const LiveContext = createContext<LiveState>(EMPTY);
+
+export function LiveProvider({ children }: { children: ReactNode }) {
+  const [s, setS] = useState<LiveState>(EMPTY);
 
   useEffect(() => {
     let alive = true;
@@ -69,12 +75,26 @@ export function useLive(): LiveState {
         ok: block !== null,
       });
     })();
+
+    // The block height keeps ticking so the console reads as running.
+    const tick = setInterval(async () => {
+      const b = await blockHeight();
+      if (alive && b !== null) {
+        setS((prev) => ({ ...prev, block: b, checkedAt: new Date().toISOString().slice(11, 19), ok: true }));
+      }
+    }, 12000);
+
     return () => {
       alive = false;
+      clearInterval(tick);
     };
   }, []);
 
-  return s;
+  return <LiveContext.Provider value={s}>{children}</LiveContext.Provider>;
+}
+
+export function useLive(): LiveState {
+  return useContext(LiveContext);
 }
 
 export function codeHashMatches(h: string | null): boolean {

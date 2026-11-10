@@ -95,7 +95,7 @@
     "buildWeb": "cd web && npm install && npm run build"
   },
   "repoFacts": {
-    "jest": { "passed": 384, "skipped": 1, "suites": 21, "command": "cd frontend && npm run jest" },
+    "jest": { "passed": 383, "skipped": 1, "suites": 21, "command": "cd frontend && npm run jest" },
     "contractTests": { "count": 142, "command": "cd contract && cargo test --lib" },
     "errorCodes": { "defined": 25, "returnedBySettle": 11 }
   }
