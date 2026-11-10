@@ -1,4 +1,4 @@
-/* Cynex web — app shell.
+/* Cynex web, app shell.
    Hash routing matching the showcase URLs (#/landing, #/demo, #/docs,
    #/proof) so existing links keep working. The header and the live
    strip read from the same live store. */
@@ -82,12 +82,12 @@ function Shell() {
   useEffect(() => {
     document.title =
       page === "demo"
-        ? "Demo — Cynex"
+        ? "Demo, Cynex"
         : page === "docs"
-          ? "Docs — Cynex"
+          ? "Docs, Cynex"
           : page === "proof"
-            ? "Proof — Cynex"
-            : "Cynex — Pay the obligation. Not the prompt.";
+            ? "Proof, Cynex"
+            : "Cynex, Pay the obligation. Not the prompt.";
   }, [page]);
 
   return (

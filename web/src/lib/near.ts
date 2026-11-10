@@ -1,8 +1,39 @@
-/* Cynex web — typed NEAR client.
-   One typed client for everything: all chain reads go through near-api-js
-   (JsonRpcProvider, callFunction / viewContractCode), the same major
-   version the repo uses (near-api-js 7). No raw JSON-RPC fetch, no CDN.
-   Live reads only. On failure: unavailable, retry. */
+/* Cynex web, typed NEAR client.
+   Chain reads go through near-api-js (JsonRpcProvider, callFunction /
+   viewContractCode), the same major version the repo uses (near-api-js 7).
+   One exception: receipts. near-api-js parses JSON with JSON.parse, which
+   rounds u64 timestamps over 2^53, and a rounded timestamp recomputes to
+   a different receipt hash, so a browser replay would falsely fail. The
+   CLI solves this the same way (cli/cynex.ts:365-380, parseReceiptsRaw):
+   fetch the receipts view raw and quote the index, amount, and timestamp
+   numbers before parsing, keeping them exact as BigInt end to end. */
+
+/* ---------- receipts: raw fetch, exact u64 values ---------- */
+async function fetchReceiptPage(vault: string, start: number, limit: number): Promise<{ rows: Receipt[]; block: number | null }> {
+  const argsBase64 = btoa(JSON.stringify({ start, limit }));
+  const response = await fetch(RPC_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: "cynex-receipts",
+      method: "query",
+      params: {
+        request_type: "call_function",
+        account_id: vault,
+        method_name: "receipts",
+        args_base64: argsBase64,
+        finality: "final",
+      },
+    }),
+  });
+  const data = (await response.json()) as { error?: unknown; result?: { result?: number[]; block_height?: number } };
+  if (data.error) throw new Error("receipts view failed: " + JSON.stringify(data.error));
+  const raw = new TextDecoder().decode(new Uint8Array(data.result?.result ?? []));
+  const quoted = raw.replace(/"(index|amount|timestamp)":\s*(-?\d+)/g, '"$1":"$2"');
+  const rows = JSON.parse(quoted) as Receipt[];
+  return { rows: Array.isArray(rows) ? rows : [], block: data.result?.block_height ?? null };
+}
 
 import { JsonRpcProvider } from "near-api-js";
 import { RPC_URL, VAULT_PROD, VAULT_TEST, TOKEN, AGENT, DEMO_POLICY_ID } from "./data";
@@ -85,15 +116,16 @@ export async function fetchReceipts(vault: string): Promise<{ rows: Receipt[]; b
   const out: Receipt[] = [];
   let start = 0;
   const limit = 50;
+  let block: number | null = null;
   for (let i = 0; i < 10; i++) {
-    const r = await viewCall<Receipt[] | { receipts: Receipt[] }>(vault, "receipts", { start, limit });
-    const page = Array.isArray(r.data) ? r.data : r.data && Array.isArray(r.data.receipts) ? r.data.receipts : [];
-    if (page.length === 0) break;
-    out.push(...page);
-    if (page.length < limit) break;
+    const page = await fetchReceiptPage(vault, start, limit);
+    if (page.rows.length === 0) break;
+    if (block === null) block = page.block;
+    out.push(...page.rows);
+    if (page.rows.length < limit) break;
     start += limit;
   }
-  return { rows: out, block: null };
+  return { rows: out, block };
 }
 
 /* The demo policy on the test vault is p6-001. The old page called
@@ -120,11 +152,11 @@ export async function agentBalance(): Promise<string> {
   return String(v);
 }
 
-/* Fetch a single receipt by index, for the per-step chain reads. */
+/* Fetch a single receipt by index, for the per-step chain reads.
+   Same raw fetch as fetchReceipts, so the timestamp stays exact. */
 export async function readReceipt(index: number): Promise<{ rec: Receipt | null; block: number | null }> {
-  const r = await viewCall<Receipt[] | { receipts: Receipt[] }>(VAULT_TEST, "receipts", { start: index, limit: 1 });
-  const rec = Array.isArray(r.data) ? r.data[0] : r.data && Array.isArray(r.data.receipts) ? r.data.receipts[0] : null;
-  return { rec: rec ?? null, block: r.block };
+  const page = await fetchReceiptPage(VAULT_TEST, index, 1);
+  return { rec: page.rows[0] ?? null, block: page.block };
 }
 
 /* ---------- formatting ---------- */
@@ -164,17 +196,65 @@ export function bytesToHex(v: number[] | string | null | undefined): string {
 }
 
 export function shortHex(hex: string, a = 8, b = 6): string {
-  if (!hex) return "—";
+  if (!hex) return "-";
   return hex.length > a + b + 1 ? hex.slice(0, a) + "…" + hex.slice(-b) : hex;
 }
 
 export function trunc(h: string, a = 8, b = 6): string {
-  if (!h) return "—";
+  if (!h) return "-";
   return h.length > a + b + 1 ? h.slice(0, a) + "…" + h.slice(-b) : h;
 }
 
-/* In-browser receipt hash, the same formula the showcase uses for the
-   tamper-and-detect working copy. The canonical verifier is cynex-verify. */
+/* In-browser receipt hash: the frozen binary formula from
+   frontend/src/cynex/receipt.ts (mirroring contract/src/lib.rs:351-377).
+   SHA-256 over index as u64 big-endian, prev_hash as 32 raw bytes,
+   length-prefixed UTF-8 strings (u32 big-endian length plus bytes),
+   amount as u128 big-endian, timestamp as u64 big-endian.
+   Verified against live receipts: hash of receipt 0 is
+   b58ca0f15967f41f74b75dd4fe069588d8bb225814427dff8949eb9fb91b6d8e, which
+   equals the on-chain prev_hash of receipt 1, and all 30 links verify.
+   The canonical verifier is the CLI verify-live command. */
+function u64be(v: bigint): Uint8Array {
+  const b = new Uint8Array(8);
+  new DataView(b.buffer).setBigUint64(0, v, false);
+  return b;
+}
+function u128be(v: bigint): Uint8Array {
+  const b = new Uint8Array(16);
+  let x = v;
+  for (let i = 15; i >= 0; i--) {
+    b[i] = Number(x & 0xffn);
+    x >>= 8n;
+  }
+  return b;
+}
+function lenPrefixed(s: string): Uint8Array {
+  const bytes = new TextEncoder().encode(s);
+  const out = new Uint8Array(4 + bytes.length);
+  new DataView(out.buffer).setUint32(0, bytes.length, false);
+  out.set(bytes, 4);
+  return out;
+}
+export function prevHashBytes(v: number[] | string | null | undefined): Uint8Array {
+  if (v == null) return new Uint8Array(32);
+  if (typeof v === "string") {
+    const hex = v.length === 64 ? v : v.padStart(64, "0");
+    const out = new Uint8Array(32);
+    for (let i = 0; i < 32; i++) out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+    return out;
+  }
+  return new Uint8Array(v);
+}
+function concat(parts: Uint8Array[]): Uint8Array {
+  const total = parts.reduce((n, p) => n + p.length, 0);
+  const out = new Uint8Array(total);
+  let off = 0;
+  for (const p of parts) {
+    out.set(p, off);
+    off += p.length;
+  }
+  return out;
+}
 export async function receiptHash(r: {
   index: number | string;
   prev_hash: number[] | string;
@@ -185,26 +265,47 @@ export async function receiptHash(r: {
   timestamp: number | string;
   tx_ref: string;
 }): Promise<string> {
-  /* Same stringification as the showcase: a byte array stringifies to its
-     comma-separated decimal list. The tamper panel only compares hashes
-     inside its own working copy, so the formula is self-consistent. */
-  const s =
-    "" + r.index + String(r.prev_hash) + r.obligation_id + r.recipient + r.amount + r.token_id + r.timestamp + r.tx_ref;
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  const encoded = concat([
+    u64be(BigInt(r.index)),
+    prevHashBytes(r.prev_hash),
+    lenPrefixed(r.obligation_id),
+    lenPrefixed(r.recipient),
+    u128be(BigInt(r.amount)),
+    lenPrefixed(r.token_id),
+    u64be(BigInt(r.timestamp)),
+    lenPrefixed(r.tx_ref),
+  ]);
+  const buf = await crypto.subtle.digest("SHA-256", encoded as unknown as BufferSource);
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/* Linkage: index contiguity, plus prev_hash linkage when a hash field is
-   present on the receipts. The receipts view returns no hash field, so in
-   practice this is the contiguity check. */
+/* Hash-link verification, decoded bytes compared to bytes: recompute the
+   hash of receipt i-1 with the frozen formula and compare it to the
+   prev_hash stored in receipt i. The receipts view returns no hash field,
+   so this is the only way the browser can check the links. */
+export async function verifyHashLinks(rows: Receipt[]): Promise<{ allOk: boolean; perRow: boolean[] }> {
+  const perRow: boolean[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    if (i === 0) {
+      perRow.push(true);
+      continue;
+    }
+    const h = await receiptHash(rows[i - 1]);
+    perRow.push(bytesToHex(rows[i].prev_hash) === h);
+  }
+  return { allOk: perRow.every(Boolean), perRow };
+}
+
+/* Linkage shown in the live table: index contiguity only. The Receipt
+   struct has no hash field (contract/src/lib.rs:203-212), so the receipts
+   view returns no hash to compare a prev_hash against. Only the CLI
+   recomputes the hash links. */
 export function computeLinkage(rows: Receipt[] | null | undefined): { allOk: boolean | null; perRow: boolean[] } {
   if (!rows || !rows.length) return { allOk: null, perRow: [] };
   const perRow = rows.map((r, i) => {
     if (i === 0) return true;
     const p = rows[i - 1];
-    const contig = Number(r.index) === Number(p.index) + 1;
-    if (p.hash && r.prev_hash) return contig && bytesToHex(r.prev_hash) === p.hash;
-    return contig;
+    return Number(r.index) === Number(p.index) + 1;
   });
   return { allOk: perRow.every(Boolean), perRow };
 }

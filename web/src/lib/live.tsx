@@ -1,8 +1,8 @@
-/* Cynex web — live store.
+/* Cynex web, live store.
    Replaces the static page's global `live` object and renderLiveRegions.
    One refresh reads all live values in parallel; components re-render
    from this context. On any failure the affected field shows
-   "Unavailable — retrying", never a cached value, and a retry is
+   "Unavailable, retrying", never a cached value, and a retry is
    scheduled after 8 seconds. A refresh also runs every 5 seconds while
    a live region is mounted, as in the showcase. */
 

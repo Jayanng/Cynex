@@ -1,10 +1,12 @@
-/* Cynex web — try to break it, plus demo-token live mode.
-   Your pick is a simulation, labelled as one — it is evaluated in the
+/* Cynex web, try to break it, plus demo-token live mode.
+   Your pick is a simulation, labelled as one, it is evaluated in the
    browser against the real on-chain obligation terms. The refusal it
-   shows is the real on-chain verdict: the first three attacks were
-   executed on the test vault and link to their real refusal transactions.
+   shows is the real on-chain verdict for the first three attacks, which
+   were executed on the test vault and link to their real refusal
+   transactions. The fourth attack was never executed on chain, so its
+   verdict is simulated, not a real on-chain verdict.
    Live mode signs a real settle call with the demo key via the bundled
-   near-api-js (not a CDN). Only attacks are offered in live mode — never
+   near-api-js (not a CDN). Only attacks are offered in live mode, never
    a correct settle. Any failure that is NOT a vault refusal is reported
    plainly and falls back to the simulated panel, never presented as a
    refusal. */
@@ -100,7 +102,7 @@ export function BreakIt() {
     };
     if (!demoKeyConfigured()) {
       fail(
-        "Live mode is not configured yet — the demo key has not been supplied by Johnson. Showing the simulated refusal instead.",
+        "Live mode is not configured yet, the demo key has not been supplied by Johnson. Showing the simulated refusal instead.",
         "not configured"
       );
       return;
@@ -150,7 +152,7 @@ export function BreakIt() {
           (before.in_flight ? " (in flight)" : "") +
           ", but this attack needs it " +
           (need === "NOT_READY" ? "not READY and not PAID" : need) +
-          ". The obligation may have been settled or its state may have moved — Johnson needs to supply a fresh demo obligation. Showing the simulated refusal instead.",
+          ". The obligation may have been settled or its state may have moved, Johnson needs to supply a fresh demo obligation. Showing the simulated refusal instead.",
         "unavailable"
       );
       return;
@@ -195,14 +197,14 @@ export function BreakIt() {
       if (!code) code = errCodeFromText(errText(e));
     }
     if (!threw) {
-      // An attack must never succeed. If it did, say so loudly — do not present a pay-out as a refusal.
+      // An attack must never succeed. If it did, say so loudly, do not present a pay-out as a refusal.
       setLiveStatus({ text: "unexpected success", cls: "b-warn" });
       setLiveOut({
         kind: "warn",
         html: (
           <div className="callout red mono text-[12.5px]">
             Unexpected: the live settle attempt SUCCEEDED (tx {txHash || "unknown"}). This attack was supposed to be refused. Do not trust
-            this panel — the demo obligation may have been consumed. Showing the simulated refusal instead.
+            this panel, the demo obligation may have been consumed. Showing the simulated refusal instead.
           </div>
         ),
       });
@@ -243,7 +245,7 @@ export function BreakIt() {
       after = await getObligation(VAULT_TEST, targetId);
       moved = !!(after && after.state !== before.state);
     } catch {
-      /* state re-read failed; the tx hash itself is the proof — say so below */
+      /* state re-read failed; the tx hash itself is the proof, say so below */
     }
     await refreshLive();
     const receiptsAfter = live.recTest && live.recTest.rows ? live.recTest.rows.length : null;
@@ -271,7 +273,7 @@ export function BreakIt() {
           </div>
           <div className="mono text-[11px] dim2 mt-3">
             Checked after the refusal: obligation is still {after ? after.state : before.state}
-            {moved ? " — WARNING: state moved, see above." : " · no new receipt · nothing paid"}. Attempt was your choice (simulation);
+            {moved ? ", WARNING: state moved, see above." : " · no new receipt · nothing paid"}. Attempt was your choice (simulation);
             the refusal is a real on-chain verdict.
           </div>
         </div>
@@ -288,9 +290,9 @@ export function BreakIt() {
         </div>
         <h2 className="text-2xl md:text-3xl mb-2">Pick an attack. Watch the vault refuse.</h2>
         <p className="dim text-[14px] max-w-3xl leading-relaxed mb-5">
-          Your attempt is a simulation, labelled as one — it is evaluated in your browser against the real on-chain obligation terms. The
-          refusal it shows is the real on-chain verdict: the first three attacks were executed on the test vault and link to their real
-          refusal transactions.
+          Your attempt is a simulation, labelled as one, it is evaluated in your browser against the real on-chain obligation terms. The
+          refusal it shows is the real on-chain verdict for the first three attacks, which were executed on the test vault and link to their
+          real refusal transactions. The fourth attack was never executed on chain, so its verdict is simulated, not a real on-chain verdict.
         </p>
         <div className="flex flex-wrap gap-2 mb-5">
           {BREAK_IT.map((sc, i) => (
@@ -306,7 +308,7 @@ export function BreakIt() {
                 terms={[
                   ["obligation", "p10-demo-attack-001"],
                   ["recipient (fixed)", AGENT],
-                  ["amount (fixed)", "100 USDC"],
+                  ["amount (fixed)", "100 base units (0.0001 USDC)"],
                   ["nonce", "1002"],
                   ["evidence", "PREIMAGE"],
                 ]}
@@ -327,23 +329,23 @@ export function BreakIt() {
               </div>
             ) : (
               <div className="mono text-[12px]" style={{ color: "var(--amber)" }}>
-                No executed refusal transaction exists for this case in the demo run — simulation only, no tx invented.
+                No executed refusal transaction exists for this case in the demo run, simulation only, no tx invented.
               </div>
             )}
           </div>
         </div>
         <div className="mt-6 border-t pt-5" style={{ borderColor: "var(--line2)" }}>
           <div className="flex flex-wrap items-center gap-3 mb-2">
-            <span className="kicker">Live mode — try it on chain</span>
+            <span className="kicker">Live mode, try it on chain</span>
             <span id="live-status" className={"badge " + liveStatus.cls}>
               <span className="bdot"></span>
               {liveStatus.text}
             </span>
           </div>
           <p className="dim text-[13px] leading-relaxed mb-3">
-            {DEMO_LIVE_LABEL} Only attacks are offered in live mode — never a correct settle, because a correct settle would pay the
-            authorized recipient and consume a demo obligation. Your pick is a simulation of your choice; the refusal it produces is a real
-            on-chain verdict.
+            {DEMO_LIVE_LABEL} Only attacks are offered in live mode, never a correct settle, because a correct settle would pay the
+            authorized recipient and consume a demo obligation. Your pick is a simulation of your choice; a live refusal it produces is a real
+            on-chain verdict, while the simulated fourth attack has no live verdict.
           </p>
           <div className="flex flex-wrap items-center gap-3">
             <button className="btn btn-primary sm" disabled={liveBusy} onClick={() => void tryLiveAttack(selected)}>

@@ -1,14 +1,15 @@
-/* Cynex web — Docs page.
-   The repo's own README and docs, presented as-is in substance — nothing
-   rewritten, no caveat summarised away. Each section names its source
-   path and last-updated commit. Claims link to their proof.
+/* Cynex web, Docs page.
+   A summary of the repo's own README and docs, with links to the real
+   files. This page is not the docs as-is: each section condenses its
+   source, names its source path and that file's last-updated commit, and
+   keeps the material caveats in view. Claims link to their proof.
    Design fix: the layout grid uses minmax(0,1fr) with min-w-0 on the
    content column, so the page cannot scroll sideways. */
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { AGENT, COMMIT, CP, RPC_URL, TOKEN, VAULT_PROD, VAULT_TEST } from "../lib/data";
+import { AGENT, CLI_COMMANDS, COMMIT, CONSOLE_FACTS, CONSOLE_RUN, CP, DOC_COMMITS, MCP_FACTS, MCP_RUN, MCP_TOOLS, RPC_URL, SETTLE_CODES, TOKEN, VAULT_PROD, VAULT_TEST } from "../lib/data";
 import { StripSection } from "../components/Strip";
-import { Badge, CmdBlock, CopyButton, HashChip, AcctChip, Icon } from "../components/ui";
+import { Badge, CmdBlock, CopyButton, HashChip, Icon } from "../components/ui";
 import { Footer } from "../components/shared";
 
 /* Extract plain text from a React tree, for the docs search. */
@@ -27,6 +28,7 @@ interface DocSection {
   id: string;
   title: string;
   path: string;
+  commit: string;
   body: ReactNode;
 }
 
@@ -63,21 +65,12 @@ function P10Step({
   );
 }
 
-const REFUSAL_CODES: [string, string][] = [
-  ["ERR_RECIPIENT_SUBSTITUTION", "the settle recipient differs from the obligation’s fixed recipient"],
-  ["ERR_TERMS_MISMATCH", "amount, token, or obligation id does not match the fixed terms"],
-  ["ERR_NONCE_ALREADY_CONSUMED", "this obligation’s nonce was already settled — double-pay attempt"],
-  ["ERR_BUDGET_EXCEEDED", "the settle would push cumulative spend past the budget policy"],
-  ["ERR_OBLIGATION_EXPIRED", "the obligation expired before settle"],
-  ["ERR_POLICY_FROZEN", "the owner froze the policy — all settles refused while frozen"],
-];
-
 const SIGNALS: [string, string][] = [
-  ["account_existence", "does the counterparty account exist on chain"],
-  ["account_age", "how long the account has existed"],
-  ["prior_vault_interactions", "history of prior interactions with this vault"],
-  ["blocklist", "known-bad counterparty list"],
-  ["code_change_recency", "on-chain code hash vs latest snapshot — rule below"],
+  ["account_existence", "does the counterparty account exist on chain, and its current code hash"],
+  ["account_age", "a lower bound from snapshots: only as old as the earliest snapshot that shows the account"],
+  ["prior_vault_interactions", "history of prior interactions with this vault, from our own receipts"],
+  ["blocklist", "a shared blocklist when one is configured; unavailable by default, never invented"],
+  ["code_change_recency", "on-chain code hash vs latest snapshot, rule below"],
 ];
 
 const DOCS: DocSection[] = [
@@ -85,19 +78,24 @@ const DOCS: DocSection[] = [
     id: "readme",
     title: "README",
     path: "README.md",
+    commit: DOC_COMMITS.readme,
     body: (
       <>
         <p className="dim leading-relaxed mb-4">
           Cynex is a purpose-bound settlement vault for AI agents on NEAR. <b className="text-white">“Pay the obligation. Not the prompt.”</b>{" "}
-          A prompt-injected agent can be talked into paying the wrong recipient, the wrong amount, or the same bill twice — so the payment
+          A prompt-injected agent can be talked into paying the wrong recipient, the wrong amount, or the same bill twice, so the payment
           decision is moved out of the model and onto the chain.
         </p>
         <p className="dim leading-relaxed mb-4">
-          An obligation is created on-chain with fixed terms: recipient, token, amount, obligation id, nonce, budget policy, and an evidence
-          requirement. Funding enters only via <span className="mono text-[12.5px] text-white">ft_transfer_call</span>. Settle passes three
-          layers: on-chain enforcement, evidence, and a reputation gate — and every settle writes a hash-chained receipt (NEP-297 event).
+          An obligation is created on-chain with fixed terms: recipient, token, amount, evidence requirement, and budget. Funding enters only
+          via <span className="mono text-[12.5px] text-white">ft_transfer_call</span>. Three layers prove a payment is right, and no layer
+          trusts another: Layer 1, on-chain integrity, the vault hashes the evidence bytes itself and compares them to the committed digest;
+          Layer 2, TEE provenance, a guest fetches the evidence inside an Intel TDX enclave; Layer 3, VRF anchor, the guest requests VRF
+          randomness and the vault verifies the signature on chain, bound to the pending request. Reputation is detection, not prevention: it
+          informs the owner before settlement, it does not replace the on-chain checks. Every settle writes a hash-chained receipt (NEP-297
+          event).
         </p>
-        <h3 className="text-white text-[15px] mt-6 mb-3">Cold run</h3>
+        <h3 className="text-white text-[15px] mt-6 mb-3">Cold run (README Reproduce it, steps 1 to 5)</h3>
         <pre className="codeblock">
           {CP.coldrun}
           <button className="icbtn copyfloat" title="Copy">
@@ -105,7 +103,9 @@ const DOCS: DocSection[] = [
           </button>
         </pre>
         <p className="dim text-[13px] mt-4">
-          The verifier is read-only — no keys, no wallet. Current receipt counts are live on the <a href="#/proof">Proof page</a>.
+          The tsc line exits 2 with 5 known near-api-js type errors, but the emitted dist-test/ is working JavaScript; the errors are
+          expected (README.md:506-509). The verifier is read-only, no keys, no wallet. Current receipt counts are live on the{" "}
+          <a href="#/proof">Proof page</a>.
         </p>
         <p className="dim text-[13px] mt-3">
           Implementation note: this showcase is a React + TypeScript app that reads the chain via near-api-js, the same major version the
@@ -117,12 +117,15 @@ const DOCS: DocSection[] = [
   {
     id: "security",
     title: "Security model",
-    path: "docs/security-model.md",
+    path: "README.md:223-250 and docs/threat-model.md",
+    commit: DOC_COMMITS.security,
     body: (
       <>
         <p className="dim leading-relaxed mb-4">
-          Threat model: the agent is untrusted. It may be prompt-injected through any content it reads — invoices, web pages, emails, tool
-          output. Cynex assumes the agent <i>will</i> eventually be told to pay the wrong party, and makes that instruction worthless.
+          Threat model: the agent is untrusted. It may be prompt-injected through any content it reads, invoices, web pages, emails, tool
+          output. Cynex assumes the agent <i>will</i> eventually be told to pay the wrong party, and makes that instruction worthless. The
+          attacker model: the agent cannot sign as the owner and cannot add keys. What we protect: the authorized terms, the budget, and the
+          receipt history.
         </p>
         <h3 className="text-white text-[15px] mt-6 mb-3">
           What function-call keys do <u>not</u> prevent
@@ -130,11 +133,12 @@ const DOCS: DocSection[] = [
         <p className="dim leading-relaxed mb-4">
           NEAR function-call access keys restrict <b className="text-white">which methods</b> a key may call, on which contract, within an
           allowance. They do <b className="text-white">not</b> restrict the arguments. An injected agent holding a key for{" "}
-          <span className="mono text-[12.5px] text-white">settle</span> can still be talked into calling it with an attacker-chosen
-          recipient, an inflated amount, or a duplicate settle — the call is perfectly authorized at the key layer. The key bounds the
-          method; only the contract bounds the intent. That is why the terms live on-chain, fixed at obligation creation.
+          <span className="mono text-[12.5px] text-white">settle</span> can still be talked into calling it with a different recipient, an
+          inflated amount, or a duplicate settle, and the call is perfectly authorized at the key layer. That is why the terms live on-chain,
+          fixed at obligation creation. The key does not prevent the owner from authorizing a bad obligation, and a TEE attestation does not
+          prove a real-world delivery happened.
         </p>
-        <h3 className="text-white text-[15px] mt-6 mb-3">Refusal codes</h3>
+        <h3 className="text-white text-[15px] mt-6 mb-3">Settle refusal codes (all eleven)</h3>
         <div className="overflow-x-auto mb-4">
           <table className="tbl">
             <thead>
@@ -144,7 +148,7 @@ const DOCS: DocSection[] = [
               </tr>
             </thead>
             <tbody>
-              {REFUSAL_CODES.map(([c, why]) => (
+              {SETTLE_CODES.map(([c, why]) => (
                 <tr key={c}>
                   <td>
                     <span className="codechip">{c}</span>
@@ -155,19 +159,35 @@ const DOCS: DocSection[] = [
             </tbody>
           </table>
         </div>
+        <p className="dim text-[13px] mb-4">
+          The contract defines 25 error codes in total; these eleven are the ones settle can return. ERR_TERMS_MISMATCH covers an amount
+          mismatch or a policy version mismatch only. Settle has no token argument, and an unknown obligation id is
+          ERR_OBLIGATION_MISSING. A bad VRF returns no error code at all: the obligation simply never becomes READY.
+        </p>
         <h3 className="text-white text-[15px] mt-6 mb-3">Evidence</h3>
         <p className="dim leading-relaxed mb-3">
-          <b className="text-white">PREIMAGE</b> — the SHA-256 hash of the delivery artifact, presented before settle.{" "}
-          <b className="text-white">TEE</b> — verification via OutLayer, with a VRF signature bound to the pending request so it cannot be
-          replayed against a different obligation.
+          <b className="text-white">PREIMAGE</b>, the vault hashes the delivery artifact bytes itself and compares them to the digest
+          committed at creation, capped at 64 KiB (MAX_PREIMAGE_BYTES 65536, ERR_EVIDENCE_TOO_LARGE above it).{" "}
+          <b className="text-white">TEE</b>, verification via OutLayer, with a VRF signature bound to the pending request so it cannot be
+          replayed against a different obligation. <b className="text-white">delivery-note</b>, the allowlisted verifier path
+          (submit_evidence, TRUSTED_RELAYER), the fallback for oversized evidence. The vault does not verify the TDX quote on chain; quote
+          verification is off chain and the VRF signature is the on-chain anchor.
         </p>
         <div className="callout mono text-[13px]" style={{ color: "#fde68a" }}>
           The VRF signature does not prove TEE execution.
         </div>
         <h3 className="text-white text-[15px] mt-6 mb-3">Reputation gate</h3>
+        <p className="dim leading-relaxed mb-3">
+          Five signals are scored before any settle by the off-chain console gate, never by the vault, see{" "}
+          <a href="#/docs/reputation">Reputation signals</a>. BLOCK refusals name the signal and its source; WARN escalates to a human
+          unless <span className="mono text-[12.5px] text-white">CYNEX_APPROVE_WARN=1</span>.
+        </p>
+        <h3 className="text-white text-[15px] mt-6 mb-3">Also in the threat model</h3>
         <p className="dim leading-relaxed">
-          Five signals are scored before any settle — see <a href="#/docs/reputation">Reputation signals</a>. BLOCK refusals name the signal
-          and its source; WARN escalates to a human unless <span className="mono text-[12.5px] text-white">CYNEX_APPROVE_WARN=1</span>.
+          Callback failure and reconciliation: a failed transfer is retried up to 3 times, then goes to RECONCILIATION_REQUIRED for a human.
+          Funding only by ft_transfer_call. Receipt tampering: genesis prev_hash is 32 zero bytes, and each receipt commits to its
+          predecessor. Key theft: a stolen agent key can only call settle, and the vault still enforces the fixed terms. Out of scope:
+          the human authorizing a bad obligation, and the meaning of the delivered bytes.
         </p>
       </>
     ),
@@ -176,28 +196,33 @@ const DOCS: DocSection[] = [
     id: "deployment",
     title: "Deployment & verification",
     path: "docs/deployment.md",
+    commit: DOC_COMMITS.deployment,
     body: (
       <>
-        <p className="dim leading-relaxed mb-4">Four testnet accounts. Every id links to the explorer.</p>
+        <p className="dim leading-relaxed mb-4">Two testnet vaults, same code. Every id links to the explorer.</p>
         <div className="overflow-x-auto mb-5">
           <table className="tbl">
             <thead>
               <tr>
-                <th>role</th>
+                <th>vault</th>
                 <th>account</th>
+                <th>code hash</th>
               </tr>
             </thead>
             <tbody>
               {[
-                ["Vault — production", VAULT_PROD],
-                ["Vault — test / demo", VAULT_TEST],
-                ["Agent (demo recipient)", AGENT],
-                ["Token — USDC, 6 decimals", TOKEN],
+                ["Production", VAULT_PROD],
+                ["Test / demo", VAULT_TEST],
               ].map(([role, acct]) => (
                 <tr key={role}>
                   <td className="dim">{role}</td>
                   <td>
-                    <AcctChip account={acct} />
+                    <a className="mono" style={{ overflowWrap: "anywhere" }} href={"https://testnet.nearblocks.io/address/" + acct} target="_blank" rel="noopener">
+                      {acct}
+                    </a>
+                  </td>
+                  <td className="mono" style={{ overflowWrap: "anywhere" }}>
+                    65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6
                   </td>
                 </tr>
               ))}
@@ -205,10 +230,27 @@ const DOCS: DocSection[] = [
           </table>
         </div>
         <p className="dim leading-relaxed mb-3">
-          Last verified 2026-11-08 @ master <span className="mono text-[12.5px] text-white">{COMMIT}</span>: both vaults ran code hash{" "}
-          <span className="mono text-[12px] text-white">65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6</span>.{" "}
-          <b className="text-white">This will have moved</b> — re-read it live (the status strip on Landing/Demo does exactly that):
+          Last verified 2026-11-07 @ master <span className="mono text-[12.5px] text-white">{COMMIT}</span> (docs/deployment.md last updated d9cdf40): both vaults ran
+          code hash <span className="mono text-[12px] text-white">65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6</span>.{" "}
+          <b className="text-white">This will have moved</b>, re-read it live (the status strip on Landing/Demo does exactly that). Snapshot from docs/deployment.md, as of 2026-11-07: test policy p6-001 funded 10,000, spent 4,500, 22 receipts; agent balance 1,800; production policy
+          p5-prod-001 funded 1,000, spent 300.
         </p>
+        <h3 className="text-white text-[15px] mt-6 mb-3">How to verify (docs/deployment.md:19-38)</h3>
+        <pre className="codeblock dimc">
+          {`near state cynex-vault.cynexmaster.testnet --networkId testnet
+near view cynex-vault.cynexmaster.testnet get_policy '{"policy_id":"p5-prod-001"}' --networkId testnet
+node frontend/dist-test/cli/cynex.js verify-live cynex-vault.cynexmaster.testnet`}
+        </pre>
+        <p className="dim text-[13px] mt-3">
+          The doc writes the last command as <span className="mono text-[12.5px] text-white">cynex verify-live</span> from frontend/; the
+          full invocation is the node form above. TEE guest version <span className="mono text-[12.5px] text-white">8abfe08b</span>, VRF
+          public key (testnet){" "}
+          <span className="mono text-[12.5px] text-white" style={{ overflowWrap: "anywhere" }}>
+            c0c5aeae1688c2f7cc2350aae1ee3ce96eddc0de84d678db873de48268f8cfa8
+          </span>
+          .
+        </p>
+        <h3 className="text-white text-[15px] mt-6 mb-3">Direct RPC check (not a doc command)</h3>
         <pre className="codeblock dimc">
           {CP.curlProd}
           <button className="icbtn copyfloat" title="Copy">
@@ -226,24 +268,30 @@ const DOCS: DocSection[] = [
     id: "p10demo",
     title: "Demo script",
     path: "docs/phase10-demo-script.md",
+    commit: DOC_COMMITS.p10demo,
     body: (
       <>
         <p className="dim leading-relaxed mb-5">
           Executed on the test vault. Walk it interactively in the <a href="#/demo/guided">Guided demo</a>; every tx below links to the
-          explorer.
+          explorer. All test-vault calls were signed with the owner key cynexmaster.testnet, because the agent&apos;s scoped function-call key
+          is bound to the production vault as its receiver and cannot settle on the test vault. The recipient is the agent account, never
+          acme-supplies.testnet, which does not exist on chain.
         </p>
         <div className="space-y-3">
-          <P10Step t="1 · Happy path — PREIMAGE" sub="p10-demo-preimage-001 · 100 USDC · nonce 1001 · artifact p6-001" tx="3Gp3J2zZCKrne1PamDVf6PgXHk4qGc3a58GBvoFcNhrZ" verdict="PAID · receipt #11 · agent 700 → 800" />
-          <P10Step t="2a · Attack — wrong recipient" sub="p10-demo-attack-001 · nonce 1002" tx="AFYAq8Sju41NjBFwPmTHbJ1psmsYQWjVdBhmXBZbpa7S" verdict="REFUSED · ERR_RECIPIENT_SUBSTITUTION" bad />
-          <P10Step t="2b · Attack — wrong amount (200)" sub="p10-demo-attack-001 · nonce 1002" tx="43YaxJVggxuZ3E25WfjzkgGBsGAqLrj8nwdUU9RLAQRy" verdict="REFUSED · ERR_TERMS_MISMATCH" bad />
-          <P10Step t="2c · Correct settle" sub="p10-demo-attack-001 · 100 USDC · nonce 1002" tx="Ho97UjQEDDfe7Go66uHrVSJvbF8narZJ2YBH3hWarxi" verdict="PAID · receipt #12 · agent 800 → 900" />
+          <P10Step t="1 · Happy path, PREIMAGE" sub="p10-demo-preimage-001 · 100 base units (0.0001 USDC) · nonce 1001 · artifact: delivery note demo-delivery-note-001:p10-demo-preimage-001:100" tx="3Gp3J2zZCKrne1PamDVf6PgXHk4qGc3a58GBvoFcNhrZ" verdict="PAID · receipt #11 · agent 700 → 800" />
+          <P10Step t="2a · Attack, wrong recipient" sub="p10-demo-attack-001 · nonce 1002 · proposed recipient was the owner account, cynexmaster.testnet" tx="AFYAq8Sju41NjBFwPmTHbJ1psmsYQWjVdBhmXBZbpa7S" verdict="REFUSED · ERR_RECIPIENT_SUBSTITUTION" bad />
+          <P10Step t="2b · Attack, wrong amount (200 base units)" sub="p10-demo-attack-001 · nonce 1002" tx="43YaxJVggxuZ3E25WfjzkgGBsGAqLrj8nwdUU9RLAQRy" verdict="REFUSED · ERR_TERMS_MISMATCH" bad />
+          <P10Step t="2c · Correct settle" sub="p10-demo-attack-001 · 100 base units (0.0001 USDC) · nonce 1002" tx="Ho97UjQEDDfe7Go66uHrVSJvbF8narZJ2YBH3hWarxi" verdict="PAID · receipt #12 · agent 800 → 900" />
           <P10Step t="2d · Replay" sub="nonce 1002 reused" tx="AwzQS7XsuGSYnPmvd5jFJzPDs3WDc2gRgSbW3smWq1Cs" verdict="REFUSED · ERR_NONCE_ALREADY_CONSUMED" bad />
-          <P10Step t="3a · TEE request" sub="p10-demo-tee-001 · nonce 1003 · OutLayer 11912 · 300 TGas" tx="5Xvu78qxd9NfgJzRBeyvdQXnqK8sLfSmzrfVC5dgDK68" verdict="OK" />
+          <P10Step t="3a · TEE request" sub="p10-demo-tee-001 · nonce 1003 · OutLayer 11912 · 300 TGas console caller gas" tx="5Xvu78qxd9NfgJzRBeyvdQXnqK8sLfSmzrfVC5dgDK68" verdict="OK" />
           <P10Step t="3b · TEE settle" sub="VRF bound to the pending request" tx="3QV2aCRSiJ8ZYqLECCpK6ZkXpYE4AdxJzmyP3JTaDqWB" verdict="PAID · receipt #13 · agent 900 → 1000" />
         </div>
         <p className="dim text-[13px] mt-5">
-          Step 4 — verification: <span className="mono text-[12.5px]" style={{ color: "#9be7c4" }}>cynex-verify</span> over the test vault,
-          all rows verified_ok=true. See <a href="#/docs/p10proof">Proof</a>.
+          Final state: test policy p6-001 spent 3,700, agent balance 1,000. Step 4, verification:{" "}
+          <span className="mono text-[12.5px]" style={{ color: "#9be7c4" }}>
+            node frontend/dist-test/cli/cynex.js verify-live cynex-testvault.cynexmaster.testnet
+          </span>
+          , all rows verified_ok=true. See <a href="#/docs/p10proof">Proof</a>.
         </p>
       </>
     ),
@@ -252,6 +300,7 @@ const DOCS: DocSection[] = [
     id: "p10proof",
     title: "Proof",
     path: "docs/phase10-demo-proof.md",
+    commit: DOC_COMMITS.p10proof,
     body: (
       <>
         <p className="dim leading-relaxed mb-4">Receipts written by the demo run:</p>
@@ -281,16 +330,15 @@ const DOCS: DocSection[] = [
             </tbody>
           </table>
         </div>
-        <h3 className="text-white text-[15px] mb-3">Verifier output at time of run (master {COMMIT})</h3>
+        <h3 className="text-white text-[15px] mb-3">Verifier output at time of run</h3>
         <pre className="codeblock dimc">
-          {`$ cynex-verify --vault ${VAULT_TEST} --rpc ${RPC_URL}
-receipts: 23
-links recomputed: 23/23
-gaps: 0
-verified_ok: true (all rows)`}
+          {`$ node frontend/dist-test/cli/cynex.js verify-live ${VAULT_TEST}
+index,prev_hash,obligation_id,recipient,amount,token_id,timestamp,tx_ref,verified_ok
+... CSV rows, every row verified_ok=true`}
         </pre>
         <p className="dim text-[13px] mt-4">
-          Counts move as the vaults are used — the current numbers are read live on the <a href="#/proof">Proof page</a>.
+          The proof doc records 14 receipts, indices 0 to 13, at demo time. Counts move as the vaults are used, the current numbers are read
+          live on the <a href="#/proof">Proof page</a>.
         </p>
       </>
     ),
@@ -298,12 +346,18 @@ verified_ok: true (all rows)`}
   {
     id: "reputation",
     title: "Reputation signals",
-    path: "docs/reputation.md",
+    path: "README.md:378-394, docs/phase7-lane-b.md, docs/scorecard-code-change-recency.md",
+    commit: DOC_COMMITS.reputation,
     body: (
       <>
         <p className="dim leading-relaxed mb-4">
-          Five signals, scored before any settle. A BLOCK refusal names the signal and its source. A WARN escalates to a human unless{" "}
-          <span className="mono text-[12.5px] text-white">CYNEX_APPROVE_WARN=1</span> is set.
+          Five signals, scored before any settle by the off-chain console gate, never by the vault. A BLOCK refusal names the signal and its
+          source. A WARN escalates to a human unless{" "}
+          <span className="mono text-[12.5px] text-white">CYNEX_APPROVE_WARN=1</span> is set. Signals show as unavailable when they cannot
+          be sourced, and ALLOW needs at least one prior receipt.
+        </p>
+        <p className="dim text-[13px] mt-3">
+          Neutral is not ALLOW: an account with no contract cannot have changed its code, and a first observation with no baseline snapshot is neutral; the signal works from the second check onward.
         </p>
         <div className="overflow-x-auto mb-5">
           <table className="tbl">
@@ -325,15 +379,18 @@ verified_ok: true (all rows)`}
             </tbody>
           </table>
         </div>
-        <h3 className="text-white text-[15px] mb-3">code_change_recency — thresholds</h3>
+        <h3 className="text-white text-[15px] mb-3">code_change_recency, thresholds</h3>
         <pre className="codeblock dimc">
           {`source : on-chain code hash vs latest snapshot
 ALLOW : no change, or last change > 7 days ago
 BLOCK : change within 24h, or any change with no history
-WARN  : otherwise — escalates unless CYNEX_APPROVE_WARN=1`}
+WARN  : otherwise, escalates unless CYNEX_APPROVE_WARN=1
+neutral: no contract, or first observation, not a penalty`}
         </pre>
         <p className="dim text-[13px] mt-4">
-          A live gate refusal naming this signal and its source is shown in the <a href="#/demo/guided/gate">Guided demo</a>.
+          Blocklist caveat: no suitable shared blocklist for NEAR account ids was found, so the blocklist signal is unavailable unless a URL
+          is configured (README.md:613-617). A live gate refusal naming this signal and its source is shown in the{" "}
+          <a href="#/demo/guided/gate">Guided demo</a>.
         </p>
       </>
     ),
@@ -341,25 +398,33 @@ WARN  : otherwise — escalates unless CYNEX_APPROVE_WARN=1`}
   {
     id: "receipts",
     title: "Receipts & verification",
-    path: "docs/receipts.md",
+    path: "docs/contract-api.md",
+    commit: DOC_COMMITS.receipts,
     body: (
       <>
         <p className="dim leading-relaxed mb-4">
           Every settle writes a receipt as a NEP-297 event. Receipts form a hash chain: each commits to its predecessor, so history cannot
-          be edited, reordered, or truncated without breaking a link.
+          be edited, reordered, or truncated without breaking a link. The final receipt is anchored against state() last_receipt_hash.
         </p>
         <h3 className="text-white text-[15px] mb-3">Frozen receipt hash</h3>
         <pre className="codeblock">
           {`receipt_hash = SHA-256(
-  index ‖ prev_hash ‖ obligation_id ‖ recipient ‖
-  amount ‖ token_id ‖ timestamp ‖ tx_ref
+  index as u64 big-endian, prev_hash as 32 raw bytes,
+  obligation_id as u32 big-endian length-prefixed UTF-8,
+  recipient as u32 big-endian length-prefixed UTF-8,
+  amount as u128 big-endian,
+  token_id as u32 big-endian length-prefixed UTF-8,
+  timestamp as u64 big-endian,
+  tx_ref as u32 big-endian length-prefixed UTF-8, last
 )`}
         </pre>
-        <h3 className="text-white text-[15px] mt-6 mb-3">cynex-verify</h3>
+        <h3 className="text-white text-[15px] mt-6 mb-3">verify-live</h3>
         <p className="dim leading-relaxed mb-3">
           Replays from genesis via paginated <span className="mono text-[12.5px] text-white">receipts(start, limit)</span>, recomputes every
-          link, and detects gaps and mismatches. <b className="text-white">A tamper in receipt i is detected at receipt i+1</b> — even if the
-          attacker recomputes receipt i’s stored hash, receipt i+1 still points at the original.
+          link, and detects gaps and mismatches. <b className="text-white">A tamper in receipt i is detected at receipt i+1</b>, because
+          receipt i+1 stores the hash of the original receipt i as its prev_hash; no per-receipt hash is stored on chain, only prev_hash in
+          the next receipt and last_receipt_hash in state. The in-browser table checks index contiguity only; only the CLI recomputes the
+          hash links.
         </p>
         <div className="space-y-2 mb-4">
           <CmdBlock cmdKey="verify" />
@@ -368,7 +433,7 @@ WARN  : otherwise — escalates unless CYNEX_APPROVE_WARN=1`}
         <h3 className="text-white text-[15px] mb-3">--csv columns (frozen)</h3>
         <pre className="codeblock dimc">index, prev_hash, obligation_id, recipient, amount, token_id, timestamp, tx_ref, verified_ok</pre>
         <p className="dim text-[13px] mt-4">
-          The live table with exactly these columns — plus a tamper-and-detect simulation — is on the{" "}
+          The live table with exactly these columns, plus a tamper-and-detect simulation, is on the{" "}
           <a href="#/proof">Proof page</a>.
         </p>
       </>
@@ -377,7 +442,8 @@ WARN  : otherwise — escalates unless CYNEX_APPROVE_WARN=1`}
   {
     id: "scorecard",
     title: "Scorecard addendum",
-    path: "docs/scorecard-addendum.md",
+    path: "docs/scorecard-code-change-recency.md and docs/phase10-lane-b.md",
+    commit: DOC_COMMITS.scorecard,
     body: (
       <>
         <p className="dim leading-relaxed mb-5">
@@ -385,10 +451,9 @@ WARN  : otherwise — escalates unless CYNEX_APPROVE_WARN=1`}
         </p>
         <div className="grid sm:grid-cols-2 gap-3 mb-5">
           {[
-            ["Typecheck", "clean"],
-            ["Jest", "19 suites · 369 tests"],
+            ["Typecheck (web build, tsc -b)", "clean"],
+            ["Jest", "19 suites passed, 1 skipped · 369 tests passed, 1 skipped, 370 total"],
             ["Conformance", "6 / 6"],
-            ["README cold-run", "verified"],
           ].map(([k, v]) => (
             <div key={k} className="panel p-4 flex items-center justify-between">
               <span className="mono text-[12.5px] dim">{k}</span>
@@ -399,7 +464,96 @@ WARN  : otherwise — escalates unless CYNEX_APPROVE_WARN=1`}
             </div>
           ))}
         </div>
-        <p className="dim text-[13px] leading-relaxed">Testnet. The contract is frozen — no new signals, evidence types, or chain changes.</p>
+        <p className="dim text-[13px] leading-relaxed">
+          Typecheck, qualified: the React web build (tsc -b) is clean. The console build tsc invocation is a different typecheck and exits
+          2 with 5 known near-api-js type errors (README.md:506-509). Testnet. The contract is frozen, no new signals, evidence types, or
+          chain changes.
+        </p>
+      </>
+    ),
+  },
+  {
+    id: "mcp",
+    title: "MCP server",
+    path: "services/mcp/README.md and services/mcp/SECURITY.md",
+    commit: DOC_COMMITS.mcp,
+    body: (
+      <>
+        <p className="dim leading-relaxed mb-4">{MCP_FACTS}</p>
+        <div className="overflow-x-auto mb-5">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>tool</th>
+                <th>what it does</th>
+                <th>moves funds</th>
+              </tr>
+            </thead>
+            <tbody>
+              {MCP_TOOLS.map(([name, what, moves]) => (
+                <tr key={name}>
+                  <td className="mono text-[12px]" style={{ color: "#dbe4ee" }}>
+                    {name}
+                  </td>
+                  <td className="dim">{what}</td>
+                  <td>{moves ? <span className="mono text-[11px]" style={{ color: "var(--amber)" }}>yes, the only one</span> : <span className="mono text-[11px] dim2">no</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="dim text-[13px] leading-relaxed">
+          Run it from <span className="mono text-[12.5px] text-white">frontend/</span>:{" "}
+          <span className="mono text-[12.5px]" style={{ color: "#9be7c4" }}>
+            {MCP_RUN}
+          </span>
+          . Live proof: test matrix 16 pass, 0 fail, 2 skipped (M10/M11 TEE, by design); production happy path mcp-prod-001 PAID.
+        </p>
+      </>
+    ),
+  },
+  {
+    id: "consoleCli",
+    title: "Console & CLI",
+    path: "agent/console.ts and cli/cynex.ts",
+    commit: DOC_COMMITS.consoleCli,
+    body: (
+      <>
+        <p className="dim leading-relaxed mb-4">{CONSOLE_FACTS}</p>
+        <p className="dim leading-relaxed mb-4">
+          Run it from <span className="mono text-[12.5px] text-white">frontend/</span>:{" "}
+          <span className="mono text-[12.5px]" style={{ color: "#9be7c4" }}>
+            {CONSOLE_RUN}
+          </span>
+        </p>
+        <h3 className="text-white text-[15px] mt-6 mb-3">CLI commands (node frontend/dist-test/cli/cynex.js &lt;command&gt;)</h3>
+        <div className="overflow-x-auto mb-4">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>command</th>
+                <th>invocation</th>
+              </tr>
+            </thead>
+            <tbody>
+              {CLI_COMMANDS.map(([name, cmd]) => (
+                <tr key={name}>
+                  <td className="mono text-[12px]" style={{ color: "#dbe4ee" }}>
+                    {name}
+                  </td>
+                  <td className="dim" style={{ overflowWrap: "anywhere" }}>
+                    {cmd}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="dim text-[13px] leading-relaxed">
+          The CLI is compiled TypeScript; build it with the tsc line in the README cold run first. Cancel and reconciliation also live in
+          the contract: cancel_obligation and cancel_expired_ready are owner only (ERR_NOT_EXPIRED while live), the transfer timeout is 10
+          minutes, the evidence timeout is 1 hour, and a stuck transfer goes to RECONCILIATION_REQUIRED for a human.
+        </p>
       </>
     ),
   },
@@ -435,8 +589,9 @@ export function Docs({ active }: { active?: string }) {
         <div className="kicker mb-2">Docs</div>
         <h1 className="text-3xl md:text-4xl mb-2">What is already written</h1>
         <p className="dim text-[14px] max-w-2xl mb-8">
-          The repo’s own README and docs, presented as-is in substance — nothing rewritten, no caveat summarised away. Each section names its
-          source path and last-updated commit. Claims link to their proof.
+          A summary of the repo&apos;s own README and docs, with links to the real files. This page is not the docs as-is: each section
+          condenses its source, names its source path and that file&apos;s last-updated commit, and keeps the material caveats in view.
+          Claims link to their proof.
         </p>
         {/* Grid fix: minmax(0,1fr) keeps the 1fr track from expanding to the
             content width, and min-w-0 on the content column lets it shrink.
@@ -485,6 +640,9 @@ export function Docs({ active }: { active?: string }) {
                   </span>
                   <span className="badge b-dim">
                     <span className="bdot"></span>master {COMMIT}
+                  </span>
+                  <span className="badge b-dim">
+                    <span className="bdot"></span>source updated {d.commit}
                   </span>
                 </div>
                 <div className="doc-text">{d.body}</div>

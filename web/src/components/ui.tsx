@@ -1,4 +1,4 @@
-/* Cynex web — shared UI pieces.
+/* Cynex web, shared UI pieces.
    Ported from the showcase helpers. Two changes from the static page:
    hashes render as short hex with copy and expand (never decimal byte
    lists), and account chips keep the distinguishing middle visible. */
@@ -49,7 +49,7 @@ export function CopyButton({ text, title }: { text: string; title?: string }) {
 
 /* ---------- hash / account chips ---------- */
 export function HashChip({ hash, type = "tx" }: { hash: string; type?: "tx" | "acct" }) {
-  if (!hash) return <span className="dim mono">—</span>;
+  if (!hash) return <span className="dim mono">-</span>;
   const href = type === "acct" ? EX_ADDR(hash) : EX_TX(hash);
   return (
     <span className="hashchip" title={hash}>
@@ -66,7 +66,7 @@ export function HashChip({ hash, type = "tx" }: { hash: string; type?: "tx" | "a
    both vaults to near-identical "cynex-va…estnet" / "cynex-te…estnet".
    Showing the first 13 characters keeps "vault" vs "testvault" visible. */
 export function AcctChip({ account }: { account: string }) {
-  if (!account) return <span className="dim mono">—</span>;
+  if (!account) return <span className="dim mono">-</span>;
   const shown = account.length > 14 ? account.slice(0, 13) + "…" : account;
   return (
     <span className="hashchip" title={account}>
@@ -84,7 +84,7 @@ export function AcctChip({ account }: { account: string }) {
 export function HexHash({ value }: { value: number[] | string | null | undefined }) {
   const hex = bytesToHex(value);
   const [expanded, setExpanded] = useState(false);
-  if (!hex) return <span className="dim">—</span>;
+  if (!hex) return <span className="dim">-</span>;
   return (
     <span className="inline-flex items-center gap-1" title={hex}>
       <button
@@ -149,7 +149,7 @@ export function CmdBlock({ cmdKey, label }: { cmdKey: string; label?: string }) 
 export function Unavail() {
   return (
     <span className="unavail">
-      <span className="spin"></span>Unavailable — retrying
+      <span className="spin"></span>Unavailable, retrying
     </span>
   );
 }
