@@ -4,10 +4,15 @@
    Muted #6e6255 and the semantic text shades are darker than the first
    samples on purpose: #7b7266 measured 4.31 to 1 on the page background,
    #16a34a measured 3.0 to 1 as text, #dc2626 measured 4.4 to 1 on the page.
-   The shades below all clear 4.5 to 1 on every surface they sit on. */
+   The shades below all clear 4.5 to 1 on every surface they sit on.
+   Swiss International: black, cream, and one orange accent only. Type and
+   the grid do the work, no decoration, no motifs, no gradients, no glass,
+   no glow, no purple. The semantic verdict shades (green PAID/ALLOW, red
+   REFUSED/BLOCK, amber WARN) stay because they encode verdicts, not
+   decoration. The dark -text variants clear 4.5 to 1 on cream. */
 :root{
   --bg:#f7f4ee; --card:#fdfbf7; --raised:#efe9df;
-  --line:rgba(31,27,22,.1); --line2:rgba(31,27,22,.06);
+  --line:rgba(31,27,22,.16); --line2:rgba(31,27,22,.1);
   --txt:#1f1b16; --secondary:#5e554a; --muted:#6e6255;
   --accent:#f3923c; --accent-text:#9a4d0f; --accent-soft:#fdeed3;
   --pos:#16a34a; --pos-text:#15803d; --pos-bg:#e7f6ec;
@@ -30,17 +35,17 @@ a{color:var(--accent-text);text-decoration:none} a:hover{color:#7c3e0c}
 :focus-visible{outline:2px solid var(--accent-text);outline-offset:2px}
 h1,h2,h3{font-weight:500;letter-spacing:0}
 .kicker{font-family:'Instrument Sans',sans-serif;font-size:13px;font-weight:500;color:var(--muted)}
-.panel{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px}
 .panel-h{transition:border-color .18s cubic-bezier(.22,1,.36,1)}
 .panel-h:hover{border-color:rgba(31,27,22,.2)}
-.btn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:12px 20px;font-weight:500;font-size:14px;color:var(--txt);background:var(--raised);cursor:pointer;transition:color .15s cubic-bezier(.22,1,.36,1),background-color .15s cubic-bezier(.22,1,.36,1),border-color .15s cubic-bezier(.22,1,.36,1);white-space:normal}
+.btn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:12px 20px;font-weight:500;font-size:14px;color:var(--txt);background:var(--raised);cursor:pointer;transition:color .15s cubic-bezier(.22,1,.36,1),background-color .15s cubic-bezier(.22,1,.36,1),border-color .15s cubic-bezier(.22,1,.36,1);white-space:normal}
 .btn:hover{border-color:rgba(31,27,22,.2);background:#e9e2d5}
 .btn-primary{background:var(--accent);border-color:transparent;color:#1f1b16}
 .btn-primary:hover{background:#ea8a2e;border-color:transparent}
 .btn.sm{padding:8px 12px;font-size:13px;border-radius:8px}
 .btn.ghost{background:transparent}
 .btn:disabled{opacity:.45;cursor:not-allowed}
-.input{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;font-size:13px;color:var(--txt);outline:none;font-family:'Instrument Sans',sans-serif}
+.input{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px;font-size:13px;color:var(--txt);outline:none;font-family:'Instrument Sans',sans-serif}
 .input:focus{border-color:rgba(154,77,15,.1);box-shadow:0 0 0 2px rgba(243,146,60,.25)}
 .badge{display:inline-flex;align-items:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:500;padding:4px 8px;border-radius:6px;border:1px solid var(--line);background:var(--raised);color:var(--secondary);white-space:normal}
 .badge .bdot{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
@@ -55,7 +60,7 @@ h1,h2,h3{font-weight:500;letter-spacing:0}
 .icbtn:hover{background:var(--raised);color:var(--txt)}
 .icbtn svg{width:16px;height:16px}
 .icbtn.copied{color:var(--pos-text)}
-.cmd{display:flex;align-items:center;justify-content:space-between;gap:16px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 16px;font-size:13px;overflow-x:auto;max-width:100%;min-width:0}
+.cmd{display:flex;align-items:center;justify-content:space-between;gap:16px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 16px;font-size:13px;overflow-x:auto;max-width:100%;min-width:0}
 .cmd code{color:var(--txt);white-space:pre;font-family:'JetBrains Mono',monospace;min-width:0;flex:1 1 auto}
 /* Flow diagram: steps wrap on narrow screens instead of forcing the page wider. */
 .flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
@@ -67,7 +72,7 @@ h1,h2,h3{font-weight:500;letter-spacing:0}
    800, 860, 900, 926, 1000, 1100 and 1200px, so no media-query ceiling
    (767 or 860) closes the gap. */
 @media(max-width:640px){.wrap{padding:0 24px}.hero-h{font-size:clamp(36px,11vw,44px)}.attempt{max-width:100%}.badge{text-align:left;line-height:1.6}.btn{text-align:left}}
-.strip{display:grid;grid-template-columns:repeat(7,1fr);border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--card)}
+.strip{display:grid;grid-template-columns:repeat(7,1fr);border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card)}
 .strip-cell{padding:16px;border-right:1px solid var(--line2);min-width:0}
 .strip-cell:last-child{border-right:0}
 .strip-label{font-size:12px;color:var(--muted);margin-bottom:8px;font-weight:500}
@@ -90,21 +95,21 @@ h1,h2,h3{font-weight:500;letter-spacing:0}
 .step{display:grid;grid-template-columns:48px minmax(0,1fr);gap:16px;position:relative}
 .step>*{min-width:0}
 .rail{display:flex;flex-direction:column;align-items:center}
-.node{width:40px;height:40px;border-radius:12px;border:1px solid var(--line);display:grid;place-items:center;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--secondary);background:var(--raised);flex:none}
+.node{width:40px;height:40px;border-radius:10px;border:1px solid var(--line);display:grid;place-items:center;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--secondary);background:var(--raised);flex:none}
 .node.attack{color:var(--neg-text)}
 .node.gate{color:var(--warn-text)}
 .rail .line{flex:1;width:1px;background:var(--line);margin-top:8px;min-height:20px}
 .attempt{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;border:1px solid var(--line2);border-radius:10px;background:var(--raised)}
 .att-label{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--txt)}
-.terms-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1px;background:var(--line2);border:1px solid var(--line2);border-radius:12px;overflow:hidden}
+.terms-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1px;background:var(--line2);border:1px solid var(--line2);border-radius:10px;overflow:hidden}
 .term{background:var(--card);padding:12px 16px;min-width:0}
 .term .tl{font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:500}
 .term .tv{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--txt);overflow-wrap:anywhere}
 .navlink{padding:8px 12px;border-radius:8px;font-size:14px;font-weight:500;color:var(--secondary);transition:color .15s cubic-bezier(.22,1,.36,1),background-color .15s cubic-bezier(.22,1,.36,1);position:relative}
 .navlink:hover{color:var(--txt)}
-.navlink.active{color:var(--txt);background:var(--raised)}
+.navlink.active{color:var(--txt);background:var(--raised);box-shadow:inset 0 -2px 0 var(--accent)}
 .netpill{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--secondary)}
-pre.codeblock{background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:16px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.65;color:var(--txt);overflow-x:auto;position:relative;max-width:100%;min-width:0}
+pre.codeblock{background:var(--raised);border:1px solid var(--line);border-radius:8px;padding:16px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.65;color:var(--txt);overflow-x:auto;position:relative;max-width:100%;min-width:0}
 pre.codeblock.dimc{color:var(--secondary)}
 .copyfloat{position:absolute;top:8px;right:8px}
 .docsec{scroll-margin-top:96px}
@@ -112,7 +117,7 @@ pre.codeblock.dimc{color:var(--secondary)}
 .docside a:hover{color:var(--txt);background:var(--raised)}
 .docside a.active{color:var(--accent-text);border-left-color:rgba(243,146,60,.1);background:var(--accent-soft)}
 mark{background:var(--accent-soft);color:var(--accent-text);border-radius:4px;padding:0 4px}
-.callout{border:1px solid var(--line);background:var(--accent-soft);border-radius:12px;padding:16px 20px;color:var(--warn-text)}
+.callout{border:1px solid var(--line);background:var(--accent-soft);border-radius:10px;padding:16px 20px;color:var(--warn-text)}
 .callout.red{border:1px solid var(--line);background:var(--neg-bg);color:var(--neg-text)}
 .callout.green{border:1px solid var(--line);background:var(--pos-bg);color:var(--pos-text)}
 .hero-h{font-size:clamp(40px,6vw,68px);line-height:1.05;letter-spacing:-.02em;font-weight:500}
@@ -134,3 +139,11 @@ mark{background:var(--accent-soft);color:var(--accent-text);border-radius:4px;pa
 ::selection{background:rgba(243,146,60,.3)}
 .fadein{animation:fadein .45s cubic-bezier(.22,1,.36,1) both}
 @keyframes fadein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* ---------- Swiss: the Attack header is an ink band ----------
+   Near-black ground, cream type, the orange square in the C mark is the
+   only accent. No secondary palette anywhere else: panels are plain,
+   type and the grid carry the hierarchy. */
+.band-ink{background:var(--txt);border-radius:12px;color:var(--bg)}
+.band-ink .kicker{color:var(--bg)}
+.band-ink .dim{color:var(--bg);opacity:.72}
