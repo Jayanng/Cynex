@@ -1,14 +1,15 @@
-/* Cynex web — tamper and detect panel.
-   Local simulation on a working copy — no chain writes. The working
-   copy's hashes are recomputed in the browser with the frozen formula;
-   the canonical verifier is cynex-verify. The simulated attacker tampers
-   with a receipt and recomputes its hash to cover their tracks — the
-   chain still breaks one link later. */
+/* Cynex web, tamper and detect panel.
+   Local simulation on a working copy, no chain writes. The working
+   copy's hashes are recomputed in the browser with the frozen formula
+   (SHA-256 over the binary encoding from frontend/src/cynex/receipt.ts);
+   the canonical verifier is the CLI verify-live command. The simulated
+   attacker tampers with a receipt and recomputes its hash to cover their
+   tracks, the chain still breaks one link later. */
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AGENT, TOKEN } from "../lib/data";
 import { useLive } from "../lib/live";
-import { receiptHash, fmtToken, type Receipt } from "../lib/near";
+import { receiptHash, bytesToHex, fmtToken, type Receipt } from "../lib/near";
 
 interface WorkReceipt {
   index: number;
@@ -60,7 +61,7 @@ export function TamperPanel({ id }: { id: string }) {
     setLog([{ kind: "diml", text: "building working copy…" }]);
     let next: WorkReceipt[] = [];
     if (rows && rows.length >= 3) {
-      for (const r of rows.slice(0, 12)) {
+      for (const r of rows) {
         const c: WorkReceipt = {
           index: Number(r.index),
           prev_hash: r.prev_hash,
@@ -103,7 +104,7 @@ export function TamperPanel({ id }: { id: string }) {
         prev = c.hash;
         next.push(c);
       }
-      setSrc("source: SYNTHETIC — generated locally in your browser (live receipts unavailable). Not chain data.");
+      setSrc("source: SYNTHETIC, generated locally in your browser (live receipts unavailable). Not chain data.");
     }
     setBase(next);
     reset(next);
@@ -124,12 +125,11 @@ export function TamperPanel({ id }: { id: string }) {
     const r = chain.find((c) => Number(c.index) === picked);
     if (!r) return;
     setBusy(true);
-    const before = fmtToken(String(BigInt(r.amount) - 1000000n));
     const updated: WorkReceipt = { ...r, amount: (BigInt(r.amount) + 1000000n).toString() };
     updated.hash = await receiptHash(updated); // attacker recomputes to cover tracks
     setChain((prev) => prev.map((c) => (Number(c.index) === picked ? updated : c)));
     setLog([
-      { kind: "bad", text: `tampered receipt #${picked} — amount ${before} → ${fmtToken(updated.amount)} USDC · stored hash recomputed by the attacker` },
+      { kind: "bad", text: `tampered receipt #${picked}, amount ${r.amount} → ${updated.amount} base units · stored hash recomputed by the attacker` },
       { kind: "diml", text: "now run the verifier replay." },
     ]);
     setBusy(false);
@@ -146,21 +146,21 @@ export function TamperPanel({ id }: { id: string }) {
       const r = chain[k];
       const recomputed = await receiptHash(r);
       const integrity = recomputed === r.hash;
-      const link = k === 0 ? true : chain[k].prev_hash === (await receiptHash(chain[k - 1]));
+      const link = k === 0 ? true : bytesToHex(chain[k].prev_hash) === (await receiptHash(chain[k - 1]));
       await new Promise((res) => setTimeout(res, 90));
       if (integrity && link && !broke) {
         ok++;
         setLog((prev) => [...prev, { kind: "ok", text: `#${r.index} · recompute ok · link ok` }]);
       } else if (!broke) {
         broke = true;
-        setLog((prev) => [...prev, { kind: "bad", text: `#${r.index} · MISMATCH — prev_hash ≠ recomputed hash of receipt ${k - 1} · chain broken here` }]);
+        setLog((prev) => [...prev, { kind: "bad", text: `#${r.index} · MISMATCH, prev_hash ≠ recomputed hash of receipt ${k - 1} · chain broken here` }]);
       } else {
-        setLog((prev) => [...prev, { kind: "bad", text: `#${r.index} · untrusted — chain already broken` }]);
+        setLog((prev) => [...prev, { kind: "bad", text: `#${r.index} · untrusted, chain already broken` }]);
       }
     }
     setLog((prev) => [
       ...prev,
-      { kind: broke ? "bad" : "ok", text: broke ? "tamper in receipt i was detected at i+1 — exactly as designed." : "no tamper detected — chain intact." },
+      { kind: broke ? "bad" : "ok", text: broke ? "tamper in receipt i was detected at i+1, exactly as designed." : "no tamper detected, chain intact." },
     ]);
     void ok;
     setBusy(false);
@@ -174,9 +174,12 @@ export function TamperPanel({ id }: { id: string }) {
         <div>
           <h3 className="text-lg mb-1">Tamper &amp; detect</h3>
           <p className="dim text-[13px] max-w-2xl leading-relaxed">
-            Local simulation on a working copy — no chain writes. The working copy’s hashes are recomputed in your browser with the frozen
-            formula; the canonical verifier is <span className="mono text-[12px]" style={{ color: "#9be7c4" }}>cynex-verify</span>. The
-            simulated attacker tampers with a receipt <i>and</i> recomputes its hash to cover their tracks — the chain still breaks one link
+            Local simulation on a working copy, no chain writes. The working copy’s hashes are recomputed in your browser with the frozen
+            formula; the canonical verifier is{" "}
+            <span className="mono text-[12px]" style={{ color: "#9be7c4" }}>
+              node frontend/dist-test/cli/cynex.js verify-live cynex-testvault.cynexmaster.testnet
+            </span>
+            . The simulated attacker tampers with a receipt <i>and</i> recomputes its hash to cover their tracks, the chain still breaks one link
             later.
           </p>
         </div>
@@ -191,12 +194,12 @@ export function TamperPanel({ id }: { id: string }) {
         >
           {chain.map((c) => (
             <option key={c.index} value={c.index}>
-              receipt #{c.index} · {c.obligation_id} · {fmtToken(c.amount)} USDC
+              receipt #{c.index} · {c.obligation_id} · {c.amount} base units ({fmtToken(c.amount)} USDC)
             </option>
           ))}
         </select>
         <button className="btn sm" onClick={() => void doTamper()} disabled={busy || chain.length === 0}>
-          Tamper — amount +1 USDC, recompute hash
+          Tamper, amount +1,000,000 base units (1 USDC), recompute hash
         </button>
         <button className="btn sm btn-primary" onClick={() => void doVerify()} disabled={busy || chain.length === 0}>
           Run verifier replay

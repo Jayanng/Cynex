@@ -1,4 +1,4 @@
-/* Cynex web — shared page fragments.
+/* Cynex web, shared page fragments.
    Ported from the showcase: refusal panel, trust row, verify section,
    reputation gate, footer, and the live counts line. */
 
@@ -11,7 +11,7 @@ export function Footer() {
   return (
     <footer className="mt-20 border-t" style={{ borderColor: "var(--line2)" }}>
       <div className="wrap py-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="mono text-[11px] dim2 leading-relaxed">CYNEX · NEAR testnet — no mainnet funds</div>
+        <div className="mono text-[11px] dim2 leading-relaxed">CYNEX · NEAR testnet, no mainnet funds</div>
         <div className="flex items-center gap-4">
           <a className="mono text-[12px] inline-flex items-center gap-2" href={REPO} target="_blank" rel="noopener">
             github.com/Jayanng/Cynex{" "}
@@ -38,8 +38,8 @@ export function CountsLine() {
         <Icon name={ok ? "check" : "warn"} size={15} />
       </span>
       <span className="mono text-[13px]">
-        test vault: <b className="text-white">{f.rows.length}</b> receipts · in-browser link check:{" "}
-        <b className={ok ? "text-emerald-300" : "text-amber-300"}>{ok ? "all ok" : "check failed"}</b> · canonical: cynex-verify
+        test vault: <b className="text-white">{f.rows.length}</b> receipts · in-browser check: index contiguity only ·{" "}
+        <b className={ok ? "text-emerald-300" : "text-amber-300"}>{ok ? "all ok" : "check failed"}</b> · canonical hash recompute: verify-live
       </span>
     </span>
   );
@@ -55,16 +55,17 @@ export function RefusalPanel() {
       >
         <div className="flex flex-wrap items-center gap-3 mb-3">
           <span className="kicker" style={{ color: "var(--red)" }}>
-            Live refusal — already on chain
+            Live refusal, already on chain
           </span>
           <Badge value="REFUSED" extra="ERR_RECIPIENT_SUBSTITUTION" />
         </div>
         <p className="text-[17px] md:text-[19px] leading-snug text-white max-w-3xl">
-          The agent tried to pay an attacker-controlled recipient instead of the authorized recipient. The vault refused.
+          The submitted settle tried to pay a different recipient instead of the authorized recipient. The vault refused.
         </p>
         <p className="dim text-[13.5px] mt-2 max-w-3xl">
-          Obligation <span className="mono text-[12.5px] text-white">p10-demo-attack-001</span> · 100 USDC · nonce 1002 · the terms are fixed on
-          chain, so the injected instruction was worthless. <b className="text-white">0 tokens moved.</b>
+          Obligation <span className="mono text-[12.5px] text-white">p10-demo-attack-001</span> · 100 base units (0.0001 USDC) · nonce 1002 ·
+          the terms are fixed on chain, so the injected instruction was worthless. In the executed tx the proposed recipient was the owner
+          account, cynexmaster.testnet. <b className="text-white">0 tokens moved.</b>
         </p>
         <div className="flex flex-wrap items-center gap-3 mt-4">
           <span className="mono text-[11px] dim2 uppercase tracking-widest">refusal tx</span>
@@ -74,7 +75,7 @@ export function RefusalPanel() {
           </a>
         </div>
         <div className="mono text-[11px] dim2 mt-3">
-          Historical fact — executed on the test vault, not a simulation. The chain read is live; the refusal itself already happened.
+          Historical fact, executed on the test vault, not a simulation. The chain read is live; the refusal itself already happened.
         </div>
       </div>
     </section>
@@ -97,14 +98,14 @@ export function TrustRow() {
     return (
       <>
         <span className="text-2xl font-bold text-white">{f.v}</span>
-        <span className="dim text-[12px] block mt-1">receipts on chain — test vault · live</span>
+        <span className="dim text-[12px] block mt-1">receipts on chain, test vault · live</span>
       </>
     );
   };
   return (
     <section className="wrap mt-6">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {cell("369 tests passing", "19 suites · Jest · repo health gates")}
+        {cell("369 tests passing", "19 suites passed, 1 skipped · 369 tests passed, 1 skipped, 370 total · Jest")}
         {cell("Sol audit pass", "security audit")}
         <div className="panel p-4">
           <div data-live-region="trustreceipts">{receiptsCell()}</div>
@@ -123,7 +124,8 @@ export function VerifyLanding() {
         <div className="kicker mb-2">Verify in 10 seconds</div>
         <h2 className="text-xl md:text-2xl mb-2">One command replays the whole chain</h2>
         <p className="dim text-[13.5px] mb-4">
-          Read-only. It replays every receipt from genesis over the test vault and recomputes each hash link.
+          Read-only. The CLI replays every receipt from genesis over the test vault and recomputes each hash link. The in-browser table on the
+          Proof page checks index contiguity only; only the CLI recomputes the hash links.
         </p>
         <CmdBlock cmdKey="verify" />
         <div className="flex flex-wrap items-center gap-3 mt-4">
@@ -151,18 +153,21 @@ export function Gate() {
   return (
     <div className="step" id="guided-gate">
       <div className="rail">
-        <div className="node gate">G</div>
+        <div className="node gate">04</div>
         <div className="line"></div>
       </div>
       <div className="panel p-6 md:p-7">
         <div className="flex flex-wrap items-center gap-3 mb-3">
-          <h3 className="text-lg">Reputation gate — the moment it says no</h3>
-          <Badge value="BLOCKED" extra="code_change_recency" />
+          <h3 className="text-lg">Reputation gate, the moment it says no</h3>
+          <Badge value="BLOCK" extra="code_change_recency" />
         </div>
         <p className="dim text-[14px] leading-relaxed mb-4">
-          Before any settle, the counterparty is scored on five signals. Here the vault refuses to settle with a counterparty whose contract
-          code changed within the last 24 hours and which has no interaction history. The refusal{" "}
-          <b className="text-white">names the signal and its source</b>.
+          Before any settle, the counterparty is scored on five signals by the off-chain console gate. Here the gate refuses to submit a
+          settle with a counterparty whose contract code changed within the last 24 hours and which has no interaction history. A reputation
+          refusal is not a vault refusal: the vault never sees the attempt, and settle never consults reputation. The refusal{" "}
+          <b className="text-white">names the signal and its source</b>. Signals show as unavailable when they cannot be sourced: the
+          blocklist is unavailable unless a URL is configured, and account age needs snapshots. ALLOW needs at least one prior receipt, and
+          no contract or a first observation is neutral, not a penalty.
         </p>
         <pre className="codeblock dimc">
           {`gate.evaluate(counterparty)
@@ -176,7 +181,7 @@ export function Gate() {
           <span style={{ color: "#fca5a5" }}>BLOCK</span>
         </pre>
         <div className="mono text-[11px] dim2 mt-3">
-          all five signals: account_existence · account_age · prior_vault_interactions · blocklist · code_change_recency —{" "}
+          all five signals: account_existence · account_age · prior_vault_interactions · blocklist · code_change_recency,{" "}
           <a href="#/docs/reputation">docs</a>
         </div>
       </div>

@@ -1,8 +1,8 @@
-/* Cynex web — live status strip (on every page).
+/* Cynex web, live status strip (on every page).
    The policy cell is wired to the real view method: get_policy with the
    demo policy id p6-001 on the test vault. The old page called get_policy
    with no arguments, which the contract rejects, so the cell showed a
-   permanent "Unavailable — retrying". That is fixed here.
+   permanent "Unavailable, retrying". That is fixed here.
    Amounts are shown in base units so the numbers match the demo labels
    (100, 2700); the decimal USDC value is in the title attribute. */
 
@@ -11,24 +11,46 @@ import { useLive, type LiveState } from "../lib/live";
 import { fmtToken, fmtTs, trunc } from "../lib/near";
 import { Icon, CopyButton, Unavail, LoadTxt } from "./ui";
 
-function policyText(p: NonNullable<LiveState["policy"]["v"]>): string {
-  const spent = p.spent;
-  const limit = p.limit;
-  if (spent != null && limit != null) {
-    try {
-      const head = (BigInt(limit) - BigInt(spent)).toString();
-      return "spent " + spent + " · headroom " + head + " units";
-    } catch {
-      /* fall through */
-    }
+/* Spendable headroom is min(limit, funded) minus spent minus reserved:
+   the contract checks spent plus reserved plus amount against both limit
+   and funded at settle time (contract/src/lib.rs:1538-1543). */
+function headroom(p: NonNullable<LiveState["policy"]["v"]>): string | null {
+  try {
+    const limit = BigInt(p.limit);
+    const funded = BigInt(p.funded);
+    const spent = BigInt(p.spent);
+    const reserved = BigInt(p.reserved);
+    const cap = limit < funded ? limit : funded;
+    return (cap - spent - reserved).toString();
+  } catch {
+    return null;
   }
+}
+
+function policyText(p: NonNullable<LiveState["policy"]["v"]>): string {
+  const head = headroom(p);
+  if (head != null) return "spent " + p.spent + " · headroom " + head + " units";
   return "policy " + p.policy_id;
 }
 
 function policyTitle(p: NonNullable<LiveState["policy"]["v"]>): string {
+  const head = headroom(p);
   try {
-    const head = (BigInt(p.limit) - BigInt(p.spent)).toString();
-    return "spent " + fmtToken(p.spent) + " USDC · headroom " + fmtToken(head) + " USDC · limit " + fmtToken(p.limit) + " USDC · " + TOKEN + ", 6 decimals";
+    return (
+      "spent " +
+      fmtToken(p.spent) +
+      " USDC · headroom " +
+      (head == null ? "?" : fmtToken(head)) +
+      " USDC · limit " +
+      fmtToken(p.limit) +
+      " USDC · funded " +
+      fmtToken(p.funded) +
+      " USDC · reserved " +
+      fmtToken(p.reserved) +
+      " USDC · " +
+      TOKEN +
+      ", 6 decimals"
+    );
   } catch {
     return "policy " + p.policy_id;
   }
@@ -99,13 +121,13 @@ export function Strip() {
         ) : (
           <>
             <span className={"livedot" + (L.anyErr ? " err" : "")}></span>
-            {checked || "—"}
+            {checked || "-"}
             {L.blockHeight ? <span className="dim2"> · block {Number(L.blockHeight).toLocaleString()}</span> : null}
           </>
         )
       )}
       {cell(
-        "CODE HASH — PROD",
+        "CODE HASH · PROD",
         f(L.codeProd, (v) => (
           <>
             <a
@@ -122,7 +144,7 @@ export function Strip() {
         ))
       )}
       {cell(
-        "CODE HASH — TEST",
+        "CODE HASH · TEST",
         f(L.codeTest, (v) => (
           <>
             <a
@@ -164,7 +186,7 @@ export function StripSection() {
       </div>
       <div className="mono text-[10.5px] dim2 mt-2 flex flex-wrap gap-x-5 gap-y-1">
         <span>live RPC reads · {RPC_URL}</span>
-        <span>on failure a field shows “Unavailable — retrying” — never a cached value</span>
+        <span>on failure a field shows “Unavailable, retrying”, never a cached value</span>
       </div>
     </div>
   );

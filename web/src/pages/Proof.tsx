@@ -1,6 +1,6 @@
-/* Cynex web — Proof page.
+/* Cynex web, Proof page.
    Everything here is either a live chain read or a file in the repo.
-   Nothing asks for trust — one command replays the whole receipt chain
+   Nothing asks for trust, one command replays the whole receipt chain
    from genesis. The receipt table renders prev_hash as short hex with
    copy and expand, never as a decimal byte list. */
 
@@ -123,13 +123,23 @@ export function Proof() {
                       {fmtTs(r.timestamp)}
                     </td>
                     <td>
-                      <HashChip hash={r.tx_ref} />
+                      {/^[1-9A-HJ-NP-Za-km-z]{43,44}$/.test(r.tx_ref) ? (
+                        <HashChip hash={r.tx_ref} />
+                      ) : r.tx_ref ? (
+                        <span className="dim mono" title={r.tx_ref}>
+                          {trunc(r.tx_ref, 12, 8)}
+                        </span>
+                      ) : (
+                        <span className="dim mono" title="tx_ref is empty on chain for this receipt: the automatic settle path records no tx hash">
+                          -
+                        </span>
+                      )}
                     </td>
                     <td>
                       {ok ? (
                         <span
                           style={{ color: "var(--green)", width: 15, height: 15, display: "inline-grid", placeItems: "center" }}
-                          title={"prev_hash links to receipt " + (i - 1 < 0 ? "genesis" : String(i - 1))}
+                          title={"index follows receipt " + (i - 1 < 0 ? "genesis" : String(i - 1)) + " (contiguity only; hash links are checked by verify-live)"}
                         >
                           <Icon name="check" size={15} />
                         </span>
@@ -153,16 +163,16 @@ export function Proof() {
           style={{ borderColor: "var(--line2)" }}
         >
           <span>source: {VAULT_TEST} · receipts(start, limit) · live</span>
-          <span>verified_ok = index contiguity + prev_hash linkage (in-browser)</span>
-          <span>canonical recompute: cynex-verify</span>
+          <span>verified_ok = index contiguity (in-browser); the Receipt struct has no hash field, so the browser cannot compare hash links</span>
+          <span>canonical recompute: node frontend/dist-test/cli/cynex.js verify-live cynex-testvault.cynexmaster.testnet</span>
         </div>
         {replay.done ? (
           <div
             className={"logline " + (replay.okCount === f.rows.length ? "ok" : "bad") + " fadein mt-3"}
             style={{ fontWeight: 600 }}
           >
-            structural replay: {replay.okCount}/{f.rows.length} receipts · indices contiguous · prev_hash links{" "}
-            {replay.okCount === f.rows.length ? "intact" : "BROKEN"} · canonical SHA-256 recompute: cynex-verify (command above)
+            structural replay: {replay.okCount}/{f.rows.length} receipts · indices contiguous · hash links are recomputed by the CLI, not
+            here · canonical SHA-256 recompute: verify-live (command above)
           </div>
         ) : null}
       </>
@@ -176,7 +186,7 @@ export function Proof() {
         <div className="kicker mb-2">Proof</div>
         <h1 className="text-3xl md:text-4xl mb-2">Verify it yourself</h1>
         <p className="dim text-[14px] max-w-2xl">
-          Everything on this page is either a live chain read or a file in the repo. Nothing here asks for trust — one command replays the
+          Everything on this page is either a live chain read or a file in the repo. Nothing here asks for trust, one command replays the
           whole receipt chain from genesis.
         </p>
       </section>
@@ -184,7 +194,7 @@ export function Proof() {
       {/* judges start here */}
       <section className="wrap mt-8">
         <div className="panel p-6 md:p-7" style={{ borderColor: "rgba(52,211,153,.3)" }}>
-          <div className="kicker mb-4">Judges — start here</div>
+          <div className="kicker mb-4">Judges, start here</div>
           <div className="grid md:grid-cols-2 gap-x-10 gap-y-4 text-[13.5px]">
             <JudgeItem
               n="1"
@@ -202,7 +212,7 @@ export function Proof() {
               t="Four attestation bundles"
               body={
                 <div className="mono text-[12px] dim mt-1">
-                  prod-tee-001 (request 13324) · 10640 · 11912 · 13040 — below, with verify commands.
+                  prod-tee-001 (request 13324) · 10640 · 11912 · 13040, below, with verify commands.
                 </div>
               }
             />
@@ -231,14 +241,11 @@ export function Proof() {
             <h2 className="text-xl md:text-2xl">One-command verify</h2>
             <ReadOnlyBadge />
           </div>
-          <p className="dim text-[13.5px] mb-4">Read-only view calls against the vault — no keys, no wallet. Exact vault id and RPC endpoint included.</p>
+          <p className="dim text-[13.5px] mb-4">Read-only view calls against the vault, no keys, no wallet. Exact vault id included; the RPC endpoint is the default.</p>
           <div className="space-y-2 mb-4">
             <CmdBlock cmdKey="verify" />
             <CmdBlock cmdKey="verifyCsv" />
-            <CmdBlock
-              cmdKey="verifyProd"
-              label="npx cynex-verify --vault cynex-vault.cynexmaster.testnet --rpc https://test.rpc.fastnear.com  · production vault"
-            />
+            <CmdBlock cmdKey="verifyProd" />
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <span className="mono text-[11px] dim2 uppercase tracking-widest">expected output</span>
@@ -254,8 +261,10 @@ export function Proof() {
         <div className="panel">
           <div className="flex flex-wrap items-center justify-between gap-3 p-5 border-b" style={{ borderColor: "var(--line2)" }}>
             <div>
-              <h2 className="text-xl">Receipt chain — test vault, live</h2>
-              <div className="mono text-[11px] dim2 mt-1">frozen CSV columns · every tx_ref is an explorer link</div>
+              <h2 className="text-xl">Receipt chain, test vault, live</h2>
+              <div className="mono text-[11px] dim2 mt-1">
+                frozen CSV columns · tx_ref is empty for most receipts: the automatic settle path records no tx hash
+              </div>
             </div>
             <div className="flex gap-2">
               <button className="btn sm" onClick={() => void replayBrowser()} disabled={replay.running}>
@@ -272,6 +281,11 @@ export function Proof() {
               </button>
             </div>
           </div>
+          <div className="callout mono text-[12px] mx-5 mt-4" style={{ color: "#fde68a" }}>
+            Warning: receipts 0 to 6 name acme-supplies.testnet, which does not exist on chain (view_account returns UNKNOWN_ACCOUNT). Those
+            settles credited a token balance, because ft_transfer only updates the token contract map, but the account was never created, so
+            they are not payments to a real counterparty. Do not settle to acme-supplies.testnet.
+          </div>
           <div data-live-region="table">{tableBody()}</div>
           <div id="replayout" className="px-5 pb-5"></div>
         </div>
@@ -287,8 +301,13 @@ export function Proof() {
         <div className="kicker mb-2">Attestation bundles</div>
         <h2 className="text-xl md:text-2xl mb-1">TEE evidence, verifiable offline</h2>
         <p className="dim text-[13.5px] max-w-2xl mb-6">
-          All four bundles live in the repo under <span className="mono text-[12.5px] text-white">demo/attestations/</span>. Production TEE
-          proof first. The VRF signature does not prove TEE execution.
+          All four bundles live in the repo under <span className="mono text-[12.5px] text-white">docs/attestation-proofs/</span>.
+          Production TEE proof first. The VRF signature does not prove TEE execution. Request 13040 verifies offline with mainnet collateral
+          bundled in its file, because the testnet collateral archive lags. Verify live from a tx hash with{" "}
+          <span className="mono text-[12.5px]" style={{ color: "#9be7c4" }}>
+            scripts/verify-tee-attestation.sh --tx &lt;hash&gt;
+          </span>
+          .
         </p>
         <div className="space-y-4">
           {BUNDLES.map((b) => (
@@ -310,10 +329,14 @@ export function Proof() {
                   {b.vault}
                 </a>
               </p>
+              <div className="flex flex-wrap items-center gap-3 mb-3">
+                <span className="mono text-[11px] dim2 uppercase tracking-widest">TEE request tx</span>
+                <HashChip hash={b.tx} />
+              </div>
               <div className="grid md:grid-cols-[1fr,auto] gap-3 items-center">
                 <CmdBlock cmdKey={b.key} />
-                <a className="btn sm ghost" href={REPO} target="_blank" rel="noopener">
-                  view bundle — demo/attestations/{b.id}.json{" "}
+                <a className="btn sm ghost" href={REPO + "/blob/master/docs/attestation-proofs/" + b.file} target="_blank" rel="noopener">
+                  view bundle, docs/attestation-proofs/{b.file}{" "}
                   <span style={{ width: 12, height: 12, display: "inline-grid", placeItems: "center" }}>
                     <Icon name="ext" size={12} />
                   </span>

@@ -1,5 +1,5 @@
-/* Cynex web — per-step chain read hook.
-   "Read receipt #N from chain — now" buttons use this. State is kept per
+/* Cynex web, per-step chain read hook.
+   "Read receipt #N from chain, now" buttons use this. State is kept per
    receipt index so several reads can live on one page. */
 
 import { useState } from "react";
