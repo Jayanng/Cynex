@@ -29,6 +29,7 @@ interface DocSection {
   title: string;
   path: string;
   commit: string;
+  group: "start" | "reference";
   body: ReactNode;
 }
 
@@ -76,6 +77,7 @@ const SIGNALS: [string, string][] = [
 const DOCS: DocSection[] = [
   {
     id: "readme",
+    group: "start",
     title: "README",
     path: "README.md",
     commit: DOC_COMMITS.readme,
@@ -116,6 +118,7 @@ const DOCS: DocSection[] = [
   },
   {
     id: "security",
+    group: "start",
     title: "Security model",
     path: "README.md:223-250 and docs/threat-model.md",
     commit: DOC_COMMITS.security,
@@ -194,6 +197,7 @@ const DOCS: DocSection[] = [
   },
   {
     id: "deployment",
+    group: "start",
     title: "Deployment & verification",
     path: "docs/deployment.md",
     commit: DOC_COMMITS.deployment,
@@ -266,7 +270,8 @@ node frontend/dist-test/cli/cynex.js verify-live cynex-vault.cynexmaster.testnet
   },
   {
     id: "p10demo",
-    title: "Demo script",
+    group: "start",
+    title: "Demo run",
     path: "docs/phase10-demo-script.md",
     commit: DOC_COMMITS.p10demo,
     body: (
@@ -291,14 +296,15 @@ node frontend/dist-test/cli/cynex.js verify-live cynex-vault.cynexmaster.testnet
           <span className="mono text-[13px]" style={{ color: "var(--accent-text)" }}>
             node frontend/dist-test/cli/cynex.js verify-live cynex-testvault.cynexmaster.testnet
           </span>
-          , all rows verified_ok=true. See <a href="#/docs/p10proof">Proof</a>.
+          , all rows verified_ok=true. See <a href="#/docs/p10proof">Demo proof</a>.
         </p>
       </>
     ),
   },
   {
     id: "p10proof",
-    title: "Proof",
+    group: "start",
+    title: "Demo proof",
     path: "docs/phase10-demo-proof.md",
     commit: DOC_COMMITS.p10proof,
     body: (
@@ -345,6 +351,7 @@ index,prev_hash,obligation_id,recipient,amount,token_id,timestamp,tx_ref,verifie
   },
   {
     id: "reputation",
+    group: "reference",
     title: "Reputation signals",
     path: "README.md:378-394, docs/phase7-lane-b.md, docs/scorecard-code-change-recency.md",
     commit: DOC_COMMITS.reputation,
@@ -397,6 +404,7 @@ neutral: no contract, or first observation, not a penalty`}
   },
   {
     id: "receipts",
+    group: "reference",
     title: "Receipts & verification",
     path: "docs/contract-api.md",
     commit: DOC_COMMITS.receipts,
@@ -441,6 +449,7 @@ neutral: no contract, or first observation, not a penalty`}
   },
   {
     id: "scorecard",
+    group: "reference",
     title: "Scorecard addendum",
     path: "docs/scorecard-code-change-recency.md and docs/phase10-lane-b.md",
     commit: DOC_COMMITS.scorecard,
@@ -481,6 +490,7 @@ neutral: no contract, or first observation, not a penalty`}
   },
   {
     id: "mcp",
+    group: "reference",
     title: "MCP server",
     path: "services/mcp/README.md and services/mcp/SECURITY.md",
     commit: DOC_COMMITS.mcp,
@@ -521,6 +531,7 @@ neutral: no contract, or first observation, not a penalty`}
   },
   {
     id: "consoleCli",
+    group: "reference",
     title: "Console & CLI",
     path: "agent/console.ts and cli/cynex.ts",
     commit: DOC_COMMITS.consoleCli,
@@ -593,6 +604,13 @@ export function Docs({ active }: { active?: string }) {
     <>
       <StripSection />
       <section className="wrap pt-12">
+        <a
+          href="#/"
+          className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium mb-4"
+          style={{ borderColor: "var(--line)", background: "var(--raised)", color: "var(--secondary)" }}
+        >
+          ← Home
+        </a>
         <div className="kicker mb-2">Docs</div>
         <h1 className="text-3xl md:text-4xl mb-2">What is already written</h1>
         <p className="dim text-sm max-w-2xl mb-8">
@@ -615,17 +633,32 @@ export function Docs({ active }: { active?: string }) {
               onChange={(e) => setQuery(e.target.value)}
             />
             <nav className="docside space-y-0.5" id="docnav">
-              {DOCS.map((d, i) => (
-                <a
-                  key={d.id}
-                  href={"#/docs/" + d.id}
-                  data-doc={d.id}
-                  className={active === d.id ? "active" : ""}
-                  style={{ opacity: matches[i] ? undefined : 0.35 }}
-                >
-                  {d.title}
-                </a>
-              ))}
+              {(() => {
+                const out: ReactNode[] = [];
+                let lastGroup = "";
+                DOCS.forEach((d, i) => {
+                  if (d.group !== lastGroup) {
+                    lastGroup = d.group;
+                    out.push(
+                      <div key={"g-" + d.group} className="mono text-xs dim2 pt-3 pb-1">
+                        {d.group === "start" ? "Start here" : "Reference"}
+                      </div>,
+                    );
+                  }
+                  out.push(
+                    <a
+                      key={d.id}
+                      href={"#/docs/" + d.id}
+                      data-doc={d.id}
+                      className={active === d.id ? "active" : ""}
+                      style={{ opacity: matches[i] ? undefined : 0.35 }}
+                    >
+                      {d.title}
+                    </a>,
+                  );
+                });
+                return out;
+              })()}
             </nav>
             <div className="mono text-xs dim2 mt-4" id="doccount">
               {q ? matchCount + " of " + DOCS.length + " sections match" : ""}
@@ -653,6 +686,24 @@ export function Docs({ active }: { active?: string }) {
                   </span>
                 </div>
                 <div className="doc-text">{d.body}</div>
+                {!q && (
+                  <div className="flex flex-wrap justify-between gap-3 border-t pt-4 mt-6" style={{ borderColor: "var(--line2)" }}>
+                    {i > 0 ? (
+                      <a className="mono text-xs inline-flex items-center gap-2" style={{ color: "var(--accent-text)" }} href={"#/docs/" + DOCS[i - 1].id}>
+                        ← {DOCS[i - 1].title}
+                      </a>
+                    ) : (
+                      <span />
+                    )}
+                    {i < DOCS.length - 1 ? (
+                      <a className="mono text-xs inline-flex items-center gap-2" style={{ color: "var(--accent-text)" }} href={"#/docs/" + DOCS[i + 1].id}>
+                        {DOCS[i + 1].title} →
+                      </a>
+                    ) : (
+                      <span />
+                    )}
+                  </div>
+                )}
               </section>
             ))}
           </div>
