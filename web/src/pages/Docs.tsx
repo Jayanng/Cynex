@@ -95,7 +95,7 @@ const DOCS: DocSection[] = [
           informs the owner before settlement, it does not replace the on-chain checks. Every settle writes a hash-chained receipt (NEP-297
           event).
         </p>
-        <h3 className="text-white text-[15px] mt-6 mb-3">Cold run (README Reproduce it, steps 1 to 5)</h3>
+        <h3 className="text-white text-[15px] mt-6 mb-3">Cold run (README Reproduce it, frontend and verify-live steps)</h3>
         <pre className="codeblock">
           {CP.coldrun}
           <button className="icbtn copyfloat" title="Copy">

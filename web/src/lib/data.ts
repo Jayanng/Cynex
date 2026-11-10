@@ -9,7 +9,7 @@ export const AGENT = "cynex-agent.cynexmaster.testnet";
 export const AGENT2 = "cynex-agent2.cynexmaster.testnet";
 export const TOKEN = "usdc.fakes.testnet";
 export const REPO = "https://github.com/Jayanng/Cynex";
-export const COMMIT = "c980ffc";
+export const COMMIT = "a79e426";
 export const ACME = "acme-supplies.testnet";
 export const DEMO_POLICY_ID = "p6-001";
 export const DEMO_POLICY_PROD_ID = "p5-prod-001";
@@ -505,14 +505,14 @@ export const SETTLE_CODES: [string, string][] = [
   ["ERR_VAULT_STORAGE_EXHAUSTED", "native headroom below the receipt plus deposit plus gas requirement"],
 ];
 
-/* ---- Last-updated commit per Docs source file (git log, Master c980ffc). Multi-file sections list each file's commit. ---- */
+/* ---- Last-updated commit per Docs source file (git log, Master a79e426). Multi-file sections list each file's commit. ---- */
 export const DOC_COMMITS: Record<string, string> = {
-  readme: "b8b9a54",
-  security: "b8b9a54 (README.md), 6b40576 (docs/threat-model.md)",
+  readme: "620fcb3",
+  security: "620fcb3 (README.md), 6b40576 (docs/threat-model.md)",
   deployment: "d9cdf40",
   p10demo: "fc3ceac",
   p10proof: "fc3ceac",
-  reputation: "b8b9a54 (README.md), 69b9fd7 (docs/phase7-lane-b.md, docs/scorecard-code-change-recency.md)",
+  reputation: "620fcb3 (README.md), 69b9fd7 (docs/phase7-lane-b.md, docs/scorecard-code-change-recency.md)",
   receipts: "6b40576",
   scorecard: "e26edfb", // docs/scorecard-code-change-recency.md (69b9fd7) and docs/phase10-lane-b.md (e26edfb, latest)
   mcp: "ddcbcd3", // services/mcp/README.md (ddcbcd3), SECURITY.md 4dec900
