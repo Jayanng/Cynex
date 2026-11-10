@@ -8,6 +8,7 @@ import { KEY_LIMITS, ATTACKS } from "../lib/features";
 import { RepGate } from "../components/RepGate";
 import { AttackBench } from "../components/AttackBench";
 import { GradeBadge, Panel, Stat, Unavailable, CommandBlock } from "../components/ui";
+import { LiveStamp } from "../components/LiveStamp";
 
 export function ConsolePage() {
   const live = useLive();
@@ -27,6 +28,9 @@ export function ConsolePage() {
         </div>
 
         {/* live chain strip */}
+        <div style={{ marginBottom: 14 }}>
+          <LiveStamp label="vault state" />
+        </div>
         <div className="grid grid-4" style={{ marginBottom: 28 }}>
           <Panel>
             <div className="row" style={{ justifyContent: "space-between" }}>

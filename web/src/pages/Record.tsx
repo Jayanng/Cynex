@@ -7,6 +7,7 @@ import { ENFORCEMENT, ERROR_CODE_TOTAL, SETTLE_REACHABLE_CODES, REP_SIGNALS } fr
 import { baseUnits, nsToUtc, shortHash, explorerTx, explorerAccount } from "../lib/format";
 import { hashToHex, type ReceiptRow } from "../lib/chain";
 import { Chip, CommandBlock, Errata, GradeBadge, Panel, Stat, Unavailable } from "../components/ui";
+import { LiveStamp } from "../components/LiveStamp";
 
 export function RecordPage() {
   const live = useLive();
@@ -81,6 +82,9 @@ export function RecordPage() {
         <div className="spread" style={{ marginBottom: 12 }}>
           <h3 className="stat-label" style={{ fontSize: 13, margin: 0 }}>receipt chain · {RECORD.vaults.test}</h3>
           <Chip value={RECORD.vaults.test} href={explorerAccount(RECORD.vaults.test)} label="explorer" />
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <LiveStamp label="receipt chain" />
         </div>
         <div className="table-wrap" style={{ marginBottom: 32 }}>
           <table className="data">

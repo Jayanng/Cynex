@@ -3,12 +3,10 @@
 
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import "./theme.css";
-import "@fontsource/space-grotesk/500.css";
-import "@fontsource/space-grotesk/700.css";
-import "@fontsource/inter/400.css";
-import "@fontsource/inter/500.css";
-import "@fontsource/inter/600.css";
+import "./theme-cream.css";
+import "@fontsource/instrument-sans/400.css";
+import "@fontsource/instrument-sans/500.css";
+import "@fontsource/instrument-sans/600.css";
 import "@fontsource/jetbrains-mono/400.css";
 import "@fontsource/jetbrains-mono/500.css";
 
@@ -17,6 +15,7 @@ import { ROUTES, titleForPage } from "./lib/routes";
 import { LiveProvider, useLive } from "./lib/live";
 import { RECORD } from "./lib/record";
 import { Unavailable, Verdict } from "./components/ui";
+import { Logo } from "./components/brand";
 import { HomePage } from "./pages/Home";
 import { ConsolePage } from "./pages/Console";
 import { ToolsPage } from "./pages/Tools";
@@ -28,8 +27,7 @@ function Nav({ route }: { route: string }) {
     <nav className="nav">
       <div className="nav-in">
         <Link to="/home" className="brand">
-          <span className="mark">C</span>
-          Cynex
+          <Logo size={26} />
         </Link>
         <div className="nav-links">
           {ROUTES.filter((r) => r.page !== "home" || true).map((r) => (
@@ -72,7 +70,7 @@ function Footer() {
       <div className="footer-in">
         <div>
           <div className="foot-brand">
-            <span className="brand"><span className="mark">C</span>Cynex</span>
+            <Logo size={26} />
           </div>
           <p className="foot-tag">Pay the obligation. Not the prompt. A purpose-bound settlement vault for AI agents on NEAR.</p>
         </div>
