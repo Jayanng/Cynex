@@ -1,0 +1,102 @@
+{
+  "note": "Single source of truth for every historical fact the site asserts. check-claims.mjs re-verifies each entry against RPC before the build ships. Nothing here is a guess.",
+  "vaults": {
+    "test": "cynex-testvault.cynexmaster.testnet",
+    "prod": "cynex-vault.cynexmaster.testnet"
+  },
+  "agent": "cynex-agent.cynexmaster.testnet",
+  "token": "usdc.fakes.testnet",
+  "policy": "p6-001",
+  "codeHash": "65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6",
+  "expectedReceipts": { "test": 31, "prod": 13 },
+  "obligation": {
+    "id": "p10-demo-attack-001",
+    "recipient": "cynex-agent.cynexmaster.testnet",
+    "amount": "100",
+    "nonce": 1002,
+    "evidenceType": "PREIMAGE"
+  },
+  "events": [
+    {
+      "id": "settle-preimage",
+      "label": "Settle, correct terms, valid preimage",
+      "verdict": "PAID",
+      "tx": "3Gp3J2zZCKrne1PamDVf6PgXHk4qGc3a58GBvoFcNhrZ",
+      "receiptIndex": 11,
+      "obligationId": "p10-demo-preimage-001",
+      "sentBy": ["cynex-agent.cynexmaster.testnet", "cynexmaster.testnet"]
+    },
+    {
+      "id": "refuse-recipient",
+      "label": "Settle, recipient swapped to a different account",
+      "verdict": "REFUSED",
+      "errCode": "ERR_RECIPIENT_SUBSTITUTION",
+      "tx": "AFYAq8Sju41NjBFwPmTHbJ1psmsYQWjVdBhmXBZbpa7S",
+      "obligationId": "p10-demo-attack-001",
+      "sentBy": ["cynexmaster.testnet", "cynex-agent.cynexmaster.testnet"]
+    },
+    {
+      "id": "refuse-amount",
+      "label": "Settle, amount inflated 100 to 200 base units",
+      "verdict": "REFUSED",
+      "errCode": "ERR_TERMS_MISMATCH",
+      "tx": "43YaxJVggxuZ3E25WfjzkgGBsGAqLrj8nwdUU9RLAQRy",
+      "obligationId": "p10-demo-attack-001",
+      "sentBy": ["cynexmaster.testnet", "cynex-agent.cynexmaster.testnet"]
+    },
+    {
+      "id": "settle-correct",
+      "label": "Settle, correct terms",
+      "verdict": "PAID",
+      "tx": "Ho97UjQEDDfe7Go66uHrVSJvbF8narZJ2YBH3hWarxi",
+      "receiptIndex": 12,
+      "obligationId": "p10-demo-attack-001",
+      "sentBy": ["cynexmaster.testnet", "cynex-agent.cynexmaster.testnet"]
+    },
+    {
+      "id": "refuse-replay",
+      "label": "Settle, replay of nonce 1002",
+      "verdict": "REFUSED",
+      "errCode": "ERR_NONCE_ALREADY_CONSUMED",
+      "tx": "AwzQS7XsuGSYnPmvd5jFJzPDs3WDc2gRgSbW3smWq1Cs",
+      "obligationId": "p10-demo-attack-001",
+      "sentBy": ["cynexmaster.testnet", "cynex-agent.cynexmaster.testnet"]
+    },
+    {
+      "id": "tee-request",
+      "label": "Request TEE verification, OutLayer 11912",
+      "verdict": "OK",
+      "tx": "5Xvu78qxd9NfgJzRBeyvdQXnqK8sLfSmzrfVC5dgDK68",
+      "obligationId": "p10-demo-tee-001",
+      "sentBy": ["cynexmaster.testnet", "cynex-agent.cynexmaster.testnet"]
+    },
+    {
+      "id": "settle-tee",
+      "label": "Settle, VRF bound to the pending request",
+      "verdict": "PAID",
+      "tx": "3QV2aCRSiJ8ZYqLECCpK6ZkXpYE4AdxJzmyP3JTaDqWB",
+      "receiptIndex": 13,
+      "obligationId": "p10-demo-tee-001",
+      "sentBy": ["cynexmaster.testnet", "cynex-agent.cynexmaster.testnet"]
+    }
+  ],
+  "attestations": [
+    { "bundle": "docs/attestation-proofs/attestation-proof-prod-tee-001.json", "request": 13324, "vault": "prod" },
+    { "bundle": "docs/attestation-proofs/attestation-proof-10640.json", "request": 10640, "vault": "test" },
+    { "bundle": "docs/attestation-proofs/attestation-proof-11912.json", "request": 11912, "vault": "test" },
+    { "bundle": "docs/attestation-proofs/attestation-proof-13040-mainnet-collateral.json", "request": 13040, "vault": "test" }
+  ],
+  "commands": {
+    "verifyTest": "node frontend/dist-test/cli/cynex.js verify-live cynex-testvault.cynexmaster.testnet",
+    "verifyCsv": "node frontend/dist-test/cli/cynex.js verify --csv cynex-testvault.cynexmaster.testnet > receipts.csv",
+    "verifyProd": "node frontend/dist-test/cli/cynex.js verify-live cynex-vault.cynexmaster.testnet",
+    "verifyAttestation": "scripts/verify-tee-attestation.sh --bundle docs/attestation-proofs/attestation-proof-10640.json",
+    "installVerifier": "cargo install --git https://github.com/out-layer/outlayer-verify outlayer-verify",
+    "buildWeb": "cd web && npm install && npm run build"
+  },
+  "repoFacts": {
+    "jest": { "passed": 384, "skipped": 1, "suites": 21, "command": "cd frontend && npm run jest" },
+    "contractTests": { "count": 142, "command": "cd contract && cargo test --lib" },
+    "errorCodes": { "defined": 25, "returnedBySettle": 11 }
+  }
+}
