@@ -227,7 +227,7 @@ export function Proof() {
             <div className="md:col-span-2">
             <JudgeItem
               n="4"
-              t="Demo script + live state"
+              t="Demo run + live state"
               body={
                 <div className="mt-1 flex flex-col gap-2">
                   <a className="mono text-xs" href="#/docs/p10demo">

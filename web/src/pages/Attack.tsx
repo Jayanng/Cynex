@@ -390,11 +390,11 @@ export function Attack() {
         <div className="panel p-6">
           <div className="kicker mb-3">Next</div>
           <div className="flex flex-wrap gap-x-8 gap-y-3">
-            <a className="mono text-sm inline-flex items-center gap-2" style={{ color: "var(--accent-text)" }} href="#/proof">
-              Verify the chain yourself →
-            </a>
             <a className="mono text-sm inline-flex items-center gap-2" style={{ color: "var(--accent-text)" }} href="#/docs">
               Read how it works →
+            </a>
+            <a className="mono text-sm inline-flex items-center gap-2" style={{ color: "var(--accent-text)" }} href="#/proof">
+              Verify the chain yourself →
             </a>
           </div>
         </div>
