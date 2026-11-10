@@ -1,17 +1,17 @@
-/* Cynex web, Landing page.
-   Refusal first, then the hero, the live strip, the trust row, one verify
-   command, try-to-break-it, one live proof, the three layers, the trust
-   model, and the calls to action. */
+/* Cynex web, Home page.
+   Hero first, then the refusal, the live strip, the trust row, one live
+   proof, the three layers, the reputation gate, how a settlement flows,
+   the use case, MCP, one verify command, the trust model, the calls to
+   action, and the Footer. */
 
 import { useEffect } from "react";
 import { AGENT, AGENT2, MCP_FACTS, MCP_RUN, MCP_TOOLS, SETTLE_CODES, USECASE, VAULT_TEST } from "../lib/data";
 import { useLive } from "../lib/live";
-import { fmtToken, fmtTs, trunc } from "../lib/near";
+import { fmtToken, trunc } from "../lib/near";
 import { useChainRead } from "../lib/useChainRead";
 import { Badge, ChainReadOut, HashChip, AcctChip, Icon, LoadTxt, Unavail } from "../components/ui";
 import { StripSection } from "../components/Strip";
-import { RefusalPanel, TrustRow, VerifyLanding, Footer } from "../components/shared";
-import { BreakIt } from "../components/BreakIt";
+import { RefusalPanel, TrustRow, VerifyHome, Footer } from "../components/shared";
 
 function LatestSettle() {
   const { live: L } = useLive();
@@ -216,45 +216,53 @@ function ChecksCard() {
   const pol = L.policy.v;
   const cap = pol
     ? `Spent ${pol.spent} of ${pol.limit} base units.`
-    : "Policy p6-001, read live from the chain.";
-  const rows: [string, string][] = [
-    ["Cap held.", cap],
-    ["Recipient fixed at authorization.", AGENT],
-    ["Evidence checked.", `${USECASE.artifactBytes} bytes hashed to the committed digest.`],
+    : "";
+  /* Only the cap row is a live policy value; the recipient and evidence
+     rows are recorded facts for the demo obligation, so they render
+     whether or not the policy read has landed. */
+  const rows: [string, string, boolean][] = [
+    ["Cap held.", cap, true],
+    ["Recipient fixed at authorization.", AGENT, false],
+    ["Evidence checked.", `${USECASE.artifactBytes} bytes hashed to the committed digest.`, false],
   ];
   return (
     <div className="panel p-6" style={{ background: "var(--raised)" }}>
       <div className="text-xs dim2 mb-3">What the checks saw</div>
       <div className="panel p-5 mb-5">
         <div className="flex flex-col">
-          {rows.map(([label, value], i) => (
-            <div
-              key={label}
-              className={
-                "flex items-start gap-3 py-3" +
-                (i === 0 ? " pt-0" : "") +
-                (i === rows.length - 1 ? " pb-0" : " border-b")
-              }
-              style={{ borderColor: "var(--line2)" }}
-            >
-              <span
-                style={{
-                  color: "var(--pos-text)",
-                  width: 16,
-                  height: 16,
-                  display: "inline-grid",
-                  placeItems: "center",
-                  flex: "none",
-                  marginTop: 2,
-                }}
+            {rows.map(([label, value, live], i) => (
+              <div
+                key={label}
+                className={
+                  "flex items-start gap-3 py-3" +
+                  (i === 0 ? " pt-0" : "") +
+                  (i === rows.length - 1 ? " pb-0" : " border-b")
+                }
+                style={{ borderColor: "var(--line2)" }}
               >
-                <Icon name="check" />
-              </span>
-              <span className="text-[15px] leading-relaxed">
-                {label} <b className="font-medium">{value}</b>
-              </span>
-            </div>
-          ))}
+                {live && !pol ? null : (
+                  <span
+                    style={{
+                      color: "var(--pos-text)",
+                      width: 16,
+                      height: 16,
+                      display: "inline-grid",
+                      placeItems: "center",
+                      flex: "none",
+                      marginTop: 2,
+                    }}
+                  >
+                    <Icon name="check" />
+                  </span>
+                )}
+                <span className="text-[15px] leading-relaxed">
+                  {label}{" "}
+                  <b className="font-medium">
+                    {live && !pol ? (L.policy.err ? <Unavail /> : <LoadTxt />) : value}
+                  </b>
+                </span>
+              </div>
+            ))}
         </div>
       </div>
       <div className="text-xs dim2 mb-3">What nobody else checks</div>
@@ -276,7 +284,7 @@ function ChecksCard() {
   );
 }
 
-export function Landing() {
+export function Home() {
   const { states, run } = useChainRead();
   useEffect(() => {
     const t = setTimeout(() => void run(12), 1200);
@@ -286,7 +294,6 @@ export function Landing() {
 
   return (
     <>
-      <RefusalPanel />
       <section className="wrap pt-12 md:pt-24 relative">
         <svg
           className="pointer-events-none absolute right-0 -top-4 hidden lg:block"
@@ -321,7 +328,7 @@ export function Landing() {
                 Verify it yourself
               </a>
             </div>
-            <div className="mono text-xs dim2 mt-4">no login · no wallet · every receipt is a live chain read</div>
+            <div className="mono text-xs dim2 mt-4">no login · no wallet · every receipt is a real chain receipt</div>
           </div>
           <div className="flex flex-col gap-4">
             <ChecksCard />
@@ -332,12 +339,11 @@ export function Landing() {
         </div>
       </section>
 
+      <RefusalPanel />
+
+
       <StripSection />
       <TrustRow />
-      <VerifyLanding />
-      <UseCaseSection />
-      <BreakIt />
-
       {/* One live proof */}
       <section className="wrap mt-24">
         <div className="panel p-6">
@@ -475,7 +481,10 @@ export function Landing() {
           </p>
         </div>
       </section>
+      <UseCaseSection />
+
       <McpSection />
+      <VerifyHome />
 
       {/* Trust model */}
       <section className="wrap mt-24">
@@ -487,7 +496,7 @@ export function Landing() {
             {[
               "The contract is the decision-maker. The agent proposes; the vault disposes. Terms are fixed at obligation creation, settle only checks them.",
               "Funding enters only via ft_transfer_call. Evidence is required before settle: a SHA-256 preimage of the delivery artifact, or TEE verification via OutLayer.",
-              "Every settle writes a hash-chained receipt (NEP-297). Anyone can replay the chain from genesis, tamper with receipt i and it is detected at i+1.",
+              "Every successful settle writes a hash-chained receipt (NEP-297). Anyone can replay the chain from genesis, tamper with receipt i and it is detected at i+1.",
               "NEAR function-call keys restrict which methods an agent key may call, they do not restrict the arguments. That gap is exactly what Cynex closes.",
               "Cancel and reconciliation: cancel_obligation and cancel_expired_ready are owner only. cancel_expired_ready refuses a READY obligation that has not expired yet (ERR_NOT_EXPIRED); only an expired READY obligation can be cancelled that way. A transfer has a 10-minute timeout and evidence has a 1-hour timeout; a stuck transfer goes to RECONCILIATION_REQUIRED for a human. A confirmed failed transfer returns to READY for a fresh settle, up to 3 attempts (MAX_TRANSFER_ATTEMPTS), then escalates to reconciliation, and the contract never redispatches a transfer on its own.",
               "TEE requirements: request_tee_verification is owner only, with a 0.01 NEAR deposit, 100 TGas for the request plus 50 TGas for the callback. The 300 TGas in the demo is the console caller gas, not a contract constant.",
@@ -519,7 +528,7 @@ export function Landing() {
               read.
             </p>
             <div className="mono text-xs mt-4 inline-flex items-center gap-2" style={{ color: "var(--accent-text)" }}>
-              guided or sandbox{" "}
+              guided walkthrough{" "}
               <span style={{ width: 16, height: 16, display: "inline-grid", placeItems: "center" }}>
                 <Icon name="arrow" />
               </span>
@@ -545,5 +554,3 @@ export function Landing() {
     </>
   );
 }
-
-export { fmtTs };

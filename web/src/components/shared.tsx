@@ -29,7 +29,7 @@ export function Footer() {
   );
 }
 
-/* ---------- live counts line (used on landing verify + proof) ---------- */
+/* ---------- live counts line (used on home verify + proof) ---------- */
 export function CountsLine() {
   const { live: L } = useLive();
   const f = L.recTest;
@@ -83,7 +83,7 @@ export function RefusalPanel() {
   );
 }
 
-/* ---------- trust row (landing): one wide panel, four quiet stats ---------- */
+/* ---------- trust row (home): one wide panel, four quiet stats ---------- */
 export function TrustRow() {
   const { live: L } = useLive();
   const cell = (big: React.ReactNode, sub: string) => (
@@ -117,8 +117,8 @@ export function TrustRow() {
   );
 }
 
-/* ---------- one verify command on the landing page ---------- */
-export function VerifyLanding() {
+/* ---------- one verify command on the home page ---------- */
+export function VerifyHome() {
   return (
     <section className="wrap mt-24">
       <div className="panel p-6">

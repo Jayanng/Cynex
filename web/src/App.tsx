@@ -1,18 +1,20 @@
 /* Cynex web, app shell.
-   Hash routing matching the showcase URLs (#/landing, #/demo, #/docs,
+   Hash routing matching the showcase URLs (#/, #/demo, #/attack, #/docs,
    #/proof) so existing links keep working. The header and the live
    strip read from the same live store. */
 
 import { useEffect, useState } from "react";
 import { LiveProvider, useLive } from "./lib/live";
-import { Landing } from "./pages/Landing";
+import { Home } from "./pages/Home";
 import { Demo } from "./pages/Demo";
+import { Attack } from "./pages/Attack";
 import { Docs } from "./pages/Docs";
 import { Proof } from "./pages/Proof";
 import { Logo } from "./components/Logo";
+import { applySandboxRedirect, effectiveRoute, pageForRoute, parseHash, titleForPage } from "./lib/routes";
 
 function parseRoute(): string[] {
-  return (window.location.hash || "").replace(/^#\/?/, "").split("/").filter(Boolean);
+  return parseHash(window.location.hash);
 }
 
 function Header({ page }: { page: string }) {
@@ -35,11 +37,14 @@ function Header({ page }: { page: string }) {
           </span>
         </a>
         <nav className="flex items-center gap-1" id="mainnav">
-          <a className={"navlink" + (page === "landing" ? " active" : "")} href="#/">
-            Landing
+          <a className={"navlink" + (page === "home" ? " active" : "")} href="#/">
+            Home
           </a>
           <a className={"navlink" + (page === "demo" ? " active" : "")} href="#/demo/guided">
             Demo
+          </a>
+          <a className={"navlink" + (page === "attack" ? " active" : "")} href="#/attack">
+            Attack
           </a>
           <a className={"navlink" + (page === "docs" ? " active" : "")} href="#/docs">
             Docs
@@ -69,16 +74,18 @@ function Shell() {
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
-  const page = route[0] || "landing";
+  /* The effective route treats a legacy #/demo/sandbox link as #/attack,
+     so no frame ever shows the Demo nav or title for it. */
+  const effRoute = effectiveRoute(route);
+  const page = pageForRoute(route);
+  /* The old sandbox route moved to the Attack page; keep the link working.
+     replace swaps the history entry instead of pushing one, so Back from
+     Attack leaves the page instead of bouncing forward again. */
   useEffect(() => {
-    document.title =
-      page === "demo"
-        ? "Demo, Cynex"
-        : page === "docs"
-          ? "Docs, Cynex"
-          : page === "proof"
-            ? "Proof, Cynex"
-            : "Cynex, Pay the obligation. Not the prompt.";
+    applySandboxRedirect(window.location, route);
+  }, [route]);
+  useEffect(() => {
+    document.title = titleForPage(page);
   }, [page]);
 
   return (
@@ -86,13 +93,15 @@ function Shell() {
       <Header page={page} />
       <main className="md:pt-16 min-h-screen">
         {page === "demo" ? (
-          <Demo mode={route[1] === "sandbox" ? "sandbox" : "guided"} anchor={route[2]} />
+          <Demo anchor={effRoute[2]} />
+        ) : page === "attack" ? (
+          <Attack />
         ) : page === "docs" ? (
           <Docs active={route[1]} />
         ) : page === "proof" ? (
           <Proof />
         ) : (
-          <Landing />
+          <Home />
         )}
       </main>
     </>

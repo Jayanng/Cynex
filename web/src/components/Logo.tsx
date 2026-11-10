@@ -1,8 +1,9 @@
 /* Cynex C mark. A near-black open circle, a C that opens to the right,
    stroke #1f1b16, with a small orange square at the top right of the C,
    overlapping the upper tip, about 1 to 2 o'clock. Plus the wordmark
-   "cynex" in lowercase Instrument Sans, weight 600. */
-export function CMark({ size = 36 }: { size?: number }) {
+   "cynex" in lowercase Instrument Sans, weight 600. light renders the C
+   in cream for a dark ground. */
+export function CMark({ size = 36, light = false }: { size?: number; light?: boolean }) {
   return (
     <svg
       width={size}
@@ -13,7 +14,7 @@ export function CMark({ size = 36 }: { size?: number }) {
     >
       <path
         d="M 35.6 10.2 A 18 18 0 1 0 35.6 37.8"
-        stroke="#1f1b16"
+        stroke={light ? "#f7f4ee" : "#1f1b16"}
         strokeWidth="3.2"
         strokeLinecap="round"
       />

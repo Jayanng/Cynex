@@ -232,7 +232,7 @@ const DOCS: DocSection[] = [
         <p className="dim leading-relaxed mb-3">
           Last verified 2026-11-07 @ master <span className="mono text-[13px] text-ink">{COMMIT}</span> (docs/deployment.md last updated d9cdf40): both vaults ran
           code hash <span className="mono text-xs text-ink">65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6</span>.{" "}
-          <b className="text-ink">This will have moved</b>, re-read it live (the status strip on Landing/Demo does exactly that). Snapshot from docs/deployment.md, as of 2026-11-07: test policy p6-001 funded 10,000, spent 4,500, 22 receipts; agent balance 1,800; production policy
+          <b className="text-ink">This will have moved</b>, re-read it live (the status strip on Home/Demo does exactly that). Snapshot from docs/deployment.md, as of 2026-11-07: test policy p6-001 funded 10,000, spent 4,500, 22 receipts; agent balance 1,800; production policy
           p5-prod-001 funded 1,000, spent 300.
         </p>
         <h3 className="text-ink text-[15px] mt-6 mb-3">How to verify (docs/deployment.md:19-38)</h3>
