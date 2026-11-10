@@ -191,7 +191,7 @@ export function AttemptRow({
   return (
     <div className="attempt">
       <span className="att-label">{label}</span>
-      <span className="flex items-center gap-2">
+      <span className="flex flex-wrap items-center gap-2">
         <Badge value={verdict} extra={code ?? null} />
       </span>
       <HashChip hash={tx} />

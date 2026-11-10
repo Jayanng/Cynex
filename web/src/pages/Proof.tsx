@@ -195,7 +195,7 @@ export function Proof() {
       <section className="wrap mt-8">
         <div className="panel p-6 md:p-7" style={{ borderColor: "rgba(52,211,153,.3)" }}>
           <div className="kicker mb-4">Judges, start here</div>
-          <div className="grid md:grid-cols-2 gap-x-10 gap-y-4 text-[13.5px]">
+          <div className="grid grid-cols-[minmax(0,1fr)] md:grid-cols-2 gap-x-10 gap-y-4 text-[13.5px]">
             <JudgeItem
               n="1"
               t="Live vaults"

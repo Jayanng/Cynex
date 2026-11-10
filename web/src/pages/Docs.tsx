@@ -455,7 +455,7 @@ neutral: no contract, or first observation, not a penalty`}
             ["Jest", "19 suites passed, 1 skipped · 369 tests passed, 1 skipped, 370 total"],
             ["Conformance", "6 / 6"],
           ].map(([k, v]) => (
-            <div key={k} className="panel p-4 flex items-center justify-between">
+            <div key={k} className="panel p-4 flex flex-wrap items-center justify-between gap-2">
               <span className="mono text-[12.5px] dim">{k}</span>
               <span className="badge b-allow">
                 <span className="bdot"></span>
@@ -635,7 +635,7 @@ export function Docs({ active }: { active?: string }) {
               >
                 <div className="flex flex-wrap items-center gap-3 mb-5">
                   <h2 className="text-xl md:text-2xl">{d.title}</h2>
-                  <span className="hashchip" title="source path">
+                  <span className="hashchip" title={d.path}>
                     <span>{d.path}</span>
                   </span>
                   <span className="badge b-dim">
