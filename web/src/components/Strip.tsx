@@ -72,18 +72,18 @@ export function Strip() {
     if (L.recProd.v == null || L.recTest.v == null) return <LoadTxt />;
     const ok = L.recProd.link?.allOk && L.recTest.link?.allOk;
     const icon = ok ? (
-      <span style={{ color: "var(--green)", width: 14, height: 14, display: "inline-grid", placeItems: "center" }}>
+      <span style={{ color: "var(--pos-text)", width: 16, height: 16, display: "inline-grid", placeItems: "center" }}>
         <Icon name="check" />
       </span>
     ) : (
-      <span style={{ color: "var(--amber)", width: 14, height: 14, display: "inline-grid", placeItems: "center" }}>
+      <span style={{ color: "var(--warn-text)", width: 16, height: 16, display: "inline-grid", placeItems: "center" }}>
         <Icon name="warn" />
       </span>
     );
     return (
       <>
         {icon} prod {L.recProd.v} · test {L.recTest.v}{" "}
-        <span className="dim2" style={{ fontSize: 10 }}>
+        <span className="dim2 text-xs">
           link-check
         </span>
       </>
@@ -113,7 +113,7 @@ export function Strip() {
   return (
     <div className="strip">
       {cell(
-        "LAST CHECKED",
+        "Last checked",
         checked == null && !L.anyErr ? (
           <LoadTxt />
         ) : L.anyErr && !checked ? (
@@ -122,16 +122,16 @@ export function Strip() {
           <>
             <span className={"livedot" + (L.anyErr ? " err" : "")}></span>
             {checked || "-"}
-            {L.blockHeight ? <span className="dim2"> · block {Number(L.blockHeight).toLocaleString()}</span> : null}
+            {L.blockHeight ? <span className="dim2"> · block {String(L.blockHeight)}</span> : null}
           </>
         )
       )}
       {cell(
-        "CODE HASH · PROD",
+        "Code hash, prod",
         f(L.codeProd, (v) => (
           <>
             <a
-              className="hover:text-white"
+              className="hover:text-ink"
               href={"https://testnet.nearblocks.io/address/" + VAULT_PROD}
               target="_blank"
               rel="noopener"
@@ -144,11 +144,11 @@ export function Strip() {
         ))
       )}
       {cell(
-        "CODE HASH · TEST",
+        "Code hash, test",
         f(L.codeTest, (v) => (
           <>
             <a
-              className="hover:text-white"
+              className="hover:text-ink"
               href={"https://testnet.nearblocks.io/address/" + VAULT_TEST}
               target="_blank"
               rel="noopener"
@@ -160,9 +160,9 @@ export function Strip() {
           </>
         ))
       )}
-      {cell("RECEIPTS VERIFIED", recCell())}
+      {cell("Receipts verified", recCell())}
       {cell(
-        "AGENT BALANCE",
+        "Agent balance",
         f(L.agent, (v) => (
           <span title={"raw: " + String(v) + " · " + fmtToken(v) + " USDC · " + TOKEN + ", 6 decimals"}>
             {String(v)} units
@@ -170,10 +170,10 @@ export function Strip() {
         ))
       )}
       {cell(
-        "DEMO POLICY SPENT / HEADROOM",
+        "Demo policy, spent and headroom",
         f(L.policy, (v) => <span title={policyTitle(v)}>{policyText(v)}</span>)
       )}
-      {cell("LAST SETTLE", lastSettle())}
+      {cell("Last settle", lastSettle())}
     </div>
   );
 }
@@ -184,7 +184,7 @@ export function StripSection() {
       <div data-live-region="strip">
         <Strip />
       </div>
-      <div className="mono text-[10.5px] dim2 mt-2 flex flex-wrap gap-x-5 gap-y-1">
+      <div className="mono text-xs dim2 mt-2 flex flex-wrap gap-x-5 gap-y-1">
         <span>live RPC reads · {RPC_URL}</span>
         <span>on failure a field shows “Unavailable, retrying”, never a cached value</span>
       </div>

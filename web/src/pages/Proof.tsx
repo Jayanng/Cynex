@@ -17,13 +17,13 @@ function JudgeItem({ n, t, body }: { n: string; t: string; body: React.ReactNode
   return (
     <div className="flex gap-3">
       <span
-        className="flex-none w-7 h-7 grid place-items-center rounded-lg border mono text-[11px]"
-        style={{ borderColor: "rgba(52,211,153,.4)", color: "var(--green)" }}
+        className="flex-none w-7 h-7 grid place-items-center rounded-lg border mono text-xs"
+        style={{ borderColor: "var(--line)", color: "var(--pos-text)" }}
       >
         {n}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="text-white font-semibold text-[13.5px]">{t}</div>
+        <div className="text-ink font-medium text-sm">{t}</div>
         {body}
       </div>
     </div>
@@ -65,8 +65,8 @@ export function Proof() {
           </div>
           <div>
             <button className="btn sm" onClick={() => void refreshLive()}>
-              <span style={{ width: 13, height: 13, display: "inline-grid", placeItems: "center" }}>
-                <Icon name="refresh" size={13} />
+              <span style={{ width: 16, height: 16, display: "inline-grid", placeItems: "center" }}>
+                <Icon name="refresh" />
               </span>
               Retry now
             </button>
@@ -109,7 +109,7 @@ export function Proof() {
                     <td>
                       <HexHash value={r.prev_hash} />
                     </td>
-                    <td style={{ color: "#dbe4ee" }}>{r.obligation_id}</td>
+                    <td style={{ color: "var(--txt)" }}>{r.obligation_id}</td>
                     <td>
                       <a href={"https://testnet.nearblocks.io/address/" + r.recipient} target="_blank" rel="noopener" title={r.recipient}>
                         {trunc(r.recipient, 12, 8)}
@@ -138,17 +138,17 @@ export function Proof() {
                     <td>
                       {ok ? (
                         <span
-                          style={{ color: "var(--green)", width: 15, height: 15, display: "inline-grid", placeItems: "center" }}
+                          style={{ color: "var(--pos-text)", width: 16, height: 16, display: "inline-grid", placeItems: "center" }}
                           title={"index follows receipt " + (i - 1 < 0 ? "genesis" : String(i - 1)) + " (contiguity only; hash links are checked by verify-live)"}
                         >
-                          <Icon name="check" size={15} />
+                          <Icon name="check" />
                         </span>
                       ) : (
                         <span
-                          style={{ color: "var(--red)", width: 15, height: 15, display: "inline-grid", placeItems: "center" }}
+                          style={{ color: "var(--neg-text)", width: 16, height: 16, display: "inline-grid", placeItems: "center" }}
                           title="link broken"
                         >
-                          <Icon name="x" size={15} />
+                          <Icon name="x" />
                         </span>
                       )}
                     </td>
@@ -159,7 +159,7 @@ export function Proof() {
           </table>
         </div>
         <div
-          className="px-4 py-3 border-t mono text-[11px] dim2 flex flex-wrap gap-x-5 gap-y-1"
+          className="px-4 py-3 border-t mono text-xs dim2 flex flex-wrap gap-x-5 gap-y-1"
           style={{ borderColor: "var(--line2)" }}
         >
           <span>source: {VAULT_TEST} · receipts(start, limit) · live</span>
@@ -169,7 +169,6 @@ export function Proof() {
         {replay.done ? (
           <div
             className={"logline " + (replay.okCount === f.rows.length ? "ok" : "bad") + " fadein mt-3"}
-            style={{ fontWeight: 600 }}
           >
             structural replay: {replay.okCount}/{f.rows.length} receipts · indices contiguous · hash links are recomputed by the CLI, not
             here · canonical SHA-256 recompute: verify-live (command above)
@@ -185,7 +184,7 @@ export function Proof() {
       <section className="wrap pt-12">
         <div className="kicker mb-2">Proof</div>
         <h1 className="text-3xl md:text-4xl mb-2">Verify it yourself</h1>
-        <p className="dim text-[14px] max-w-2xl">
+        <p className="dim text-sm max-w-2xl">
           Everything on this page is either a live chain read or a file in the repo. Nothing here asks for trust, one command replays the
           whole receipt chain from genesis.
         </p>
@@ -193,9 +192,10 @@ export function Proof() {
 
       {/* judges start here */}
       <section className="wrap mt-8">
-        <div className="panel p-6 md:p-7" style={{ borderColor: "rgba(52,211,153,.3)" }}>
+        <div className="panel p-6">
           <div className="kicker mb-4">Judges, start here</div>
-          <div className="grid grid-cols-[minmax(0,1fr)] md:grid-cols-2 gap-x-10 gap-y-4 text-[13.5px]">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-x-10 gap-y-4 md:grid-cols-3 text-sm">
+            <div className="md:col-span-2">
             <JudgeItem
               n="1"
               t="Live vaults"
@@ -206,22 +206,24 @@ export function Proof() {
                 </div>
               }
             />
+            </div>
             <JudgeItem n="2" t="One command" body={<div className="mt-2"><CmdBlock cmdKey="verify" /></div>} />
             <JudgeItem
               n="3"
               t="Four attestation bundles"
               body={
-                <div className="mono text-[12px] dim mt-1">
+                <div className="mono text-xs dim mt-1">
                   prod-tee-001 (request 13324) · 10640 · 11912 · 13040, below, with verify commands.
                 </div>
               }
             />
+            <div className="md:col-span-2">
             <JudgeItem
               n="4"
               t="Demo script + live state"
               body={
                 <div className="mt-1 flex flex-col gap-2">
-                  <a className="mono text-[12px]" href="#/docs/p10demo">
+                  <a className="mono text-xs" href="#/docs/p10demo">
                     docs/phase10-demo-script.md
                   </a>
                   <span data-live-region="counts">
@@ -230,25 +232,26 @@ export function Proof() {
                 </div>
               }
             />
+            </div>
           </div>
         </div>
       </section>
 
       {/* verify command */}
       <section className="wrap mt-8">
-        <div className="panel p-6 md:p-7">
+        <div className="panel p-6">
           <div className="flex flex-wrap items-center gap-3 mb-1">
             <h2 className="text-xl md:text-2xl">One-command verify</h2>
             <ReadOnlyBadge />
           </div>
-          <p className="dim text-[13.5px] mb-4">Read-only view calls against the vault, no keys, no wallet. Exact vault id included; the RPC endpoint is the default.</p>
+          <p className="dim text-sm mb-4">Read-only view calls against the vault, no keys, no wallet. Exact vault id included; the RPC endpoint is the default.</p>
           <div className="space-y-2 mb-4">
             <CmdBlock cmdKey="verify" />
             <CmdBlock cmdKey="verifyCsv" />
             <CmdBlock cmdKey="verifyProd" />
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <span className="mono text-[11px] dim2 uppercase tracking-widest">expected output</span>
+            <span className="mono text-xs dim2 ">expected output</span>
             <span data-live-region="counts">
               <CountsLine />
             </span>
@@ -262,26 +265,26 @@ export function Proof() {
           <div className="flex flex-wrap items-center justify-between gap-3 p-5 border-b" style={{ borderColor: "var(--line2)" }}>
             <div>
               <h2 className="text-xl">Receipt chain, test vault, live</h2>
-              <div className="mono text-[11px] dim2 mt-1">
+              <div className="mono text-xs dim2 mt-1">
                 frozen CSV columns · tx_ref is empty for most receipts: the automatic settle path records no tx hash
               </div>
             </div>
             <div className="flex gap-2">
               <button className="btn sm" onClick={() => void replayBrowser()} disabled={replay.running}>
-                <span style={{ width: 13, height: 13, display: "inline-grid", placeItems: "center" }}>
-                  <Icon name="check" size={13} />
+                <span style={{ width: 16, height: 16, display: "inline-grid", placeItems: "center" }}>
+                  <Icon name="check" />
                 </span>
                 Replay in browser
               </button>
               <button className="btn sm ghost" onClick={() => void refreshLive()}>
-                <span style={{ width: 13, height: 13, display: "inline-grid", placeItems: "center" }}>
-                  <Icon name="refresh" size={13} />
+                <span style={{ width: 16, height: 16, display: "inline-grid", placeItems: "center" }}>
+                  <Icon name="refresh" />
                 </span>
                 Refresh
               </button>
             </div>
           </div>
-          <div className="callout mono text-[12px] mx-5 mt-4" style={{ color: "#fde68a" }}>
+          <div className="callout mono text-xs mx-5 mt-4">
             Warning: receipts 0 to 6 name acme-supplies.testnet, which does not exist on chain (view_account returns UNKNOWN_ACCOUNT). Those
             settles credited a token balance, because ft_transfer only updates the token contract map, but the account was never created, so
             they are not payments to a real counterparty. Do not settle to acme-supplies.testnet.
@@ -300,20 +303,20 @@ export function Proof() {
       <section className="wrap mt-10">
         <div className="kicker mb-2">Attestation bundles</div>
         <h2 className="text-xl md:text-2xl mb-1">TEE evidence, verifiable offline</h2>
-        <p className="dim text-[13.5px] max-w-2xl mb-6">
-          All four bundles live in the repo under <span className="mono text-[12.5px] text-white">docs/attestation-proofs/</span>.
+        <p className="dim text-sm max-w-2xl mb-6">
+          All four bundles live in the repo under <span className="mono text-[13px] text-ink">docs/attestation-proofs/</span>.
           Production TEE proof first. The VRF signature does not prove TEE execution. Request 13040 verifies offline with mainnet collateral
           bundled in its file, because the testnet collateral archive lags. Verify live from a tx hash with{" "}
-          <span className="mono text-[12.5px]" style={{ color: "#9be7c4" }}>
+          <span className="mono text-[13px]" style={{ color: "var(--accent-text)" }}>
             scripts/verify-tee-attestation.sh --tx &lt;hash&gt;
           </span>
           .
         </p>
         <div className="space-y-4">
           {BUNDLES.map((b) => (
-            <div key={b.id} className="panel p-5 md:p-6" style={b.top ? { borderColor: "rgba(52,211,153,.4)" } : undefined}>
+            <div key={b.id} className="panel p-6" style={b.top ? { background: "var(--raised)" } : undefined}>
               <div className="flex flex-wrap items-center gap-3 mb-2">
-                <h3 className="text-[16px]">{b.title}</h3>
+                <h3 className="text-base">{b.title}</h3>
                 {b.top ? (
                   <span className="badge b-paid">
                     <span className="bdot"></span>production
@@ -325,20 +328,20 @@ export function Proof() {
               </div>
               <p className="dim text-[13px] mb-3">
                 {b.note} Vault:{" "}
-                <a className="mono text-[12px]" href={"https://testnet.nearblocks.io/address/" + b.vault} target="_blank" rel="noopener">
+                <a className="mono text-xs" href={"https://testnet.nearblocks.io/address/" + b.vault} target="_blank" rel="noopener">
                   {b.vault}
                 </a>
               </p>
               <div className="flex flex-wrap items-center gap-3 mb-3">
-                <span className="mono text-[11px] dim2 uppercase tracking-widest">TEE request tx</span>
+                <span className="mono text-xs dim2 ">TEE request tx</span>
                 <HashChip hash={b.tx} />
               </div>
-              <div className="grid md:grid-cols-[1fr,auto] gap-3 items-center">
+              <div className="grid md:grid-cols-[1fr_auto] gap-3 items-center">
                 <CmdBlock cmdKey={b.key} />
                 <a className="btn sm ghost" href={REPO + "/blob/master/docs/attestation-proofs/" + b.file} target="_blank" rel="noopener">
                   view bundle, docs/attestation-proofs/{b.file}{" "}
-                  <span style={{ width: 12, height: 12, display: "inline-grid", placeItems: "center" }}>
-                    <Icon name="ext" size={12} />
+                  <span style={{ width: 16, height: 16, display: "inline-grid", placeItems: "center" }}>
+                    <Icon name="ext" />
                   </span>
                 </a>
               </div>

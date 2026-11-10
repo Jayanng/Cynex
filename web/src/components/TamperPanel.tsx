@@ -28,13 +28,6 @@ interface LogLine {
   text: string;
 }
 
-const randB58 = (n: number) => {
-  const a = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-  let s = "";
-  for (let i = 0; i < n; i++) s += a[Math.floor(Math.random() * a.length)];
-  return s;
-};
-
 export function TamperPanel({ id }: { id: string }) {
   const { live } = useLive();
   const [chain, setChain] = useState<WorkReceipt[]>([]);
@@ -81,12 +74,12 @@ export function TamperPanel({ id }: { id: string }) {
     } else {
       let prev = "0".repeat(64);
       const seed: [string, string][] = [
-        ["pg-alpha", "25"],
-        ["pg-beta", "40"],
-        ["pg-gamma", "60"],
-        ["pg-delta", "15"],
-        ["pg-epsilon", "80"],
-        ["pg-zeta", "30"],
+        ["fixture-001", "25"],
+        ["fixture-002", "40"],
+        ["fixture-003", "60"],
+        ["fixture-004", "15"],
+        ["fixture-005", "80"],
+        ["fixture-006", "30"],
       ];
       for (let i = 0; i < seed.length; i++) {
         const c: WorkReceipt = {
@@ -97,14 +90,14 @@ export function TamperPanel({ id }: { id: string }) {
           amount: (BigInt(seed[i][1]) * 1000000n).toString(),
           token_id: TOKEN,
           timestamp: String(1762531200000000000 + i * 60000000000),
-          tx_ref: randB58(44),
+          tx_ref: "fixture-tx-00" + (i + 1),
           hash: "",
         };
         c.hash = await receiptHash(c);
         prev = c.hash;
         next.push(c);
       }
-      setSrc("source: SYNTHETIC, generated locally in your browser (live receipts unavailable). Not chain data.");
+      setSrc("source: fixture, generated locally in your browser (live receipts unavailable). Not chain data.");
     }
     setBase(next);
     reset(next);
@@ -176,14 +169,14 @@ export function TamperPanel({ id }: { id: string }) {
           <p className="dim text-[13px] max-w-2xl leading-relaxed">
             Local simulation on a working copy, no chain writes. The working copy’s hashes are recomputed in your browser with the frozen
             formula; the canonical verifier is{" "}
-            <span className="mono text-[12px]" style={{ color: "#9be7c4" }}>
+            <span className="mono text-xs" style={{ color: "var(--accent-text)" }}>
               node frontend/dist-test/cli/cynex.js verify-live cynex-testvault.cynexmaster.testnet
             </span>
-            . The simulated attacker tampers with a receipt <i>and</i> recomputes its hash to cover their tracks, the chain still breaks one link
+            . The simulated attacker tampers with a receipt and recomputes its hash to cover their tracks, the chain still breaks one link
             later.
           </p>
         </div>
-        <div className="mono text-[11px] dim2">{src}</div>
+        <div className="mono text-xs dim2">{src}</div>
       </div>
       <div className="flex flex-wrap items-center gap-3 mt-5">
         <select
@@ -199,7 +192,7 @@ export function TamperPanel({ id }: { id: string }) {
           ))}
         </select>
         <button className="btn sm" onClick={() => void doTamper()} disabled={busy || chain.length === 0}>
-          Tamper, amount +1,000,000 base units (1 USDC), recompute hash
+          Tamper, amount +1000000 base units (1 USDC), recompute hash
         </button>
         <button className="btn sm btn-primary" onClick={() => void doVerify()} disabled={busy || chain.length === 0}>
           Run verifier replay

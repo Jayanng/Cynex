@@ -8,14 +8,14 @@ import { ICON_PATHS, CP, EX_TX, EX_ADDR } from "../lib/data";
 import { bytesToHex, shortHex, trunc } from "../lib/near";
 
 /* ---------- icons ---------- */
-export function Icon({ name, size = 13 }: { name: string; size?: number }) {
+export function Icon({ name, size = 16 }: { name: string; size?: number }) {
   const d = ICON_PATHS[name] ?? "";
   return (
     <svg
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth={2}
+      strokeWidth={1.5}
       strokeLinecap="round"
       strokeLinejoin="round"
       width={size}
@@ -88,8 +88,8 @@ export function HexHash({ value }: { value: number[] | string | null | undefined
   return (
     <span className="inline-flex items-center gap-1" title={hex}>
       <button
-        className="mono text-[12px] hover:text-white transition-colors"
-        style={{ color: "#b8c8da" }}
+        className="mono text-xs hover:text-ink transition-colors"
+        style={{ color: "var(--secondary)" }}
         onClick={() => setExpanded((e) => !e)}
         title={expanded ? "Show short hash" : "Show full hash"}
       >
@@ -128,7 +128,7 @@ export function Badge({ value, extra }: { value: string; extra?: string | null }
 export function ReadOnlyBadge() {
   return (
     <span className="badge b-dim">
-      <span className="bdot"></span>READ-ONLY
+      <span className="bdot"></span>Read-only
     </span>
   );
 }
@@ -195,7 +195,7 @@ export function AttemptRow({
         <Badge value={verdict} extra={code ?? null} />
       </span>
       <HashChip hash={tx} />
-      {note ? <span className="mono text-[11px] dim2">{note}</span> : null}
+      {note ? <span className="mono text-xs dim2">{note}</span> : null}
     </div>
   );
 }
@@ -218,20 +218,20 @@ export function ChainReadOut({
     return (
       <div className="mt-3 flex items-center gap-3">
         <Unavail />
-        <span className="mono text-[11px] dim2">{state.error ?? ""}</span>
+        <span className="mono text-xs dim2">{state.error ?? ""}</span>
       </div>
     );
   }
   return (
     <div
       className="mt-3 rounded-lg border p-3 fadein"
-      style={{ borderColor: "rgba(52,211,153,.3)", background: "rgba(2,6,12,.6)" }}
+      style={{ borderColor: "var(--line)", background: "var(--raised)" }}
     >
-      <div className="mono text-[11px] mb-2 flex flex-wrap gap-x-4 gap-y-1" style={{ color: "#86efac" }}>
+      <div className="mono text-xs mb-2 flex flex-wrap gap-x-4 gap-y-1" style={{ color: "var(--pos-text)" }}>
         <span>chain read · cynex-testvault.cynexmaster.testnet · receipts</span>
         <span className="dim2">
           {new Date().toLocaleTimeString()}
-          {state.block ? " · block " + Number(state.block).toLocaleString() : ""}
+          {state.block ? " · block " + String(state.block) : ""}
         </span>
       </div>
       <ReceiptJson rec={state.rec} />
@@ -257,7 +257,7 @@ export function ReceiptJson({ rec }: { rec: unknown }) {
         {show ? "Hide raw receipt JSON" : "Show raw receipt JSON"}
       </button>
       {show ? (
-        <pre className="mono text-[11.5px] leading-relaxed overflow-x-auto" style={{ color: "#8fa5bd" }}>
+        <pre className="mono text-xs leading-relaxed overflow-x-auto" style={{ color: "var(--secondary)" }}>
           {json}
         </pre>
       ) : null}

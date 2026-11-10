@@ -97,7 +97,7 @@ export function BreakIt() {
     setLiveStatus({ text: "checking…", cls: "b-warn" });
     const fail = (text: string, status: string) => {
       setLiveStatus({ text: status, cls: "b-warn" });
-      setLiveOut({ kind: "warn", html: <div className="callout mono text-[12.5px]" style={{ color: "#fde68a" }}>{text}</div> });
+      setLiveOut({ kind: "warn", html: <div className="callout mono text-[13px]">{text}</div> });
       setLiveBusy(false);
     };
     if (!demoKeyConfigured()) {
@@ -115,7 +115,7 @@ export function BreakIt() {
           <span className="loadtxt">
             <span className="spin g"></span>Loading live data…
           </span>{" "}
-          <span className="dim text-[12px]">reading target obligation {targetId} from the test vault…</span>
+          <span className="dim text-xs">reading target obligation {targetId} from the test vault…</span>
         </div>
       ),
     });
@@ -165,7 +165,7 @@ export function BreakIt() {
           <span className="loadtxt">
             <span className="spin g"></span>Loading live data…
           </span>{" "}
-          <span className="dim text-[12px]">signing a real settle call with the demo key…</span>
+          <span className="dim text-xs">signing a real settle call with the demo key…</span>
         </div>
       ),
     });
@@ -202,8 +202,8 @@ export function BreakIt() {
       setLiveOut({
         kind: "warn",
         html: (
-          <div className="callout red mono text-[12.5px]">
-            Unexpected: the live settle attempt SUCCEEDED (tx {txHash || "unknown"}). This attack was supposed to be refused. Do not trust
+          <div className="callout red mono text-[13px]">
+            Unexpected: the live settle attempt succeeded (tx {txHash || "unknown"}). This attack was supposed to be refused. Do not trust
             this panel, the demo obligation may have been consumed. Showing the simulated refusal instead.
           </div>
         ),
@@ -264,16 +264,16 @@ export function BreakIt() {
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <span className="mono text-[11px] dim2 uppercase tracking-widest">real refusal tx</span>
+            <span className="mono text-xs dim2 ">real refusal tx</span>
             <HashChip hash={txHash} />
             <a className="btn btn-primary sm" href={"https://testnet.nearblocks.io/txns/" + txHash} target="_blank" rel="noopener">
               Read it from the chain
             </a>
-            <span className="mono text-[12px] text-white">0 tokens moved</span>
+            <span className="mono text-xs text-ink">0 tokens moved</span>
           </div>
-          <div className="mono text-[11px] dim2 mt-3">
+          <div className="mono text-xs dim2 mt-3">
             Checked after the refusal: obligation is still {after ? after.state : before.state}
-            {moved ? ", WARNING: state moved, see above." : " · no new receipt · nothing paid"}. Attempt was your choice (simulation);
+            {moved ? ", warning: state moved, see above." : " · no new receipt · nothing paid"}. Attempt was your choice (simulation);
             the refusal is a real on-chain verdict.
           </div>
         </div>
@@ -283,13 +283,13 @@ export function BreakIt() {
   };
 
   return (
-    <section className="wrap mt-14">
-      <div className="panel p-6 md:p-8">
-        <div className="kicker mb-2" style={{ color: "var(--red)" }}>
+    <section className="wrap mt-24">
+      <div className="panel p-6">
+        <div className="kicker mb-2">
           Try to break it
         </div>
         <h2 className="text-2xl md:text-3xl mb-2">Pick an attack. Watch the vault refuse.</h2>
-        <p className="dim text-[14px] max-w-3xl leading-relaxed mb-5">
+        <p className="dim text-sm max-w-3xl leading-relaxed mb-5">
           Your attempt is a simulation, labelled as one, it is evaluated in your browser against the real on-chain obligation terms. The
           refusal it shows is the real on-chain verdict for the first three attacks, which were executed on the test vault and link to their
           real refusal transactions. The fourth attack was never executed on chain, so its verdict is simulated, not a real on-chain verdict.
@@ -320,15 +320,15 @@ export function BreakIt() {
                 <Badge value="REFUSED" extra={b.code} />
               </span>
             </div>
-            <p className="dim text-[14px] leading-relaxed mb-4">{b.why}</p>
+            <p className="dim text-sm leading-relaxed mb-4">{b.why}</p>
             {b.tx ? (
               <div className="flex flex-wrap items-center gap-3">
-                <span className="mono text-[11px] dim2 uppercase tracking-widest">real refusal tx</span>
+                <span className="mono text-xs dim2 ">real refusal tx</span>
                 <HashChip hash={b.tx} />
-                <span className="mono text-[11px] dim2">0 tokens moved</span>
+                <span className="mono text-xs dim2">0 tokens moved</span>
               </div>
             ) : (
-              <div className="mono text-[12px]" style={{ color: "var(--amber)" }}>
+              <div className="mono text-xs" style={{ color: "var(--warn-text)" }}>
                 No executed refusal transaction exists for this case in the demo run, simulation only, no tx invented.
               </div>
             )}
@@ -351,7 +351,7 @@ export function BreakIt() {
             <button className="btn btn-primary sm" disabled={liveBusy} onClick={() => void tryLiveAttack(selected)}>
               Try this attack live on chain
             </button>
-            <span className="mono text-[11px] dim2">signs a real settle call with the demo key · test vault only</span>
+            <span className="mono text-xs dim2">signs a real settle call with the demo key · test vault only</span>
           </div>
           <div id="live-out" className="mt-4">{liveOut ? liveOut.html : null}</div>
         </div>
