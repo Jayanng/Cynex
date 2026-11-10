@@ -182,6 +182,13 @@ export function Proof() {
     <>
       <StripSection />
       <section className="wrap pt-12">
+        <a
+          href="#/"
+          className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium mb-4"
+          style={{ borderColor: "var(--line)", background: "var(--raised)", color: "var(--secondary)" }}
+        >
+          ← Home
+        </a>
         <div className="kicker mb-2">Proof</div>
         <h1 className="text-3xl md:text-4xl mb-2">Verify it yourself</h1>
         <p className="dim text-sm max-w-2xl">
@@ -220,7 +227,7 @@ export function Proof() {
             <div className="md:col-span-2">
             <JudgeItem
               n="4"
-              t="Demo script + live state"
+              t="Demo run + live state"
               body={
                 <div className="mt-1 flex flex-col gap-2">
                   <a className="mono text-xs" href="#/docs/p10demo">
@@ -347,6 +354,19 @@ export function Proof() {
               </div>
             </div>
           ))}
+        </div>
+      </section>
+      <section className="wrap mt-10">
+        <div className="panel p-6">
+          <div className="kicker mb-3">Next</div>
+          <div className="flex flex-wrap gap-x-8 gap-y-3">
+            <a className="mono text-sm inline-flex items-center gap-2" style={{ color: "var(--accent-text)" }} href="#/docs">
+              Read how it works →
+            </a>
+            <a className="mono text-sm inline-flex items-center gap-2" style={{ color: "var(--accent-text)" }} href="#/">
+              Back to the start →
+            </a>
+          </div>
         </div>
       </section>
       <Footer />

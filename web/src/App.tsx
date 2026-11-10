@@ -40,11 +40,19 @@ function Header({ page }: { page: string }) {
           <a className={"navlink" + (page === "home" ? " active" : "")} href="#/">
             Home
           </a>
-          <a className={"navlink" + (page === "demo" ? " active" : "")} href="#/demo/guided">
-            Demo
+          <a
+            className={"navlink" + (page === "demo" ? " active" : "")}
+            href="#/demo/guided"
+            title="Guided walkthrough of the recorded demo, watch the story"
+          >
+            Guided demo
           </a>
-          <a className={"navlink" + (page === "attack" ? " active" : "")} href="#/attack">
-            Attack
+          <a
+            className={"navlink" + (page === "attack" ? " active" : "")}
+            href="#/attack"
+            title="Try to break the vault yourself, interactive playground"
+          >
+            Break it
           </a>
           <a className={"navlink" + (page === "docs" ? " active" : "")} href="#/docs">
             Docs

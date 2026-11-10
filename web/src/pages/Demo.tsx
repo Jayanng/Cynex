@@ -142,6 +142,19 @@ export function Demo({ anchor }: { anchor?: string }) {
       </section>
       <StripSection />
       <Guided anchor={anchor} />
+      <section className="wrap mt-10">
+        <div className="panel p-6">
+          <div className="kicker mb-3">Next</div>
+          <div className="flex flex-wrap gap-x-8 gap-y-3">
+            <a className="mono text-sm inline-flex items-center gap-2" style={{ color: "var(--accent-text)" }} href="#/attack">
+              Try to break it yourself →
+            </a>
+            <a className="mono text-sm inline-flex items-center gap-2" style={{ color: "var(--accent-text)" }} href="#/docs">
+              Read how it works →
+            </a>
+          </div>
+        </div>
+      </section>
       <Footer />
     </>
   );

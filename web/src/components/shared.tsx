@@ -24,6 +24,13 @@ export function Footer() {
             </span>
           </a>
         </div>
+        <nav className="flex flex-wrap gap-x-6 gap-y-2 mono text-xs pt-6 mt-6 border-t" style={{ borderColor: "var(--line2)" }} aria-label="Site">
+          <a href="#/">Home</a>
+          <a href="#/demo/guided">Guided demo</a>
+          <a href="#/attack">Break it</a>
+          <a href="#/docs">Docs</a>
+          <a href="#/proof">Proof</a>
+        </nav>
       </div>
     </footer>
   );
