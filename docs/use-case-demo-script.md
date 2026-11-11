@@ -30,14 +30,14 @@ attack log, the receipt, and the proof page.
 The actors:
 
 - Human (owner): `cynexmaster.testnet`. Authorizes the obligation and
-  submits the evidence owner-side. Holds the full-access key.
+ submits the evidence owner-side. Holds the full-access key.
 - Procurement agent: `cynex-agent.cynexmaster.testnet`. The agent that
-  requests settlement. Holds only a scoped settle-only key for the test
-  vault.
+ requests settlement. Holds only a scoped settle-only key for the test
+ vault.
 - Research agent (recipient): `cynex-agent2.cynexmaster.testnet`.
-  Delivers the named report and receives the payment. Created
-  2026-11-08 as a subaccount of the master, funded with 1 NEAR, public
-  key `ed25519:7uWPpfosyMNTsYfz4P1cx7GBjpm88fhiVBSiW7cnG2CR`.
+ Delivers the named report and receives the payment. Created
+ 2026-11-08 as a subaccount of the master, funded with 1 NEAR, public
+ key `ed25519:7uWPpfosyMNTsYfz4P1cx7GBjpm88fhiVBSiW7cnG2CR`.
 
 The two-agent run, obligation `usecase-report-003`, is the canonical
 demonstration of payment between two distinct agent accounts: the
@@ -71,9 +71,9 @@ transcript, the attack log, the receipt, the proof page, and the video.
 - SHA-256 digest: `2a8bddcb3b001fd9051ec68757b8a113fa355cfe619f07882ac622721431ebc9`
 - Evidence type: PREIMAGE (Layer 1, on-chain hashing)
 - Size under the 64 KiB cap: yes, 6421 of 65536 bytes, so the evidence
-  uses the owner-side on-chain hashing path. Evidence over 64 KiB uses
-  the explicitly labeled TRUSTED_RELAYER fallback path, which does not
-  pretend to have the same trust properties as the vault's own hashing.
+ uses the owner-side on-chain hashing path. Evidence over 64 KiB uses
+ the explicitly labeled TRUSTED_RELAYER fallback path, which does not
+ pretend to have the same trust properties as the vault's own hashing.
 
 The file is a real NEAR ecosystem risk report, written as the research
 agent's deliverable. Its bytes are the evidence. The vault hashes those
@@ -114,17 +114,17 @@ research agent receives exactly 100, and the procurement agent
 receives nothing.
 
 - New account: `cynex-agent2.cynexmaster.testnet`, public key
-  `ed25519:7uWPpfosyMNTsYfz4P1cx7GBjpm88fhiVBSiW7cnG2CR`, 1 NEAR at
-  creation. No private key or seed phrase is included in the repository.
+ `ed25519:7uWPpfosyMNTsYfz4P1cx7GBjpm88fhiVBSiW7cnG2CR`, 1 NEAR at
+ creation. No private key or seed phrase is included in the repository.
 - Account creation: transaction
-  `JBph4fKi9hzX3VTUhQ9NtexrbPMZ8fX2GyJXgXwUyy8d`, block 276798966,
-  signer `cynexmaster.testnet`.
+ `JBph4fKi9hzX3VTUhQ9NtexrbPMZ8fX2GyJXgXwUyy8d`, block 276798966,
+ signer `cynexmaster.testnet`.
 - Token registration: `storage_deposit` for the new account on
-  `usdc.fakes.testnet`, 0.00125 NEAR from the master, transaction
-  `92MGUi1ikp5LVTGKBfVnGYgYfV6Yp2hzakqufQYdX4pH`. Registration is
-  required before the vault can pay the account, and it was confirmed
-  on chain (`storage_balance_of` total 1250000000000000000000)
-  before the obligation was created.
+ `usdc.fakes.testnet`, 0.00125 NEAR from the master, transaction
+ `92MGUi1ikp5LVTGKBfVnGYgYfV6Yp2hzakqufQYdX4pH`. Registration is
+ required before the vault can pay the account, and it was confirmed
+ on chain (`storage_balance_of` total 1250000000000000000000)
+ before the obligation was created.
 - Obligation ID: `usecase-report-003`
 - Policy: `p6-001`
 - Recipient: `cynex-agent2.cynexmaster.testnet` (the research agent)
@@ -138,45 +138,45 @@ The four transactions, all RECORDED ON TESTNET, all status
 SuccessValue:
 
 - Create: `2WJF2vZDwWQoyrtpA2p2veUnVMHwTz6HPABxC68tiV4i`,
-  2026-11-08 16:16:56 UTC, block 276799089, signer
-  `cynexmaster.testnet` (owner). State after: CREATED. Policy
-  `p6-001` before: spent 5100, limit 10000, funded 10000, frozen
-  false, remaining 4900.
+ 2026-11-08 16:16:56 UTC, block 276799089, signer
+ `cynexmaster.testnet` (owner). State after: CREATED. Policy
+ `p6-001` before: spent 5100, limit 10000, funded 10000, frozen
+ false, remaining 4900.
 - Request evidence: `ENzaWdGLj688rvgwrL99ccbGsYvVSiz4WD1bYsu9f1W2`,
-  2026-11-08 16:17:11 UTC, block 276799114, signer
-  `cynexmaster.testnet` (owner). State after: EVIDENCE_PENDING,
-  pending request ID `usecase-report-003-30003`.
+ 2026-11-08 16:17:11 UTC, block 276799114, signer
+ `cynexmaster.testnet` (owner). State after: EVIDENCE_PENDING,
+ pending request ID `usecase-report-003-30003`.
 - Submit evidence preimage:
-  `GGyymoK4K8jouvai2LYBfq5iHAQAgwACnzhGbuEsVBAm`, 2026-11-08
-  16:17:32 UTC, block 276799149, signer `cynexmaster.testnet`
-  (owner, as courier; the method is permissionless). The vault hashed
-  the exact report bytes and matched the committed digest. State
-  after: READY.
+ `GGyymoK4K8jouvai2LYBfq5iHAQAgwACnzhGbuEsVBAm`, 2026-11-08
+ 16:17:32 UTC, block 276799149, signer `cynexmaster.testnet`
+ (owner, as courier; the method is permissionless). The vault hashed
+ the exact report bytes and matched the committed digest. State
+ after: READY.
 - Settle: `GSD8NfrJhpFzchDcPM75v56QaFge6twdKHa4YJ9ktBur`,
-  2026-11-08 16:17:58 UTC, block 276799191, signer
-  `cynex-agent.cynexmaster.testnet` with its test-vault-scoped
-  settle-only key (receiver the test vault, method `settle` only,
-  allowance 0.25 NEAR, public key
-  `ed25519:2MBdiB9ayS1SREqAvZFC6ZuzdA9TuAjEFHV8HYPjZKgn`). The settle
-  used the exact authorized recipient and amount, with evidence ref
-  `usecase-report-003-30003`. State after: PAID.
+ 2026-11-08 16:17:58 UTC, block 276799191, signer
+ `cynex-agent.cynexmaster.testnet` with its test-vault-scoped
+ settle-only key (receiver the test vault, method `settle` only,
+ allowance 0.25 NEAR, public key
+ `ed25519:2MBdiB9ayS1SREqAvZFC6ZuzdA9TuAjEFHV8HYPjZKgn`). The settle
+ used the exact authorized recipient and amount, with evidence ref
+ `usecase-report-003-30003`. State after: PAID.
 
 Verified live from chain after settlement:
 
 - Research agent `cynex-agent2.cynexmaster.testnet` token balance: 0
-  to 100, delta exactly 100.
+ to 100, delta exactly 100.
 - Procurement agent `cynex-agent.cynexmaster.testnet` token balance:
-  2500, unchanged. The requester is paid nothing.
+ 2500, unchanged. The requester is paid nothing.
 - Policy `p6-001`: spent 5100 to 5200, limit 10000, funded 10000,
-  frozen false. Remaining headroom 4800.
+ frozen false. Remaining headroom 4800.
 - Receipt index: 28. Receipt: obligation `usecase-report-003`,
-  recipient `cynex-agent2.cynexmaster.testnet`, amount 100, token
-  `usdc.fakes.testnet`, timestamp 1794154680050968600 nanoseconds
-  (2026-11-08 16:18:00 UTC). The receipt `tx_ref` field is empty on
-  the automatic settle path, as in the earlier runs; the settle
-  transaction hash above is the link to the explorer.
+ recipient `cynex-agent2.cynexmaster.testnet`, amount 100, token
+ `usdc.fakes.testnet`, timestamp 1794154680050968600 nanoseconds
+ (2026-11-08 16:18:00 UTC). The receipt `tx_ref` field is empty on
+ the automatic settle path, as in the earlier runs; the settle
+ transaction hash above is the link to the explorer.
 - Test vault receipts: 29 (indices 0 to 28). Vault `state()` receipt
-  index 29.
+ index 29.
 - Obligation `usecase-report-003`: PAID.
 
 The earlier run, `usecase-report-002`, remains the canonical attack
@@ -205,7 +205,7 @@ the agent later proposes can change them.
 - Signer: `cynexmaster.testnet` (owner)
 - State after: CREATED
 - Policy `p6-001` after: spent 4700, limit 10000, funded 10000,
-  frozen false, remaining 5300.
+ frozen false, remaining 5300.
 
 ### Step 2: The console shows the terms
 
@@ -240,7 +240,7 @@ reached the contract and the contract rejected it.
 - Timestamp: 2026-11-08 14:19:55 UTC, block 276787145
 - Network: testnet
 - Attempted mutation: settle with the correct terms, before evidence
-  was submitted
+ was submitted
 - Rejection outcome: `ERR_INVALID_STATE`, transaction failed on chain
 - Signer: `cynex-agent.cynexmaster.testnet` (agent, scoped settle key)
 - State after: EVIDENCE_PENDING, unchanged
@@ -255,7 +255,7 @@ READY. The bytes are hashed and dropped, never stored.
 
 - Transaction: `eJtwJXnMTNm9deKfK8aTJpwwMpF7nhXcsQNWcKFa1sq`
 - Signer: `cynexmaster.testnet` (owner, as courier; the method is
-  permissionless)
+ permissionless)
 - State after: READY
 
 ### Step 6: The agent submits an unauthorized altered settlement attempt, changed recipient
@@ -271,9 +271,9 @@ refusal.
 - Timestamp: 2026-11-08 14:20:02 UTC, block 276787157
 - Network: testnet
 - Attempted mutation: proposed recipient `cynexmaster.testnet`
-  instead of the authorized `cynex-agent.cynexmaster.testnet`
+ instead of the authorized `cynex-agent.cynexmaster.testnet`
 - Rejection outcome: `ERR_RECIPIENT_SUBSTITUTION`, transaction failed
-  on chain
+ on chain
 - Signer: `cynex-agent.cynexmaster.testnet` (agent, scoped settle key)
 - State after: READY, unchanged
 - Agent balance delta: 0
@@ -289,9 +289,9 @@ VAULT REFUSAL.
 - Timestamp: 2026-11-08 14:20:05 UTC, block 276787161
 - Network: testnet
 - Attempted mutation: proposed amount 200 instead of the authorized
-  100
+ 100
 - Rejection outcome: `ERR_TERMS_MISMATCH`, transaction failed on
-  chain
+ chain
 - Signer: `cynex-agent.cynexmaster.testnet` (agent, scoped settle key)
 - State after: READY, unchanged
 - Agent balance delta: 0
@@ -310,17 +310,17 @@ and the receipt is appended.
 - State after: PAID
 - Receipt index: 24
 - Receipt: obligation `usecase-report-002`, recipient
-  `cynex-agent.cynexmaster.testnet`, amount 100, token
-  `usdc.fakes.testnet`, timestamp 1794147610217529108 nanoseconds
-  (2026-11-08 14:20:10 UTC). The receipt `tx_ref` field is empty on
-  the automatic settle path; the settle transaction hash above is the
-  link to the explorer, and the receipt index is the link to the
-  receipt chain.
+ `cynex-agent.cynexmaster.testnet`, amount 100, token
+ `usdc.fakes.testnet`, timestamp 1794147610217529108 nanoseconds
+ (2026-11-08 14:20:10 UTC). The receipt `tx_ref` field is empty on
+ the automatic settle path; the settle transaction hash above is the
+ link to the explorer, and the receipt index is the link to the
+ receipt chain.
 - Agent balance: 2100 to 2200, delta exactly 100. (2100 is the
-  balance after the first run, usecase-report-001, settled earlier
-  the same day; 2200 is after this run.)
+ balance after the first run, usecase-report-001, settled earlier
+ the same day; 2200 is after this run.)
 - Policy `p6-001` after: spent 4700 to 4800, limit 10000, funded
-  10000, frozen false
+ 10000, frozen false
 
 ### Step 9: A replay attempt is rejected
 
@@ -334,7 +334,7 @@ consumed. No second payment, no second receipt.
 - Network: testnet
 - Attempted mutation: settle an already-paid obligation again
 - Rejection outcome: `ERR_NONCE_ALREADY_CONSUMED`, transaction failed
-  on chain
+ on chain
 - Signer: `cynex-agent.cynexmaster.testnet` (agent, scoped settle key)
 - State after: PAID, unchanged
 - Agent balance delta: 0
@@ -347,27 +347,27 @@ verification command and its own pass or fail result. They are not
 collapsed into one badge.
 
 - Vault integrity, Layer 1: the vault hashed the submitted report
-  bytes itself with SHA-256 and compared them to the committed digest
-  `2a8bddcb...`. The bytes matched, so the obligation became READY.
-  The vault proves that settlement was authorized for a specific
-  evidence digest and that the submitted bytes match that digest.
+ bytes itself with SHA-256 and compared them to the committed digest
+ `2a8bddcb...`. The bytes matched, so the obligation became READY.
+ The vault proves that settlement was authorized for a specific
+ evidence digest and that the submitted bytes match that digest.
 - TEE provenance, Layer 2: for TEE evidence, a guest program fetches
-  the evidence inside an Intel TDX enclave and hashes it there, and
-  the per-execution TDX quote binds what ran, what went in, and what
-  came out. The TDX quote is verified off chain through the verifier
-  or the dashboard. The use-case obligation is a PREIMAGE obligation,
-  so it does not carry its own TEE execution. The TEE layer is shown
-  by the existing verified executions (requests 10640, 11912, 13040
-  on the test vault and 13324 on the production vault), each with an
-  independently verified TDX attestation.
+ the evidence inside an Intel TDX enclave and hashes it there, and
+ the per-execution TDX quote binds what ran, what went in, and what
+ came out. The TDX quote is verified off chain through the verifier
+ or the dashboard. The use-case obligation is a PREIMAGE obligation,
+ so it does not carry its own TEE execution. The TEE layer is shown
+ by the existing verified executions (requests 10640, 11912, 13040
+ on the test vault and 13324 on the production vault), each with an
+ independently verified TDX attestation.
 - VRF anchor, Layer 3: for TEE evidence, the guest requests VRF
-  randomness during execution and the vault verifies the signature on
-  chain, bound to the pending request. The VRF provides an independently verified randomness anchor
-  bound to the pending request. It does not prove
-  TEE execution, and it must never be labeled as TEE evidence. The
-  use-case obligation is a PREIMAGE obligation, so it does not carry
-  its own VRF anchor. The VRF layer is shown by the existing verified
-  executions.
+ randomness during execution and the vault verifies the signature on
+ chain, bound to the pending request. The VRF provides an independently verified randomness anchor
+ bound to the pending request. It does not prove
+ TEE execution, and it must never be labeled as TEE evidence. The
+ use-case obligation is a PREIMAGE obligation, so it does not carry
+ its own VRF anchor. The VRF layer is shown by the existing verified
+ executions.
 
 ## The exact evidence claim
 
@@ -407,7 +407,7 @@ The full attack matrix for the product also includes changed evidence
 digest or bytes, budget overflow, and reputation refusal before any
 chain call. Changed evidence is covered by the vault hashing the
 submitted bytes and rejecting a mismatch with `ERR_EVIDENCE_MISMATCH`
-(proven live in Phase 9). Budget overflow is covered by the policy
+(proven live in ). Budget overflow is covered by the policy
 invariant and rejects with `ERR_BUDGET_EXCEEDED` (proven live in the
 attack runner). Reputation refusal is covered by the reputation gate,
 which refuses a known-bad recipient before any chain call and is
@@ -421,18 +421,18 @@ appear in the same section as an authorized obligation without a
 clear label.
 
 - Prepared: the terms are drafted but not yet authorized. Not an
-  obligation.
+ obligation.
 - Authorized: the owner created the obligation. State CREATED.
 - Evidence pending: the owner requested evidence. State
-  EVIDENCE_PENDING.
+ EVIDENCE_PENDING.
 - READY: the evidence was submitted and the vault verified it. The
-  obligation can now settle.
+ obligation can now settle.
 - Settlement submitted: the agent called settle and the transfer is
-  in flight. State TRANSFER_PENDING.
+ in flight. State TRANSFER_PENDING.
 - Settled: the transfer completed and the receipt was appended. State
-  PAID.
+ PAID.
 - Rejected: a settle attempt failed on chain with a named reason
-  code. The obligation state is unchanged.
+ code. The obligation state is unchanged.
 
 ## How to reproduce it
 
@@ -476,34 +476,34 @@ altered settlement on chain.
 ## Final live state after this run
 
 - Test vault policy `p6-001`: limit 10000, funded 10000, spent 5200,
-  reserved 0, frozen false. Remaining headroom 4800.
+ reserved 0, frozen false. Remaining headroom 4800.
 - Research agent token balance (`cynex-agent2.cynexmaster.testnet`): 100.
 - Procurement agent token balance (`cynex-agent.cynexmaster.testnet`):
-  2500, unchanged by the two-agent settle.
+ 2500, unchanged by the two-agent settle.
 - Test vault receipts: 29 (indices 0 to 28), all verified.
 - Obligation `usecase-report-003`: PAID, receipt index 28.
 - Obligation `usecase-report-002`: PAID, receipt index 24.
 - Obligation `usecase-report-001`: PAID, receipt index 23 (the first
-  run of the same scenario).
+ run of the same scenario).
 
 ## For the video
 
 - Lead with the payment problem, not with the TEE or VRF. The first
-  sentence is the one-sentence summary above. Then show the
-  authorization, the attack failing, and the payment succeeding.
+ sentence is the one-sentence summary above. Then show the
+ authorization, the attack failing, and the payment succeeding.
 - Show the obligation state and the balances before and after each
-  step, not just the transaction hash. The PAID read and the balance
-  delta are the proof; the transaction hash alone is not.
+ step, not just the transaction hash. The PAID read and the balance
+ delta are the proof; the transaction hash alone is not.
 - Show the attack rejections with their exact reason codes on screen:
-  `ERR_INVALID_STATE`, `ERR_RECIPIENT_SUBSTITUTION`,
-  `ERR_TERMS_MISMATCH`, `ERR_NONCE_ALREADY_CONSUMED`.
+ `ERR_INVALID_STATE`, `ERR_RECIPIENT_SUBSTITUTION`,
+ `ERR_TERMS_MISMATCH`, `ERR_NONCE_ALREADY_CONSUMED`.
 - Show the three proof layers separately, each with its own label and
-  its own verification. Do not collapse them into one badge. Do not
-  say the VRF proves TEE execution.
+ its own verification. Do not collapse them into one badge. Do not
+ say the VRF proves TEE execution.
 - State the exact evidence claim in one line: Cynex proves the
-  submitted bytes match the authorized digest. It does not prove the
-  report is true.
+ submitted bytes match the authorized digest. It does not prove the
+ report is true.
 - Do not settle to `acme-supplies.testnet`. It does not exist on
-  chain. The recipient in the two-agent run is the research agent
-  `cynex-agent2.cynexmaster.testnet`; in the earlier single-account
-  run it was the agent account.
+ chain. The recipient in the two-agent run is the research agent
+ `cynex-agent2.cynexmaster.testnet`; in the earlier single-account
+ run it was the agent account.

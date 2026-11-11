@@ -144,7 +144,7 @@ function fakeContext(client: FakeClient, verdict: ReputationReport["verdict"] = 
     config: {
       vaultId: VAULT,
       agentId: AGENT,
-      agentKeyFile: "/data/home/.near-credentials/testnet/cynex-agent-testvault-fc.json",
+      agentKeyFile: "$HOME/.near-credentials/testnet/cynex-agent-testvault-fc.json",
       rpcUrl: "https://rpc.testnet.fastnear.com",
       snapshotDir: "",
     },

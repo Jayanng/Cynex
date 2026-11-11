@@ -1,5 +1,5 @@
 /**
- * Cynex executor backend, Phase 6 Lane B. Plan section 3.1.11.
+ * Cynex executor backend,  frontend. Plan section 3.1.11.
  *
  * A small local backend that runs the CLI and submits the
  * agent's settle transactions. The agent's scoped function-call
@@ -38,8 +38,8 @@
  * only /settle is protected.
  *
  * Run from the repo root, after compiling the CLI to a temp
- * outDir with node_modules symlinked into it (see the Phase 6
- * Lane B doc): node <outDir>/services/executor/executor.js
+ * outDir with node_modules symlinked into it (see the 
+ * frontend doc): node <outDir>/services/executor/executor.js
  */
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { execFile } from "node:child_process";

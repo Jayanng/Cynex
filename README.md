@@ -76,7 +76,7 @@ The vault refuses bad terms on chain. Four refusals, then the correct settle, al
 | Amount changed | Proposed 200 base units, authorized 100 | ERR_TERMS_MISMATCH | 2NaWqCYi...Eer91f, 0 tokens moved |
 | Replay | Same nonce reused after the order was paid | ERR_NONCE_ALREADY_CONSUMED | hG6uhpeP...pP91F6, 0 tokens moved |
 
-The recipient balance read before and after each call was identical, so nothing moved. The attack transcript is in `docs/phase6-attack-transcript.md`. The full demo script is in `docs/phase10-demo-script.md` and the proof record is in `docs/phase10-demo-proof.md`.
+The recipient balance read before and after each call was identical, so nothing moved. The attack transcript is in `docs/attack-transcript.md`. The full demo script is in `docs/demo-script.md` and the proof record is in `docs/demo-proof.md`.
 
 **Verify the TEE attestation yourself.** Every TEE execution behind the live proofs has a published attestation you can fetch and verify, with no account, no key, and no trust in us. Install the verifier once, then run:
 
@@ -87,11 +87,11 @@ scripts/verify-tee-attestation.sh --bundle docs/attestation-proofs/attestation-p
 
 It prints PASS with exit 0. The four executions are requests 10640, 11912, 13040 (test vault) and 13324 (production vault, obligation `prod-tee-001`, receipt 11). Each bundle verifies offline. The VRF signature proves the output was not re-rolled and binds it to the pending request. It does not prove a TEE executed the guest, and we do not claim it does. The TDX quote is what proves the guest ran inside a genuine enclave, and the vault does not verify the quote on chain, by design, because on-chain TDX verification is infeasible on NEAR. So the quote is verified off chain, and the proof is shipped in this repo.
 
-**The reputation check.** Before the agent settles, the console checks the recipient against five sourced signals: the account exists on chain and its current code hash, the account age, prior interactions with this vault from the receipts, a shared blocklist when one is configured, and whether the receiver's contract code changed recently. The answer is ALLOW, WARN, or BLOCK, with reasons. BLOCK refuses outright. WARN goes to the owner and never settles silently. The full spec is in `docs/phase7-lane-b.md`.
+**The reputation check.** Before the agent settles, the console checks the recipient against five sourced signals: the account exists on chain and its current code hash, the account age, prior interactions with this vault from the receipts, a shared blocklist when one is configured, and whether the receiver's contract code changed recently. The answer is ALLOW, WARN, or BLOCK, with reasons. BLOCK refuses outright. WARN goes to the owner and never settles silently. The full spec is in `docs/reputation-engine.md`.
 
 ## Honest limits
 
-- The production recipient used through Phase 6, `acme-supplies.testnet`, does not exist on chain. The token contract still credits it, because `ft_transfer` only updates the token's own ledger, but no account stands behind those tokens. Do not demo a settle to it. Use a recipient account that exists.
+- The production recipient used in the early demos, `acme-supplies.testnet`, does not exist on chain. The token contract still credits it, because `ft_transfer` only updates the token's own ledger, but no account stands behind those tokens. Do not demo a settle to it. Use a recipient account that exists.
 - Evidence over 64 KiB cannot use the on-chain check and falls back to TRUSTED_RELAYER, which is trusted by label, never presented as trustless.
 - The on-chain check proves the bytes match the commitment. It does not prove the bytes mean what their source claims. That judgment belongs to the human at authorization time.
 - No suitable shared blocklist for NEAR account ids was found, so the blocklist signal is unavailable unless a URL is configured. The BLOCK path is proven by tests with a fixture URL, not by a live list. The provenance record is in `demo/reputation-blocklist-provenance.json`.
@@ -145,11 +145,10 @@ The hosted site holds one key server-side, and only one: a fresh scoped settle-o
 ## Docs
 
 - `docs/contract-api.md`, the frozen API, digest, timeouts, reason codes
-- `docs/ledger.md`, the signed phase ledger
+- `docs/ledger.md`, the signed build ledger
 - `docs/threat-model.md`, what the vault assumes and what it does not
 - `docs/spike-outlayer.md`, the OutLayer spike report and verdict
-- `docs/phase6-attack-transcript.md`, the attack demo log
-- `docs/phase7-lane-b.md`, the reputation engine
+- `docs/attack-transcript.md`, the attack demo log
+- `docs/reputation-engine.md`, the reputation engine
 - `docs/deployment.md`, where the vaults are deployed and how to verify them
 
-Track: NEAR Hackathon 2026, AI Security and Defense.

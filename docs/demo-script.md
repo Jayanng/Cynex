@@ -1,9 +1,9 @@
-# Cynex demo script, Phase 10
+# Cynex demo script
 
-For the demo video (Lane B, Adejoke) and for judges reading the repo. Every
+For the demo video (frontend, Adejoke) and for judges reading the repo. Every
 step below ran live on the test vault on 2026-11-07, with real tx hashes.
 The full proof record, with before and after chain state, is in
-`docs/phase10-demo-proof.md`. The recipient throughout
+`docs/demo-proof.md`. The recipient throughout
 is the agent account `cynex-agent.cynexmaster.testnet`, never
 acme-supplies.testnet, which does not exist on chain. All test-vault calls
 were signed with the owner key `cynexmaster.testnet`, because the agent's
@@ -27,15 +27,15 @@ amount, and the SHA-256 of the delivery note, and nothing the agent later
 proposes can change them.
 
 - Create obligation `p10-demo-preimage-001`: tx
-  CC8gdACowXvBskZS9K4WEzXddunVpxpwCEdsdFdP2xa3
+ CC8gdACowXvBskZS9K4WEzXddunVpxpwCEdsdFdP2xa3
 - Request evidence: tx FE5EtKA12h8AwLcngWXuMsaSL1vhg9gzMB4RAWGWCNNx
 - Submit the delivery note bytes: tx MVJrygCRiiZgNv96gkSQC9vzk2saLwj4wdKTULoCJzh
 - The vault hashes the bytes itself, matches the committed digest, and the
-  obligation goes READY.
+ obligation goes READY.
 - Settle with the correct recipient and amount: tx
-  3Gp3J2zZCKrne1PamDVf6PgXHk4qGc3a58GBvoFcNhrZ, receipt index 11.
+ 3Gp3J2zZCKrne1PamDVf6PgXHk4qGc3a58GBvoFcNhrZ, receipt index 11.
 - The obligation is PAID. Agent balance 700 to 800. Policy spent 3400 to
-  3500.
+ 3500.
 
 What the viewer sees: the obligation moves CREATED to EVIDENCE_PENDING to
 READY to PAID, and the agent balance goes up by exactly 100.
@@ -67,13 +67,13 @@ Attack 2, changed amount. The agent proposes 200 instead of 100:
 Then the correct settle, to show the obligation was still good:
 - Tx Ho97UjQEDDfe7Go66uHrVSJvbF8narZJ2YBH3hWarxi, receipt index 12.
 - The obligation is PAID. Agent balance 800 to 900. Policy spent 3500 to
-  3600.
+ 3600.
 
 Attack 3, replay. The agent tries to settle the same obligation again:
 - Tx AwzQS7XsuGSYnPmvd5jFJzPDs3WDc2gRgSbW3smWq1Cs, failed.
 - Rejection: `Smart contract panicked: ERR_NONCE_ALREADY_CONSUMED`.
 - The obligation stays PAID. Agent balance 900, not 1000, so no double
-  payment.
+ payment.
 
 What the viewer sees: three failed settles, each with a named on-chain
 rejection, and the balances do not move on any of them. The vault, not the
@@ -93,13 +93,13 @@ https://raw.githubusercontent.com/near/near-api-js/master/README.md.
 - Create: tx E81V6t996qpzgboNtShmBxTfrhahiZYaB8qxZnkS6fB2
 - Request evidence: tx 7Ao5v6mWnr46rM4FnSJP5m9kvhhn9ah7wd2sYGenpm7x
 - Request TEE verification: tx 5Xvu78qxd9NfgJzRBeyvdQXnqK8sLfSmzrfVC5dgDK68,
-  300 TGas. OutLayer request 11912, project
-  cynexmaster.testnet/cynex-verifier, guest version 8abfe08b.
+ 300 TGas. OutLayer request 11912, project
+ cynexmaster.testnet/cynex-verifier, guest version 8abfe08b.
 - The obligation goes READY. The guest fetched the URL, hashed it, and the
-  VRF signature verified.
+ VRF signature verified.
 - Settle: tx 3QV2aCRSiJ8ZYqLECCpK6ZkXpYE4AdxJzmyP3JTaDqWB, receipt index 13.
 - The obligation is PAID. Agent balance 900 to 1000. Policy spent 3600 to
-  3700.
+ 3700.
 
 What the viewer sees: the TEE request goes out, the obligation goes READY
 after the guest runs, and the settle pays. The TEE step takes about a
@@ -121,12 +121,12 @@ needed.
 ## For the video
 
 - Show the obligation state and the balances before and after each step,
-  not just the tx hash. The PAID read and the balance delta are the proof;
-  the tx hash alone is not.
+ not just the tx hash. The PAID read and the balance delta are the proof;
+ the tx hash alone is not.
 - Show the attack rejections with their exact reason codes on screen:
-  ERR_RECIPIENT_SUBSTITUTION, ERR_TERMS_MISMATCH,
-  ERR_NONCE_ALREADY_CONSUMED.
+ ERR_RECIPIENT_SUBSTITUTION, ERR_TERMS_MISMATCH,
+ ERR_NONCE_ALREADY_CONSUMED.
 - The three layers are one story: layer 1 proves the bytes match, layer 2
-  proves where they came from, layer 3 anchors the execution to the
-  request. The video should say that in one line, not three.
+ proves where they came from, layer 3 anchors the execution to the
+ request. The video should say that in one line, not three.
 - Do not settle to acme-supplies.testnet. It does not exist on chain.

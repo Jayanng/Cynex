@@ -22,7 +22,7 @@ fn conformance() {
     assert_eq!(
         vectors.len(),
         6,
-        "Phase 0 freezes exactly 6 vectors, no more and no fewer"
+        "The freeze holds exactly 6 vectors, no more and no fewer"
     );
     for vector in vectors {
         let get = |key: &str| vector[key].as_str().expect("vector fields are strings");

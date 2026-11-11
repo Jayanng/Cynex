@@ -1,10 +1,10 @@
 /**
- * Cynex conformance — Lane B, Phase 0.
+ * Cynex conformance.
  *
  * Reads the FROZEN tests/test-vectors/vectors.json (exactly 6 vectors,
  * cynex-v1.0.0, commit 5eee26a), recomputes each settlement digest with
  * the TypeScript mirror, and prints "id <sha256>" per vector.
- * Exit codes follow the plan Phase 0 loud-failure rule:
+ * Exit codes follow the loud-failure rule:
  *   - any mismatch: print "expected <hex> got <hex>" and exit non-zero;
  *   - a deliberate single-byte change (amount + 1 on vector 0) must
  *     change the hash; if it does not, exit non-zero;

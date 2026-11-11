@@ -2,7 +2,7 @@
 name = "cynex-schema"
 version = "1.0.0"
 edition = "2021"
-description = "Cynex schema and hashing for version 1.0.0, frozen in Phase 0. No contract logic lives here, only the shared types and the two hashes both lanes must reproduce byte for byte."
+description = "Cynex schema and hashing for version 1.0.0, frozen. No contract logic lives here, only the shared types and the two hashes both sides must reproduce byte for byte."
 license = "MIT"
 
 [lib]

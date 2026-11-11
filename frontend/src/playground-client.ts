@@ -1,5 +1,5 @@
 /**
- * Cynex playground client, Phase 6 Lane B. Browser only, fetch
+ * Cynex playground client,  frontend. Browser only, fetch
  * and DOM, no near-api-js, no keys: the browser holds no key
  * and makes no chain calls itself. Every settle goes through
  * the executor (POST /settle), which validates, rate-limits,

@@ -231,7 +231,7 @@ export function Proof() {
               body={
                 <div className="mt-1 flex flex-col gap-2">
                   <a className="mono text-xs" href="#/docs/p10demo">
-                    docs/phase10-demo-script.md
+                    docs/demo-script.md
                   </a>
                   <span data-live-region="counts">
                     <CountsLine />

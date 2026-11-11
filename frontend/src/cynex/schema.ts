@@ -1,8 +1,8 @@
 /**
- * Cynex schema — Lane B TypeScript mirror, Phase 0 DRAFT.
+ * Cynex schema — frontend TypeScript mirror,  DRAFT.
  *
  * Field lists and types mirror the frozen schema in
- * docs/contract-api.md (Phase 0, commit 5eee26a) and Rust
+ * docs/contract-api.md (, commit 5eee26a) and Rust
  * schemas/cynex-v1.0.0/src/lib.rs. Token amounts are u128 base units
  * (BigInt), nonce / expiry / policy version / receipt index /
  * timestamp are u64 (BigInt). Policy version starts at 0 and

@@ -1,6 +1,6 @@
-# Cynex threat model, Phase 0 final
+# Cynex threat model, final
 
-Status: this is the frozen Phase 0 threat model. It describes the design that later phases must implement, as frozen in docs/contract-api.md and schemas/cynex-v1.0.0. It does not claim that a contract is already running, because no contract code exists yet in Phase 0. Implementation status is tracked in docs/ledger.md, phase by phase, and a mitigation counts as built only when its phase is signed off with a passing test.
+Status: this is the frozen threat model. It describes the design to implement, as frozen in docs/contract-api.md and schemas/cynex-v1.0.0. It does not claim that a contract is already running. Implementation status is tracked in docs/ledger.md, and a mitigation counts as built only when it is signed off with a passing test.
 
 ## What we protect
 
@@ -40,7 +40,7 @@ Key theft: the agent holds only a scoped function call key, receiver set to the 
 
 ## Out of scope, explicitly not claimed
 
-TEE attestation proves a verifier ran untampered over given inputs. It does not prove a real-world delivery happened or that a counterparty is honest. OutLayer is a spike, off the critical path, and its callback fields are not frozen in Phase 0.
+TEE attestation proves a verifier ran untampered over given inputs. It does not prove a real-world delivery happened or that a counterparty is honest. OutLayer is a spike, off the critical path, and its callback fields are not frozen in .
 
 Reputation signals are detection, not prevention. Historical code-change tracking is not claimed, because it would need an archival indexer that is not being built. Signals that are produced must show source and timestamp, unknown maps to WARN for insufficient history, never to a guessed score, and a signal that cannot be sourced is shown as unavailable, not fabricated.
 

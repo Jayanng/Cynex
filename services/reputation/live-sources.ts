@@ -1,5 +1,5 @@
 /**
- * Live reputation sources, Phase 7 Lane B.
+ * Live reputation sources,  frontend.
  *
  * Builds the ReputationSources object from real reads: the RPC
  * view_account call, the contract receipts view paginated from
@@ -17,7 +17,7 @@
  * - snapshots: a missing directory means no snapshots on record;
  *   the age signal is unavailable, not a failure.
  * - blocklist: no URL configured means unavailable (no suitable
- *   public source; see docs/phase7-lane-b.md). A fetch or parse
+ *   public source; see docs/reputation-engine.md). A fetch or parse
  *   failure also means unavailable, with the reason recorded.
  *   A blocklist URL is only ever used when one is configured;
  *   nothing is fetched silently.

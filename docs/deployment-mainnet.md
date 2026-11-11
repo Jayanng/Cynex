@@ -1,6 +1,6 @@
 # Cynex mainnet deployment guide
 
-A guide only. There is no mainnet deployment, and nothing here deploys one. Testnet is the rule: this project has no funds for mainnet, and the repo goes public on 13 November 2026 with testnet as the live network. This guide exists so a future maintainer can see the path to mainnet, and what must change before that path is safe to walk.
+A guide only. There is no mainnet deployment, and nothing here deploys one. Testnet is the rule: this project has no funds for mainnet, and the repo is public with testnet as the live network. This guide exists so a future maintainer can see the path to mainnet, and what must change before that path is safe to walk.
 
 Run the commands in this guide from `contract/` unless stated otherwise. The paths below are relative to that directory.
 

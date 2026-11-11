@@ -1,5 +1,5 @@
 /**
- * cynex-verify tests, Phase 9 Lane B. The chain check is the
+ * cynex-verify tests,  frontend. The chain check is the
  * frozen receipt hash (plan section 3.1.10): each receipt's
  * prev_hash must equal the recomputed hash of the previous
  * receipt, and the index must be the next one. A tamper in a
@@ -14,7 +14,7 @@
  * Receipts carry no evidence_type, so the chain check and the
  * CSV cover PREIMAGE and TEE settlements exactly like the
  * verifier path; the last test proves it with the real
- * Phase 9 proof obligation ids.
+ *  proof obligation ids.
  */
 import { GENESIS_PREV_HASH, receiptHash } from "../../frontend/src/cynex/receipt.js";
 import type { Receipt } from "../../frontend/src/cynex/schema.js";

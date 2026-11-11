@@ -43,9 +43,9 @@ Stdio only for v1, no HTTP. The MCP client spawns the server as a subprocess and
 ```sh
 CYNEX_VAULT=cynex-testvault.cynexmaster.testnet
 CYNEX_AGENT=cynex-agent.cynexmaster.testnet
-CYNEX_AGENT_KEY_FILE=/data/home/.near-credentials/testnet/cynex-agent-testvault-fc.json
+CYNEX_AGENT_KEY_FILE=$HOME/.near-credentials/testnet/cynex-agent-testvault-fc.json
 CYNEX_RPC_URL=https://rpc.testnet.fastnear.com
-CYNEX_SNAPSHOT_DIR=/data/workspace/Cynex-mcp/demo/reputation-snapshots
+CYNEX_SNAPSHOT_DIR=./demo/reputation-snapshots
 CYNEX_BLOCKLIST_URL=
 CYNEX_NEARBLOCKS_URL=
 ```
@@ -64,7 +64,7 @@ near add-key cynex-agent.cynexmaster.testnet <new-public-key> \
   --methodNames settle --allowance 0.25 --networkId testnet
 ```
 
-The key file is saved as `/data/home/.near-credentials/testnet/cynex-agent-testvault-fc.json` on the machine that runs the server. The server never creates keys itself. The key file determines which vault the server can settle on, and the startup check enforces that the two match.
+The key file is saved as `$HOME/.near-credentials/testnet/cynex-agent-testvault-fc.json` on the machine that runs the server. The server never creates keys itself. The key file determines which vault the server can settle on, and the startup check enforces that the two match.
 
 ### Startup scope check
 

@@ -272,7 +272,7 @@ node frontend/dist-test/cli/cynex.js verify-live cynex-vault.cynexmaster.testnet
     id: "p10demo",
     group: "start",
     title: "Demo run",
-    path: "docs/phase10-demo-script.md",
+    path: "docs/demo-script.md",
     commit: DOC_COMMITS.p10demo,
     body: (
       <>
@@ -305,7 +305,7 @@ node frontend/dist-test/cli/cynex.js verify-live cynex-vault.cynexmaster.testnet
     id: "p10proof",
     group: "start",
     title: "Demo proof",
-    path: "docs/phase10-demo-proof.md",
+    path: "docs/demo-proof.md",
     commit: DOC_COMMITS.p10proof,
     body: (
       <>
@@ -353,7 +353,7 @@ index,prev_hash,obligation_id,recipient,amount,token_id,timestamp,tx_ref,verifie
     id: "reputation",
     group: "reference",
     title: "Reputation signals",
-    path: "README.md:378-394, docs/phase7-lane-b.md, docs/scorecard-code-change-recency.md",
+    path: "README.md:378-394, docs/reputation-engine.md, docs/scorecard-code-change-recency.md",
     commit: DOC_COMMITS.reputation,
     body: (
       <>
@@ -451,7 +451,7 @@ neutral: no contract, or first observation, not a penalty`}
     id: "scorecard",
     group: "reference",
     title: "Scorecard addendum",
-    path: "docs/scorecard-code-change-recency.md and docs/phase10-lane-b.md",
+    path: "docs/scorecard-code-change-recency.md and docs/demo-and-submission.md",
     commit: DOC_COMMITS.scorecard,
     body: (
       <>

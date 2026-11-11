@@ -1,5 +1,5 @@
 /**
- * Tests for the Phase 6 executor backend. The pure guards
+ * Tests for the  executor backend. The pure guards
  * (auth comparison, validation, rate limit, allow-list) are
  * tested directly. The HTTP layer is tested against a stub
  * CLI process: the stub stands in for the CLI's process
@@ -27,7 +27,7 @@ const VALID_BODY = {
   obligationId: "p6-obl-002",
   proposedRecipient: "acme-supplies.testnet",
   proposedAmount: "1001",
-  evidenceRef: "phase6-demo",
+  evidenceRef: "sample-demo",
 };
 
 describe("tokensEqual", function () {
@@ -69,7 +69,7 @@ describe("allow-list", function () {
       "p6-obl-002",
       "acme-supplies.testnet",
       "1001",
-      "phase6-demo",
+      "sample-demo",
     ]);
     expect(isAllowedCommand(argv, "/repo/cli/cynex.js")).toBe(true);
   });
@@ -184,7 +184,7 @@ describe("executor HTTP layer", function () {
         "p6-obl-002",
         "acme-supplies.testnet",
         "1001",
-        "phase6-demo",
+        "sample-demo",
       ]);
       for (let i = 0; i < 3; i++) {
         const extra = await fetch(base + "/settle", {

@@ -1,12 +1,12 @@
 /**
- * Cynex obligation state display, Phase 3 Lane B.
+ * Cynex obligation state display,  frontend.
  *
  * Pure mapping from the contract states (frozen in docs/contract-api.md,
  * 9 ObligationStates) to what a frontend shows. No chain reads here;
  * callers pass the state read from the contract and the policy frozen
  * flag read from the contract. Nothing is guessed locally.
  *
- * Terminal means the deployed Phase 3 contract offers no outgoing
+ * Terminal means the deployed  contract offers no outgoing
  * transition: PAID (money moved, receipt appended), CANCELLED
  * (cancel_obligation makes the obligation terminal), and BLOCKED
  * (evidence blocked; settle requires READY and cancel_obligation
@@ -72,7 +72,7 @@ const DISPLAY: Record<
     label: "Blocked",
     terminal: true,
     meaning: "Evidence blocked by the verifier.",
-    next: "No settlement path and no cancel path in the Phase 3 contract; a new obligation is needed.",
+    next: "No settlement path and no cancel path in the  contract; a new obligation is needed.",
   },
   CANCELLED: {
     label: "Cancelled",

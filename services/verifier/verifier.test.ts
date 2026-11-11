@@ -1,5 +1,5 @@
 /**
- * Tests for the Phase 5 real verifier.
+ * Tests for the  real verifier.
  * SHA-256 is computed over real artifact bytes, the result is bound
  * to the settlement digest and the pending request, and the trust
  * mode is TRUSTED_RELAYER, never silently downgraded.
@@ -16,7 +16,7 @@ import type { Obligation } from "../../frontend/src/cynex/schema.js";
 const VAULT_ID = "cynex-vault.cynexmaster.testnet";
 const TOKEN_ID = "usdc.fakes.testnet";
 const ARTIFACT = Buffer.from(
-  "cynex phase 5 demo artifact: delivery note 1 for acme-supplies",
+  "cynex  demo artifact: delivery note 1 for acme-supplies",
   "utf8",
 );
 const NOW_NS = 1793800000000000000n;

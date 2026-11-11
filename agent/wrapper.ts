@@ -1,13 +1,13 @@
 /**
- * Agent wrapper, Phase 1 scaffold plus Phase 7 reputation gate.
+ * Agent wrapper,  scaffold plus  reputation gate.
  *
  * The agent account holds a scoped function-call key. This
  * wrapper enforces the scope in code: it can build only a
  * settle call. Any other method name is rejected here, before
- * it ever reaches a signer, matching the Phase 1 key sandbox
+ * it ever reaches a signer, matching the  key sandbox
  * (one function-call key, receiver vault, methods settle).
  *
- * Phase 7: the reputation gate. Before the agent settles, the
+ * : the reputation gate. Before the agent settles, the
  * console checks the recipient's reputation (see
  * services/reputation) and applies the gate here:
  * - BLOCK: the counterparty is on a named blocklist, or the

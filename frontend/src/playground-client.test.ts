@@ -13,27 +13,27 @@ describe("buildSettleRequest", function () {
         "p6-obl-002",
         "acme-supplies.testnet",
         "1001",
-        "phase6-demo",
+        "sample-demo",
       ),
     ).toEqual({
       vaultId: "cynex-testvault.cynexmaster.testnet",
       obligationId: "p6-obl-002",
       proposedRecipient: "acme-supplies.testnet",
       proposedAmount: "1001",
-      evidenceRef: "phase6-demo",
+      evidenceRef: "sample-demo",
     });
   });
   it("trims the free-form fields and rejects empty or non-numeric input", function () {
     expect(function () {
-      buildSettleRequest("v", "o", "", "1000", "phase6-demo");
+      buildSettleRequest("v", "o", "", "1000", "sample-demo");
     }).toThrow();
     expect(function () {
-      buildSettleRequest("v", "o", "acme-supplies.testnet", "1.5", "phase6-demo");
+      buildSettleRequest("v", "o", "acme-supplies.testnet", "1.5", "sample-demo");
     }).toThrow();
     expect(function () {
       buildSettleRequest("v", "o", "acme-supplies.testnet", "1000", "");
     }).toThrow();
-    expect(buildSettleRequest("v", "o", "  acme-supplies.testnet  ", "1000", "phase6-demo").proposedRecipient).toBe(
+    expect(buildSettleRequest("v", "o", "  acme-supplies.testnet  ", "1000", "sample-demo").proposedRecipient).toBe(
       "acme-supplies.testnet",
     );
   });

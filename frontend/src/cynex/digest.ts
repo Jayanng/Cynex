@@ -1,10 +1,10 @@
 /**
- * Cynex settlement digest — Lane B TypeScript mirror, Phase 0 DRAFT.
+ * Cynex settlement digest — frontend TypeScript mirror,  DRAFT.
  *
  * Implements the frozen settlement digest in docs/contract-api.md
- * (Phase 0, commit 5eee26a) and Rust schemas/cynex-v1.0.0/src/lib.rs.
+ * (, commit 5eee26a) and Rust schemas/cynex-v1.0.0/src/lib.rs.
  * Conformance is checked against the frozen 6 vectors in
- * tests/test-vectors/vectors.json, not against Lane B draft vectors.
+ * tests/test-vectors/vectors.json, not against frontend draft vectors.
  *
  * Encoding (frozen in docs/contract-api.md, Rust schemas/cynex-v1.0.0):
  *   domain || network_id || vault_id || policy_id || policy_version ||
@@ -12,7 +12,7 @@
  *   evidence_hash || nonce || expiry
  *   - domain = "CYNEX_SETTLEMENT_V1", encoded as RAW ASCII bytes, with
  *     NO length prefix. This was the one encoding choice the plan left
- *     ambiguous and the Rust freeze settled: an earlier Lane B draft
+ *     ambiguous and the Rust freeze settled: an earlier frontend draft
  *     length-prefixed the domain and therefore did NOT match Rust.
  *     That draft is superseded; this version matches Rust byte for byte.
  *   - network_id = "testnet", and every other string field, is encoded

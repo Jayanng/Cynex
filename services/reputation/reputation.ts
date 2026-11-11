@@ -1,5 +1,5 @@
 /**
- * Reputation service, Phase 7 Lane B, fifth signal added by the
+ * Reputation service,  frontend, fifth signal added by the
  * scorecard brief (code-change recency).
  *
  * Real counterparty signals, scoped to what we can actually source
@@ -159,7 +159,7 @@ export const CODE_CHANGE_WARN_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 export const CODE_CHANGE_BLOCK_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export const NO_BLOCKLIST_REASON =
-  "no suitable public blocklist source for NEAR account ids; see docs/phase7-lane-b.md";
+  "no suitable public blocklist source for NEAR account ids; see docs/reputation-engine.md";
 
 export function isoOfNs(timestampNs: bigint): string {
   const ms = timestampNs / 1000000n;

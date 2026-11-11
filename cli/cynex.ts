@@ -1,5 +1,5 @@
 /**
- * Cynex CLI, Phase 1 scaffold plus Phase 2 live verification plus Phase 3 playground plus Phase 4 budget plus Phase 5 verifier.
+ * Cynex CLI,  scaffold plus  live verification plus  playground plus  budget plus  verifier.
  *
  * Commands:
  *   verify-receipts <receipts.json>
@@ -42,7 +42,7 @@
  *     receipt is reported unanchored.
  *   playground <vaultId> <obligationId...>
  *     Reads each listed obligation and its policy live from the
- *     contract (no signing, no transactions) and prints the Phase 3
+ *     contract (no signing, no transactions) and prints the 
  *     state display for it: label, meaning, next action, and the
  *     frozen note when the policy is frozen. An obligation that is
  *     not found on chain, or a state the display does not know,
@@ -91,7 +91,7 @@
  *     settle on the production vault needs
  *     --allow-production-settle, otherwise the run refuses.
  *     Appends the run to the transcript file (default
- *     docs/phase6-attack-transcript.md). Exit 0 when every
+ *     docs/attack-transcript.md). Exit 0 when every
  *     scenario produced its expected code, 1 otherwise.
  *   reputation <vaultId> <accountId> [--snapshots <dir>] [--blocklist-url <url>] [--nearblocks-url <url>]
  *     Reads the counterparty's reputation live (services/reputation):
@@ -877,7 +877,7 @@ async function attackCmd(argv: string[]): Promise<number> {
   const dryRun = argv.indexOf("--dry-run") !== -1;
   const allowProductionSettle = argv.indexOf("--allow-production-settle") !== -1;
   const transcriptIndex = argv.indexOf("--transcript");
-  const transcriptFile = transcriptIndex !== -1 && argv[transcriptIndex + 1] !== undefined ? argv[transcriptIndex + 1] : "docs/phase6-attack-transcript.md";
+  const transcriptFile = transcriptIndex !== -1 && argv[transcriptIndex + 1] !== undefined ? argv[transcriptIndex + 1] : "docs/attack-transcript.md";
   if (vaultId === undefined || scenariosFile === undefined) {
     console.log("usage: cynex attack <vaultId> <scenariosFile> [--only <scenario>] [--dry-run] [--allow-production-settle] [--transcript <file>]");
     return 2;
@@ -1068,7 +1068,7 @@ async function reputationSnapshotCmd(args: string[]): Promise<number> {
       "snapshot " + accountId + ": " + (snap.exists ? "exists" : "not found") + " block " + snap.blockHeight,
     );
   }
-  const file = takeSnapshot(accounts, "lane-b", rpcUrl, fetchedAt);
+  const file = takeSnapshot(accounts, "side-b", rpcUrl, fetchedAt);
   mkdirSync(dir, { recursive: true });
   const path = dir + "/" + snapshotFileName(fetchedAt);
   writeFileSync(path, JSON.stringify(file, null, 2) + "\n");

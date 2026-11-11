@@ -144,14 +144,15 @@ function repoRoot(): string {
   return join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 }
 
-/** Scratch base for sandbox homes and wasm builds. Prefers the repo build tmp dir on this machine, tmpdir elsewhere. */
+/** Scratch base for sandbox homes and wasm builds. Prefers the build tmp dir next to the repo, tmpdir elsewhere. */
 function scratchBase(): string {
   const fromEnv = (process.env.CYNEX_BUILD_TMP ?? "").trim();
   if (fromEnv !== "" && existsSync(fromEnv)) {
     return fromEnv;
   }
-  if (existsSync("/data/workspace/cynex-build-tmp")) {
-    return "/data/workspace/cynex-build-tmp";
+  const sibling = join(repoRoot(), "..", "cynex-build-tmp");
+  if (existsSync(sibling)) {
+    return sibling;
   }
   return tmpdir();
 }
@@ -532,7 +533,7 @@ export async function ensureVaultWasm(): Promise<string> {
   const fromEnv = (process.env.CYNEX_WASM_PATH ?? "").trim();
   const targetDir = wasmTargetDir(
     "CYNEX_VAULT_TARGET_DIR",
-    "/data/workspace/cynex-build-tmp/cynex-phase5",
+    join(scratchBase(), "cynex-vault"),
     "cynex_vault-build",
   );
   const bundled = bundledWasmPath("cynex_vault.wasm");
@@ -563,7 +564,7 @@ export async function ensureFtWasm(): Promise<string> {
   const fromEnv = (process.env.CYNEX_FT_WASM_PATH ?? "").trim();
   const targetDir = wasmTargetDir(
     "CYNEX_FT_TARGET_DIR",
-    "/data/workspace/cynex-build-tmp/ft-test-token",
+    join(scratchBase(), "ft-test-token"),
     "ft_test_token-build",
   );
   const bundled = bundledWasmPath("ft_test_token.wasm");

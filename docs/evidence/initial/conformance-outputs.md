@@ -1,7 +1,7 @@
-# Phase 0 conformance outputs - captured 2026-11-03, Instabox machine rastadev
+# conformance outputs - captured 2026-11-03, the build machine
 
-Frozen base: Master 5eee26a (Phase 0 Lane A freeze, cynex-v1.0.0).
-Lane B mirror: frontend/src/cynex-schema.ts and frontend/src/cynex/
+Frozen base: Master 5eee26a (contract freeze, cynex-v1.0.0).
+frontend mirror: frontend/src/cynex-schema.ts and frontend/src/cynex/
 (digest, schema, receipt, api), tests/test-vectors/vectors.json (frozen).
 
 ## Rust - cargo test, schemas/cynex-v1.0.0
@@ -9,13 +9,13 @@ Lane B mirror: frontend/src/cynex-schema.ts and frontend/src/cynex/
 Command: cargo test
 Result: ok
 - Unittests: 4 passed, 0 failed
-  - hex_to_32_rejects_non_ascii_without_panic
-  - hex_rejects_non_ascii_whitespace_before_trim
-  - obligation_records_policy_version_and_lock
-  - settlement_digest_rejects_other_network (should panic)
+ - hex_to_32_rejects_non_ascii_without_panic
+ - hex_rejects_non_ascii_whitespace_before_trim
+ - obligation_records_policy_version_and_lock
+ - settlement_digest_rejects_other_network (should panic)
 - Conformance tests: 2 passed, 0 failed
-  - receipt_hash_matches_frozen_formula
-  - conformance (6 vectors)
+ - receipt_hash_matches_frozen_formula
+ - conformance (6 vectors)
 - Doc-tests: 0 passed, 0 failed
 
 ## TypeScript - Node conformance, frontend
@@ -58,6 +58,6 @@ prev_hash, obl-001, acme-supplies.testnet, 250000000, usdc.fakes.testnet,
 
 ## Status
 
-Phase 0 mirror is complete for Lane B as defined above. Joint sign-off
-on docs/contract-api.md still needs both lanes, so Phase 0 is not
+mirror is complete for frontend as defined above. Joint sign-off
+on docs/contract-api.md still needs both sides, so is not
 closed by this evidence file alone.

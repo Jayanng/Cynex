@@ -1,4 +1,4 @@
-# Lane A toolchain evidence (Phase P, 2026-11-03, jayanng)
+# contract toolchain evidence (, 2026-11-03, jayanng)
 
 rustc 1.99.0 (b940084d7 2026-09-28)
 cargo 1.99.0 (5f94df478 2026-08-27)
@@ -11,7 +11,7 @@ cargo-geiger 0.14.0
 cargo fmt --version: rustfmt 1.10.0-stable (b940084d7e 2026-09-28)
 cargo clippy --version: clippy 0.1.99 (b940084d7e 2026-09-28)
 
-Skills loaded for Lane A work:
+Skills loaded for contract work:
 near-smart-contracts, near-contract-audit
 Note from near-smart-contracts: always cargo near new, never hand-write
 Cargo.toml / lib.rs for a new contract. ft_transfer returns unit.

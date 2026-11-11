@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Cynex frontend, Phase 0: TypeScript schema/digest mirror of the frozen contract API (cynex-v1.0.0)",
+  "description": "Cynex frontend: TypeScript schema/digest mirror of the frozen contract API (cynex-v1.0.0)",
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",
     "near-api-js": "^7.0.0",

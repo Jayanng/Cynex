@@ -1,12 +1,12 @@
 /**
- * Reputation engine tests, Phase 7 Lane B.
+ * Reputation engine tests,  frontend.
  *
  * The stub sources here stand in for external reads (RPC, the
  * receipts view, snapshot files, a blocklist fetch) so the verdict
  * rules can be tested without the chain. They are test doubles for
  * those reads only; they do not mock the contract, and the live
  * behavior is proven by the real CLI runs recorded in
- * docs/phase7-lane-b.md.
+ * docs/reputation-engine.md.
  */
 import {
   buildReport,

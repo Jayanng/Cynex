@@ -1,5 +1,5 @@
 /**
- * Console evidence wiring tests, Phase 9 Lane B. The console
+ * Console evidence wiring tests,  frontend. The console
  * branches on evidence_type (agent/console.ts): PREIMAGE calls
  * submit_evidence_preimage with the artifact bytes as a JSON
  * number array (owner as courier, no verifier key), TEE calls
@@ -57,13 +57,13 @@ describe("isHttpUrl", () => {
 
   test("anything else fails closed", () => {
     expect(isHttpUrl("")).toBe(false);
-    expect(isHttpUrl("phase6-demo")).toBe(false);
+    expect(isHttpUrl("sample-demo")).toBe(false);
     expect(isHttpUrl("ftp://example.test/a")).toBe(false);
     expect(isHttpUrl("https://example.test/a b")).toBe(false);
   });
 });
 
-describe("Phase 9 constants", () => {
+describe(" constants", () => {
   test("TEE prepaid gas is 300 TGas, the live-proof figure", () => {
     expect(TEE_CALL_GAS).toBe(300000000000000n);
   });
@@ -79,7 +79,7 @@ describe("Phase 9 constants", () => {
 
 describe("consoleCalls", () => {
   test("PREIMAGE calls submit_evidence_preimage as the owner", () => {
-    const calls = consoleCalls("cynex-testvault.cynexmaster.testnet", obligationFile("PREIMAGE", "phase9-demo"));
+    const calls = consoleCalls("cynex-testvault.cynexmaster.testnet", obligationFile("PREIMAGE", "sample-evidence"));
     const evidence = calls[3] as Record<string, unknown>;
     expect(evidence.account).toBe("owner");
     expect(evidence.methodName).toBe("submit_evidence_preimage");
@@ -101,7 +101,7 @@ describe("consoleCalls", () => {
   });
 
   test("the verifier path is unchanged for other evidence types", () => {
-    const calls = consoleCalls("cynex-testvault.cynexmaster.testnet", obligationFile("delivery-note", "phase6-demo"));
+    const calls = consoleCalls("cynex-testvault.cynexmaster.testnet", obligationFile("delivery-note", "sample-demo"));
     const evidence = calls[3] as Record<string, unknown>;
     expect(evidence.account).toBe("verifier");
     expect(evidence.methodName).toBe("submit_evidence");
@@ -141,7 +141,7 @@ describe("pollTee", () => {
 describe("createObligationArgs expires_at_ns (audit finding 6-2)", () => {
   function fileWithExpiry(expiresAtNs: string): ObligationFile {
     return {
-      ...obligationFile("PREIMAGE", "phase9-demo"),
+      ...obligationFile("PREIMAGE", "sample-evidence"),
       expires_at_ns: expiresAtNs,
     };
   }
@@ -188,10 +188,10 @@ describe("createObligationArgs expires_at_ns (audit finding 6-2)", () => {
   test("amount and nonce still require exact representability", () => {
     const over = "9007199254740993";
     expect(() =>
-      createObligationArgs({ ...obligationFile("PREIMAGE", "phase9-demo"), amount: over }),
+      createObligationArgs({ ...obligationFile("PREIMAGE", "sample-evidence"), amount: over }),
     ).toThrow("not exactly representable");
     expect(() =>
-      createObligationArgs({ ...obligationFile("PREIMAGE", "phase9-demo"), nonce: over }),
+      createObligationArgs({ ...obligationFile("PREIMAGE", "sample-evidence"), nonce: over }),
     ).toThrow("not exactly representable");
   });
 });

@@ -1,6 +1,6 @@
-# Phase 10 demo live proof, test vault, 2026-11-07
+# Demo live proof, test vault, 2026-11-07
 
-Run by Muse (Lane A coordinator) on the test vault
+Run by Muse (contract coordinator) on the test vault
 `cynex-testvault.cynexmaster.testnet`. All calls used the owner key
 `cynexmaster.testnet` (the agent scoped key is production-bound only, so it
 cannot settle on the test vault). Recipient throughout is the agent account
@@ -24,11 +24,11 @@ d51c5d7ddbbe4b8e0e420caa1658d806cb29beb89c608ad9dbb043e3910f7657.
 - Request evidence: FE5EtKA12h8AwLcngWXuMsaSL1vhg9gzMB4RAWGWCNNx
 - Submit preimage (the delivery note bytes): MVJrygCRiiZgNv96gkSQC9vzk2saLwj4wdKTULoCJzh
 - Obligation went READY (the vault hashed the bytes itself and matched the
-  committed digest).
+ committed digest).
 - Settle (correct recipient and amount): 3Gp3J2zZCKrne1PamDVf6PgXHk4qGc3a58GBvoFcNhrZ,
-  receipt index 11.
+ receipt index 11.
 - Obligation PAID. Agent balance 700 to 800. Policy spent 3400 to 3500,
-  reserved 0.
+ reserved 0.
 
 ## Attack, prompt-injected agent tries bad terms
 
@@ -72,15 +72,15 @@ bytes), SHA-256 f23aeaa4efc068df8a05ef97c1ade88022575ad5ea52dbe9af218028462d4e27
 - Create: E81V6t996qpzgboNtShmBxTfrhahiZYaB8qxZnkS6fB2
 - Request evidence: 7Ao5v6mWnr46rM4FnSJP5m9kvhhn9ah7wd2sYGenpm7x
 - Request TEE verification: 5Xvu78qxd9NfgJzRBeyvdQXnqK8sLfSmzrfVC5dgDK68,
-  300 TGas, no attached deposit. Note: the method does not accept an
-  attached deposit; the 0.01 NEAR is a vault liquid-headroom requirement,
-  not a caller deposit. The first attempt with a 0.01 NEAR deposit failed
-  with "Method request_tee_verification doesn't accept deposit".
+ 300 TGas, no attached deposit. Note: the method does not accept an
+ attached deposit; the 0.01 NEAR is a vault liquid-headroom requirement,
+ not a caller deposit. The first attempt with a 0.01 NEAR deposit failed
+ with "Method request_tee_verification doesn't accept deposit".
 - OutLayer request 11912, project cynexmaster.testnet/cynex-verifier,
-  version 8abfe08b. The guest fetched the URL, hashed it with SHA-256,
-  requested VRF randomness, and returned digest, source, request id, VRF
-  output, signature, and alpha. The callback verified the digest, the
-  source, and the VRF signature on-chain.
+ version 8abfe08b. The guest fetched the URL, hashed it with SHA-256,
+ requested VRF randomness, and returned digest, source, request id, VRF
+ output, signature, and alpha. The callback verified the digest, the
+ source, and the VRF signature on-chain.
 - Obligation went READY.
 - Settle: 3QV2aCRSiJ8ZYqLECCpK6ZkXpYE4AdxJzmyP3JTaDqWB, receipt index 13.
 - Obligation PAID. Agent balance 900 to 1000. Policy spent 3600 to 3700.
@@ -102,12 +102,12 @@ TRANSFER_PENDING, no reservation held, no funds locked.
 ## Notes for the demo
 
 - The happy path, the three attacks, and the TEE path all ran on the test
-  vault with real tx hashes. Nothing was settled on production for this
-  demo.
+ vault with real tx hashes. Nothing was settled on production for this
+ demo.
 - The TEE request takes about a minute to resolve (guest execution plus
-  callback). The demo video should allow for that, or cut from the request
-  to the READY read.
+ callback). The demo video should allow for that, or cut from the request
+ to the READY read.
 - The recipient-substitution rejection is a contract panic
-  (ERR_RECIPIENT_SUBSTITUTION), not a graceful error return. That is the
-  contract's behaviour for a terms mismatch in settle, and it is the same
-  in the Phase 6 attack transcript.
+ (ERR_RECIPIENT_SUBSTITUTION), not a graceful error return. That is the
+ contract's behaviour for a terms mismatch in settle, and it is the same
+ in the attack transcript.

@@ -1,5 +1,5 @@
 /**
- * Tests for the Phase 6 attack runner core. Pure functions only:
+ * Tests for the  attack runner core. Pure functions only:
  * no network, no signing, no shell. The live behaviour (real
  * settle transactions, real reason codes) is proven by the
  * runner's audit run, not by these tests.
@@ -104,7 +104,7 @@ describe("containsShellMeta", function () {
     for (const bad of ["a;b", "a$(b)", "a`b`", "a b", "a'b", 'a"b', "a|b", "a\\b", "a<b", "a>b", "a*b", "a?b", "a~b", "a#b"]) {
       expect(containsShellMeta(bad)).toBe(true);
     }
-    expect(containsShellMeta("phase6-demo")).toBe(false);
+    expect(containsShellMeta("sample-demo")).toBe(false);
     expect(containsShellMeta("acme-supplies.testnet")).toBe(false);
     expect(containsShellMeta("1000")).toBe(false);
   });
@@ -112,15 +112,15 @@ describe("containsShellMeta", function () {
 
 describe("validateSettleParams", function () {
   it("accepts a clean call", function () {
-    expect(validateSettleParams("acme-supplies.testnet", "1000", "phase6-demo")).toEqual([]);
+    expect(validateSettleParams("acme-supplies.testnet", "1000", "sample-demo")).toEqual([]);
   });
   it("lists every problem instead of failing on the first", function () {
     const problems = validateSettleParams("Bad Recipient!", "0", "");
     expect(problems.length).toBeGreaterThanOrEqual(3);
   });
   it("rejects a metacharacter in any parameter", function () {
-    expect(validateSettleParams("acme-supplies.testnet", "1000", "phase6;demo").length).toBeGreaterThan(0);
-    expect(validateSettleParams("acme-supplies.testnet", "1000;echo", "phase6-demo").length).toBeGreaterThan(0);
+    expect(validateSettleParams("acme-supplies.testnet", "1000", "sample;demo").length).toBeGreaterThan(0);
+    expect(validateSettleParams("acme-supplies.testnet", "1000;echo", "sample-demo").length).toBeGreaterThan(0);
   });
 });
 

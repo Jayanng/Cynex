@@ -1,5 +1,5 @@
 /**
- * Cynex attack runner core, Phase 6 Lane B. Pure logic only: no
+ * Cynex attack runner core,  frontend. Pure logic only: no
  * network, no signing, no shell. The CLI (cli/cynex.ts) does the
  * live reads and the settle calls; the executor
  * (services/executor/executor.ts) reuses the validators here.
@@ -13,14 +13,14 @@
  *   nonce: settle against a PAID obligation, or a second settle
  *     after a correct one in the same run
  *     -> ERR_NONCE_ALREADY_CONSUMED (checked before the state
- *     check, Phase 6 Lane A)
+ *     check,  contract)
  *   budget: proposed amount equals the recorded one, and the
  *     recorded amount exceeds the remaining headroom
  *     -> ERR_BUDGET_EXCEEDED (checked after terms, so the
  *     proposed amount must match the recorded one or the terms
  *     check fires first instead)
  *
- * Expired and frozen are proven by Lane A and runnable in the
+ * Expired and frozen are proven by contract and runnable in the
  * playground, but they are not runner scenarios.
  */
 
@@ -51,8 +51,8 @@ export const EXPECTED_CODE: Record<AttackScenario, ReasonCode> = {
   budget: "ERR_BUDGET_EXCEEDED",
 };
 
-/** Evidence ref used by every Phase 6 attack settle, matching Lane A live proofs. */
-export const ATTACK_EVIDENCE_REF = "phase6-demo";
+/** Evidence ref used by every  attack settle, matching contract live proofs. */
+export const ATTACK_EVIDENCE_REF = "sample-demo";
 
 /** A valid account id that is never a real demo recipient. Used as the wrong payee. */
 export const WRONG_RECIPIENT = "unregistered-xyz.testnet";
@@ -115,7 +115,7 @@ export function containsShellMeta(value: string): boolean {
  * only, a positive u128 (1 to 2^128 - 1). A JSON number is
  * rejected by the caller before this runs: near-api-js would
  * round it and deserialization would fail before any contract
- * check, which is exactly the failure Lane A hit once.
+ * check, which is exactly the failure contract hit once.
  */
 export function parseAmountU128(value: string): bigint {
   if (!/^[0-9]+$/.test(value)) {

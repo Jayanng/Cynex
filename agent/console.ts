@@ -1,5 +1,5 @@
 /**
- * Cynex console, Phase 2 Lane B, audit fixes applied.
+ * Cynex console,  frontend, audit fixes applied.
  *
  * Wires the console to the real contract, end to end, in
  * this order, because a fresh obligation is CREATED and
@@ -34,7 +34,7 @@
  * The settle transaction outcome print is not proof. The
  * obligation PAID read and the balance delta are the proof.
  *
- * Preconditions for a live run, held by Lane A, not here:
+ * Preconditions for a live run, held by contract, not here:
  * the verifier account must already be allowlisted with
  * add_verifier, the vault and the recipient must be
  * storage registered on the token, and the policy must be
@@ -60,7 +60,7 @@
  * CYNEX_ARTIFACT_FILE; the PREIMAGE and verifier paths
  * abort without it (fail closed, no READY by default).
  *
- * Reputation gate (Phase 7): before the agent settles, the
+ * Reputation gate (): before the agent settles, the
  * console checks the recipient's reputation (services/reputation)
  * and applies the wrapper gate. BLOCK refuses with no settle.
  * WARN escalates to the owner: no settle unless
@@ -75,9 +75,9 @@
  * deployed contract takes nonce as an input argument.
  * The console follows the deployed contract.
  *
- * Phase 9 note: the PREIMAGE and TEE method signatures
+ *  note: the PREIMAGE and TEE method signatures
  * here match the frozen docs/contract-api.md (lines 75-76,
- * Phase 9, committed as 42c9bf6 and bbc8464, deployed at
+ * , committed as 42c9bf6 and bbc8464, deployed at
  * code hash 7PBw1x6HbH3Eu2dWrTKjEEfxdJnAfFPwPJS5vZMM5zRC
  * on both vaults). The production proof obligations
  * p9-prod-preimage-001 (READY), p9-prod-preimage-002
@@ -312,7 +312,7 @@ export type EvidenceBranch = "PREIMAGE" | "TEE" | "VERIFIER";
 
 /**
  * Which evidence path an obligation uses. PREIMAGE and TEE
- * are the Phase 9 layers; anything else keeps the verifier
+ * are the  layers; anything else keeps the verifier
  * path (TRUSTED_RELAYER, and evidence over 64 KiB, which
  * cannot go through the preimage cap).
  */
@@ -381,12 +381,12 @@ export async function pollTee(
 
 // Gas for console change calls. near-api-js defaults to 30 TGas prepaid.
 // Settle attaches 30 TGas for ft_transfer plus 30 TGas for the callback,
-// plus about 2.6 TGas of its own execution measured in Phase 2, so 30 TGas
+// plus about 2.6 TGas of its own execution measured in , so 30 TGas
 // prepaid can never cover it and fails with Exceeded the prepaid gas.
-// Lane A live settlements used 100 TGas for settle and succeeded.
+// contract live settlements used 100 TGas for settle and succeeded.
 export const DEFAULT_CALL_GAS = 30000000000000n;
 export const SETTLE_CALL_GAS = 100000000000000n;
-// TEE verification prepaid gas. Measured live in Phase 9:
+// TEE verification prepaid gas. Measured live in :
 // the outer call needs more than 150 TGas prepaid (100 TGas
 // to OutLayer plus 50 TGas to the callback plus the vault's
 // own execution). 100 TGas prepaid fails with "Exceeded the

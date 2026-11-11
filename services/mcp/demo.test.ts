@@ -125,7 +125,7 @@ function fakeSummaryInfo(): DemoSummaryInfo {
       { id: DEMO_READY_002, recipient: SANDBOX_SECOND_RECIPIENT_ID, amount: "100", state: "READY" },
       { id: DEMO_CREATED_001, recipient: SANDBOX_RECIPIENT_ID, amount: "100", state: "CREATED" },
     ],
-    demoPath: "/data/workspace/Cynex-mcp-demo/frontend/dist-test/services/mcp/demo.js",
+    demoPath: "/tmp/cynex-demo/frontend/dist-test/services/mcp/demo.js",
   };
 }
 
@@ -227,8 +227,20 @@ function sandboxScratchBase(): string {
   if (fromEnv !== "" && existsSync(fromEnv)) {
     return fromEnv;
   }
-  if (existsSync("/data/workspace/cynex-build-tmp")) {
-    return "/data/workspace/cynex-build-tmp";
+  let dir = dirname(fileURLToPath(import.meta.url));
+  for (let depth = 0; depth < 8; depth++) {
+    if (existsSync(join(dir, "contract"))) {
+      const sibling = join(dir, "..", "cynex-build-tmp");
+      if (existsSync(sibling)) {
+        return sibling;
+      }
+      break;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) {
+      break;
+    }
+    dir = parent;
   }
   return tmpdir();
 }
@@ -360,7 +372,7 @@ describe("buildReadySummary", () => {
     expect(claudeCodeConfig("/usr/local/lib/cynex-mcp/dist/cynex-mcp.mjs")).toContain(
       "--sandbox",
     );
-    expect(claudeCodeConfig("/data/workspace/Cynex-mcp-demo/frontend/dist-test/services/mcp/demo.js")).not.toContain(
+    expect(claudeCodeConfig("/tmp/cynex-demo/frontend/dist-test/services/mcp/demo.js")).not.toContain(
       "--sandbox",
     );
   });

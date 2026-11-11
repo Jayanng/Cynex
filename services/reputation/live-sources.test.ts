@@ -1,11 +1,11 @@
 /**
- * Live sources tests, Phase 7 Lane B.
+ * Live sources tests,  frontend.
  *
  * The stub fetch stands in for the RPC endpoint and the blocklist
  * URL so the parsing and error handling can be tested without the
  * network. It is a test double for those endpoints only; the live
  * behavior is proven by the real CLI runs recorded in
- * docs/phase7-lane-b.md.
+ * docs/reputation-engine.md.
  */
 import { evaluateCounterparty } from "./reputation.js";
 import { makeLiveSources } from "./live-sources.js";

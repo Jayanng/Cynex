@@ -1,7 +1,7 @@
-// Cynex schema, version 1.0.0, frozen in Phase 0.
+// Cynex schema, version 1.0.0, frozen.
 //
 // This crate holds the shared types and the two hashes, and nothing
-// else. It is not the contract. The contract, in a later phase, will
+// else. It is not the contract. The contract, later, will
 // use these types and must not invent its own copies of them.
 //
 // Encoding rules, from the frozen spec:

@@ -1,5 +1,5 @@
 /**
- * Cynex frontend client, Phase 1 Lane B scaffold.
+ * Cynex frontend client,  frontend scaffold.
  *
  * Read-only view client against the frozen contract API
  * (docs/contract-api.md, cynex-v1.0.0). Uses near-api-js v7:
@@ -7,7 +7,7 @@
  * No signing, no transactions, no hardcoded results. View return
  * shapes are returned as decoded JSON; callers convert numeric
  * fields to BigInt and confirm the shape against the deployed
- * contract in Phase 2, when Lane A has a skeleton to query.
+ * contract in , when contract has a skeleton to query.
  */
 import { JsonRpcProvider } from "near-api-js";
 

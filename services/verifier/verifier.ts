@@ -1,5 +1,5 @@
 /**
- * Cynex real verifier, Phase 5 Lane B. Replaces the Phase 1 scaffold,
+ * Cynex real verifier,  frontend. Replaces the  scaffold,
  * which only compared hash strings and never read artifact bytes.
  *
  * This verifier computes a real SHA-256 over the real artifact bytes

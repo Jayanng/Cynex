@@ -1,5 +1,5 @@
 /**
- * Tests for the Phase 3 obligation state display.
+ * Tests for the  obligation state display.
  * Every frozen ObligationState must have a label, a meaning, and a
  * next action; unknown states must throw, never render as a guess.
  */

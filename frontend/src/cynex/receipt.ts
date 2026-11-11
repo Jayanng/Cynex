@@ -1,7 +1,7 @@
 /**
- * Cynex receipt hash — Lane B mirror, plan §3.1.10 (frozen in the plan
+ * Cynex receipt hash — frontend mirror, plan §3.1.10 (frozen in the plan
  * itself, so cynex-verify can be built against it; still subject to
- * the Phase 0 Rust cross-check like the settlement digest).
+ * the  Rust cross-check like the settlement digest).
  *
  * receipt_hash = SHA-256(
  *   index_u64_BE || prev_hash_32_bytes ||
