@@ -14,6 +14,10 @@ decides whether the money moves.
 
 ## For judges: the whole project in one minute
 
+Live site: https://cynex-jayanngs-projects.vercel.app/
+
+Judges, start here: docs/JUDGES.md
+
 Cynex is a purpose-bound settlement vault for AI agents on NEAR. A
 human authorizes an obligation with a fixed recipient, token, amount,
 evidence requirement, and budget, and the vault itself enforces those
@@ -54,7 +58,7 @@ steps are in Reproduce it below.
 
 ## Hosted demo
 
-Live demo: [HOSTED URL] — the URL is added once hosting is chosen.
+Live demo: https://cynex-jayanngs-projects.vercel.app/
 This section ships now so the wording and the audit below are on
 record before go-live.
 
@@ -68,7 +72,7 @@ mobile.
 
 What the hosted demo can do:
 
-- Walk the live chain: a real refusal first, then the tagline, then
+- Walk the live chain: hero first, then the live refusal, then
   a live status strip on every page (vault code hash, receipts
   verified, agent balance, policy headroom, last settle).
 - Try to break it: pick an attack (change the recipient, change the
@@ -125,10 +129,9 @@ authorization time.
 ## Status
 
 Testnet throughout. The vault is deployed at
-`cynex-vault.cynexmaster.testnet`. Phases 0 through 9 are closed, the
-scorecard fifth reputation signal (code-change recency) is merged, and
-Phase 10 (demo and submission) is the final phase. The repo goes public
-on 13 November 2026.
+`cynex-vault.cynexmaster.testnet`. The scorecard fifth reputation signal
+(code-change recency) is merged, and the live demo runs the full story
+end to end.
 
 Live state, last verified 2026-11-08: both vaults run code hash
 65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6. Test vault policy
@@ -280,7 +283,7 @@ with `env::ed25519_verify`, bound to the pending request.
 
 Oversized evidence keeps the labeled fallback, TRUSTED_RELAYER: the owner
 as the verifier, named as trusted, never presented as trustless. Layers 2
-and 3 shipped in Phase 9 and were proven live on testnet: a TEE obligation
+and 3 shipped and were proven live on testnet: a TEE obligation
 went READY through the full guest fetch and VRF path on OutLayer request
 10640, with a real TDX quote binding the input and output hashes. The
 fallback stays for oversized evidence, not as a substitute for the
@@ -307,9 +310,9 @@ in this repo.
 
 The four executions, all on testnet. The first three ran on the test vault, the fourth ran on the production vault:
 
-- OutLayer request 10640, the Phase 9 live proof, transaction
+- OutLayer request 10640, the live proof, transaction
   `DusvRubtcAnPyyB1BQYkf66nA8Vy3eSdZVAmdviuPpUu`
-- OutLayer request 11912, the Phase 10 demo, transaction
+- OutLayer request 11912, the live demo, transaction
   `5Xvu78qxd9NfgJzRBeyvdQXnqK8sLfSmzrfVC5dgDK68`
 - OutLayer request 13040, the loose-ends retry proof, transaction
   `EYyyLXCLusX66ktWH4VyZWpP3UbkrcjZGf3MnX6Dfc6p`
@@ -432,7 +435,7 @@ expects, and sends no transaction. The live run needs the agent key.
 
 The attack transcript is in `docs/phase6-attack-transcript.md`. The
 compromised-agent scenario is the point: the agent is assumed hostile,
-and the vault still does not pay. The Phase 10 demo runs the same story
+and the vault still does not pay. The live demo runs the same story
 end to end on the test vault, happy path, three attack tries, TEE and
 VRF, and verification, each step with its real transaction hash: the
 script is in `docs/phase10-demo-script.md` and the proof record is in
@@ -593,8 +596,8 @@ on 2026-11-08, every recent execution returns a full TDX quote from the live
 host, https://testnet-api.outlayer.ai, and the earlier 404s came from querying
 retired hosts. Both parts of the reversal bar are now met for requests 10640,
 11912, 13040, and 13324. See Verifying the TEE attestation above. The full report is in
-`docs/spike-outlayer.md`, and the workaround findings are in the Phase 9
-entry notes. The reversal bar: a contract-caller execution that resolves
+`docs/spike-outlayer.md`, and the workaround findings are in the entry
+notes. The reversal bar: a contract-caller execution that resolves
 with a VRF output whose signature verifies against the published public
 key, plus a published attestation for the same request id.
 
@@ -631,5 +634,3 @@ weaker than the on-chain check, not stronger.
 - `docs/phase7-lane-b.md`, the reputation engine
 - `docs/deployment.md`, where the vaults are deployed and how to verify them
 
-Track: NEAR Hackathon 2026, AI Security and Defense. Submission deadline:
-14 November 2026, 23:59 UTC.
