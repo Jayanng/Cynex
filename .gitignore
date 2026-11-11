@@ -2,9 +2,11 @@ target/
 node_modules/
 .DS_Store
 *.log
+*.tgz
 .env
 .env.*
 !.env.example
 dist/
 build/
 dist-test/
+frontend/playground-client.js
