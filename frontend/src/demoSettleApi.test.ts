@@ -88,6 +88,8 @@ interface StubOptions {
   settleError?: Error | null;
   settleHangs?: boolean;
   neverPaid?: boolean;
+  keyListHangs?: boolean;
+  obligationHangs?: boolean;
   obligationHangsAfterSettle?: boolean;
   hangReads?: boolean;
   keyList?: unknown;
@@ -103,10 +105,14 @@ function stubChain(opts: StubOptions = {}): {
   const settleCalls: { id: string; recipient: string; amount: string }[] = [];
   const chain: DemoChain = {
     viewAccessKeyList: async () => {
+      if (opts.keyListHangs) return new Promise<unknown>(() => undefined);
       if (opts.keyListError) throw opts.keyListError;
       return opts.keyList ?? { keys: [] };
     },
     getObligation: async (id: string): Promise<ObligationRow | null> => {
+      if (opts.obligationHangs) {
+        return new Promise<ObligationRow | null>(() => undefined);
+      }
       if (settled.has(id) && opts.obligationHangsAfterSettle) {
         return new Promise<ObligationRow | null>(() => undefined);
       }
@@ -661,5 +667,36 @@ describe("handleDemoSettle", () => {
     expect(body.receiptIndex).toBeNull();
     expect(body.policySpent).toBeNull();
     expect(body.remaining).toBe(8);
+  });
+
+  test("a key-list read that never resolves answers 502 instead of hanging", async () => {
+    const { res, sent } = mockRes();
+    const key = freshKey();
+    const { chain, settleCalls } = stubChain({ keyListHangs: true });
+    await handleDemoSettle(postReq("203.0.113.23"), res, {
+      env: { CYNEX_DEMO_KEY: key.secret },
+      createChain: () => chain,
+      handlerDeadlineMs: 50,
+    });
+    expect(sent.status).toBe(502);
+    expect((sent.body as { code?: string }).code).toBe("CHAIN_UNREADABLE");
+    expect(settleCalls).toHaveLength(0);
+  });
+
+  test("an obligation scan that never resolves answers 502 instead of hanging", async () => {
+    const { res, sent } = mockRes();
+    const key = freshKey();
+    const { chain, settleCalls } = stubChain({
+      keyList: keyListFor(key.publicKey),
+      obligationHangs: true,
+    });
+    await handleDemoSettle(postReq("203.0.113.24"), res, {
+      env: { CYNEX_DEMO_KEY: key.secret },
+      createChain: () => chain,
+      handlerDeadlineMs: 100,
+    });
+    expect(sent.status).toBe(502);
+    expect((sent.body as { code?: string }).code).toBe("CHAIN_UNREADABLE");
+    expect(settleCalls).toHaveLength(0);
   });
 });

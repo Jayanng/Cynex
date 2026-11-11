@@ -34,9 +34,10 @@
  * seconds (exported config below). The settle call races a 20 second
  * soft timeout, the confirmation poll that follows gets at most
  * 5 seconds, and the post-confirmation reads get at most 5 seconds.
- * Every confirmation read races the remaining window, so a hung
- * RPC cannot push the call past the 30 second budget: the handler
- * always answers, even if the answer is SETTLE_UNCONFIRMED.
+ * Every stage races the time left to a 28 second deadline set when
+ * the handler starts, inside the 30 second function budget, so a
+ * hung RPC cannot push the call past it: the handler always
+ * answers, even if the answer is SETTLE_UNCONFIRMED or a 502.
  * A returned transaction outcome proves the vault accepted the settle
  * call, not that the tokens moved: the NEP-141 transfer and its
  * callback run asynchronously, and a failed transfer rolls the
@@ -64,6 +65,9 @@ const SETTLE_SOFT_TIMEOUT_MS = 20000;
 const CONFIRM_TIMEOUT_MS = 5000;
 const CONFIRM_POLL_MS = 1000;
 const CONFIRM_READS_TIMEOUT_MS = 5000;
+const HANDLER_DEADLINE_MS = 28000;
+const SCOPE_TIMEOUT_MS = 5000;
+const SCAN_TIMEOUT_MS = 10000;
 const RECEIPT_SCAN_BACK = 10;
 
 const DEMO_OBLIGATION_IDS = [
@@ -450,6 +454,9 @@ export interface DemoHandlerDeps {
   confirmTimeoutMs?: number;
   confirmIntervalMs?: number;
   confirmReadsTimeoutMs?: number;
+  handlerDeadlineMs?: number;
+  scopeTimeoutMs?: number;
+  scanTimeoutMs?: number;
 }
 
 const sharedRateLimitStore = createRateLimitStore();
@@ -556,6 +563,13 @@ export async function handleDemoSettle(
   res: DemoResponse,
   deps: DemoHandlerDeps,
 ): Promise<void> {
+  // Overall budget: the function allows 30 seconds. Every stage
+  // below races the time left to this deadline, set when the
+  // handler starts, so a hung RPC can never hold the call past it.
+  const startedAt = Date.now();
+  const handlerDeadlineMs = deps.handlerDeadlineMs ?? HANDLER_DEADLINE_MS;
+  const deadline = startedAt + handlerDeadlineMs;
+  const timeLeft = () => Math.max(0, deadline - Date.now());
   const store = deps.rateLimitStore ?? sharedRateLimitStore;
   const settleTimeoutMs = deps.settleTimeoutMs ?? SETTLE_SOFT_TIMEOUT_MS;
 
@@ -620,10 +634,14 @@ export async function handleDemoSettle(
 
   const chain = deps.createChain(secretKey);
 
-  let keyList: unknown;
-  try {
-    keyList = await chain.viewAccessKeyList(DEMO_AGENT);
-  } catch {
+  // A hung key-list read answers 502 instead of holding the handler:
+  // nothing has settled yet, so the caller can safely retry.
+  const scopeTimeoutMs = deps.scopeTimeoutMs ?? SCOPE_TIMEOUT_MS;
+  const keyList = await withTimeout(
+    chain.viewAccessKeyList(DEMO_AGENT),
+    Math.min(timeLeft(), scopeTimeoutMs),
+  );
+  if (keyList === null) {
     res
       .status(502)
       .json(
@@ -640,10 +658,13 @@ export async function handleDemoSettle(
     return;
   }
 
-  let ready: ObligationRow[];
-  try {
-    ready = await findReady(chain);
-  } catch {
+  // A hung obligation scan answers 502 instead of holding the
+  // handler: nothing has settled yet, so the caller can safely retry.
+  const ready: ObligationRow[] | null = await withTimeout(
+    findReady(chain),
+    Math.min(timeLeft(), deps.scanTimeoutMs ?? SCAN_TIMEOUT_MS),
+  );
+  if (ready === null) {
     res
       .status(502)
       .json(
@@ -667,13 +688,31 @@ export async function handleDemoSettle(
   const recipient = target.recipient;
   const amount = String(target.amount);
 
+  // The settle gets what is left of the budget minus a reserve for
+  // confirmation, reads, and the response. If the pre-settle reads
+  // already ate the budget, refuse instead of starting a settle the
+  // handler could not confirm or report.
+  const settleBudgetMs = Math.min(
+    settleTimeoutMs,
+    Math.max(0, timeLeft() - 10000),
+  );
+  if (settleBudgetMs <= 0) {
+    res.status(502).json(
+      fail(
+        "CHAIN_UNREADABLE",
+        "The chain is responding too slowly to settle safely within the function budget, so nothing was settled.",
+      ),
+    );
+    return;
+  }
+
   let txHash: string;
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const timeout = new Promise<never>((_resolve, reject) => {
       timer = setTimeout(
         () => reject(new Error("settle confirmation timed out")),
-        settleTimeoutMs,
+        settleBudgetMs,
       );
     });
     txHash = await Promise.race([
@@ -717,7 +756,10 @@ export async function handleDemoSettle(
   // reporting success: a failed transfer rolls it back to READY.
   // A missing tx hash cannot be linked to the explorer, so it counts
   // as unconfirmed even when the obligation reads PAID.
-  const confirmTimeoutMs = deps.confirmTimeoutMs ?? CONFIRM_TIMEOUT_MS;
+  const confirmTimeoutMs = Math.min(
+    deps.confirmTimeoutMs ?? CONFIRM_TIMEOUT_MS,
+    Math.max(0, timeLeft() - 5000),
+  );
   const confirmIntervalMs = deps.confirmIntervalMs ?? CONFIRM_POLL_MS;
   const paid = await waitForPaid(
     chain,
@@ -750,8 +792,10 @@ export async function handleDemoSettle(
   // handler past the function budget. On a timeout the settle is
   // still confirmed (the obligation reads PAID above): the response
   // reports it with the tx hash and nulls, not an error.
-  const readsTimeoutMs =
-    deps.confirmReadsTimeoutMs ?? CONFIRM_READS_TIMEOUT_MS;
+  const readsTimeoutMs = Math.min(
+    deps.confirmReadsTimeoutMs ?? CONFIRM_READS_TIMEOUT_MS,
+    Math.max(0, timeLeft() - 1000),
+  );
   const reads = await withTimeout(
     (async () => {
       const found = await findReceiptIndex(chain, target.obligation_id);
