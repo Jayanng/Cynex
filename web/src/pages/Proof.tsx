@@ -61,14 +61,14 @@ const CLAIMS: { claim: string; method: string; test: string; evidence: React.Rea
   },
   {
     claim: "The evidence digest matches the named report",
-    method: "settle, evidence checked by the vault hashing the artifact bytes",
+    method: "submit_evidence_preimage, vault hashes the artifact bytes and compares to the committed digest",
     test: "contract/src/lib.rs, submit_evidence_preimage_match_goes_ready",
     evidence:
       "Receipt 24, usecase-report-002. Report demo/near-agent-risk-report-v1.md, 6421 bytes, SHA-256 2a8bddcb3b001fd9051ec68757b8a113fa355cfe619f07882ac622721431ebc9.",
   },
   {
     claim: "The VRF signature is verified on chain and bound to the pending request",
-    method: "settle, VRF signature verified on chain",
+    method: "on_tee_result (private callback), VRF signature verified on chain",
     test: "contract/src/lib.rs, on_tee_result_rejects_bad_signature",
     evidence: "OutLayer request 11912, attestation bundle on this page. The signature is verified on chain.",
   },
