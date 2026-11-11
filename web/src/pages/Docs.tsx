@@ -7,9 +7,10 @@
    content column, so the page cannot scroll sideways. */
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { AGENT, CLI_COMMANDS, MASTER_TIP, CONSOLE_FACTS, CONSOLE_RUN, CP, DOC_COMMITS, MCP_FACTS, MCP_RUN, MCP_TOOLS, RPC_URL, SETTLE_CODES, TEST_COUNTS, TOKEN, VAULT_PROD, VAULT_TEST } from "../lib/data";
+import { AGENT, CLI_COMMANDS, MASTER_TIP, CONSOLE_FACTS, CONSOLE_RUN, CP, DOC_COMMITS, MCP_FACTS, MCP_RUN, MCP_TOOLS, RPC_URL, SETTLE_CODES, TEST_COUNTS, TOKEN, USECASE, VAULT_PROD, VAULT_TEST } from "../lib/data";
+import { useLive } from "../lib/live";
 import { StripSection } from "../components/Strip";
-import { Badge, CmdBlock, CopyButton, HashChip, Icon } from "../components/ui";
+import { Badge, CmdBlock, CopyButton, HashChip, Icon, LoadTxt, Unavail } from "../components/ui";
 import { Footer } from "../components/shared";
 
 /* Extract plain text from a React tree, for the docs search. */
@@ -66,6 +67,43 @@ function P10Step({
   );
 }
 
+/* Live code hash for one vault, read from the chain, never hardcoded.
+   On a failed read the cell shows "Unavailable, retrying". */
+function LiveCodeHash({ which }: { which: "test" | "prod" }) {
+  const { live: L } = useLive();
+  const f = which === "test" ? L.codeTest : L.codeProd;
+  if (f.err) return <Unavail />;
+  if (f.v == null) return <LoadTxt />;
+  return (
+    <span className="mono" style={{ overflowWrap: "anywhere" }} title={f.v}>
+      {f.v}
+    </span>
+  );
+}
+
+/* Live receipt count expectation line for the demo proof section. */
+function LiveReceiptExpectation() {
+  const { live: L } = useLive();
+  const count = L.recTest.v;
+  if (L.recTest.err) return <Unavail />;
+  if (count == null) return <LoadTxt />;
+  return (
+    <span>
+      Live now: every row verified_ok = true, {count} receipts on the test vault, all ok.
+    </span>
+  );
+}
+
+/* The use case run, fed by USECASE data: one report, four refusals,
+   then paid. The display text is the spec wording, the txs are data. */
+const USECASE_RUN: Record<string, string> = {
+  "settle before evidence": "Settle before evidence: refused, invalid state.",
+  "changed recipient": "Changed recipient: refused, ERR_RECIPIENT_SUBSTITUTION.",
+  "changed amount": "Changed amount, 200: refused, ERR_TERMS_MISMATCH.",
+  "correct settle": "Correct settle: PAID, receipt 24, agent 2100 to 2200, policy spent 4700 to 4800.",
+  replay: "Replay: refused, ERR_NONCE_ALREADY_CONSUMED.",
+};
+
 const SIGNALS: [string, string][] = [
   ["account_existence", "does the counterparty account exist on chain, and its current code hash"],
   ["account_age", "a lower bound from snapshots: only as old as the earliest snapshot that shows the account"],
@@ -104,9 +142,13 @@ const DOCS: DocSection[] = [
             <CopyButton text={CP.coldrun} />
           </button>
         </pre>
+        <div className="mt-3">
+          <CmdBlock cmdKey="verify" />
+        </div>
         <p className="dim text-[13px] mt-4">
-          The tsc line exits 2 with 5 known near-api-js type errors, but the emitted dist-test/ is working JavaScript; the errors are
-          expected (README.md:506-509). The verifier is read-only, no keys, no wallet. Current receipt counts are live on the{" "}
+          The console tsc line exits 2 with 5 known near-api-js type errors, but the emitted dist-test/ is working JavaScript; the errors
+          are expected (README.md:506-509). The web typecheck above it is clean. The verifier is read-only, no keys, no wallet. Current
+          receipt counts are live on the{" "}
           <a href="#/proof">Proof page</a>.
         </p>
         <p className="dim text-[13px] mt-3">
@@ -140,6 +182,9 @@ const DOCS: DocSection[] = [
           inflated amount, or a duplicate settle, and the call is perfectly authorized at the key layer. That is why the terms live on-chain,
           fixed at obligation creation. The key does not prevent the owner from authorizing a bad obligation, and a TEE attestation does not
           prove a real-world delivery happened.
+        </p>
+        <p className="dim leading-relaxed mb-4">
+          The three a judge meets most are recipient substitution, terms mismatch, and replay.
         </p>
         <h3 className="text-ink text-[15px] mt-6 mb-3">Settle refusal codes (all eleven)</h3>
         <div className="overflow-x-auto mb-4">
@@ -190,7 +235,9 @@ const DOCS: DocSection[] = [
           Callback failure and reconciliation: a failed transfer is retried up to 3 times, then goes to RECONCILIATION_REQUIRED for a human.
           Funding only by ft_transfer_call. Receipt tampering: genesis prev_hash is 32 zero bytes, and each receipt commits to its
           predecessor. Key theft: a stolen agent key can only call settle, and the vault still enforces the fixed terms. Out of scope:
-          the human authorizing a bad obligation, and the meaning of the delivered bytes.
+          the human authorizing a bad obligation, and the meaning of the delivered bytes. TEE requirements: request_tee_verification
+          is owner only, with a 0.01 NEAR deposit, 100 TGas for the request plus 50 TGas for the callback. The 300 TGas in the demo is the
+          console caller gas, not a contract constant.
         </p>
       </>
     ),
@@ -225,8 +272,8 @@ const DOCS: DocSection[] = [
                       {acct}
                     </a>
                   </td>
-                  <td className="mono" style={{ overflowWrap: "anywhere" }}>
-                    65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6
+                  <td>
+                    <LiveCodeHash which={role === "Production" ? "prod" : "test"} />
                   </td>
                 </tr>
               ))}
@@ -272,7 +319,7 @@ node frontend/dist-test/cli/cynex.js verify-live cynex-vault.cynexmaster.testnet
     id: "p10demo",
     group: "start",
     title: "Demo run",
-    path: "docs/phase10-demo-script.md",
+    path: "",
     commit: DOC_COMMITS.p10demo,
     body: (
       <>
@@ -291,6 +338,23 @@ node frontend/dist-test/cli/cynex.js verify-live cynex-vault.cynexmaster.testnet
           <P10Step t="3a · TEE request" sub="p10-demo-tee-001 · nonce 1003 · OutLayer 11912 · 300 TGas console caller gas" tx="5Xvu78qxd9NfgJzRBeyvdQXnqK8sLfSmzrfVC5dgDK68" verdict="OK" />
           <P10Step t="3b · TEE settle" sub="VRF bound to the pending request" tx="3QV2aCRSiJ8ZYqLECCpK6ZkXpYE4AdxJzmyP3JTaDqWB" verdict="PAID · receipt #13 · agent 900 → 1000" />
         </div>
+        <h3 className="text-ink text-[15px] mt-6 mb-3">Use case run: one report, four refusals, then paid</h3>
+        <div className="space-y-3 mb-5">
+          {USECASE.attacks.map((a) => (
+            <div className="attempt" key={a.label}>
+              <div className="min-w-0">
+                <div className="att-label">{USECASE_RUN[a.label]}</div>
+                <div className="mono text-xs dim2 mt-0.5">usecase-report-002 · nonce 30002</div>
+              </div>
+              {a.code === "PAID" ? <Badge value="PAID" /> : <Badge value="REFUSED" extra={a.code} />}
+              <HashChip hash={a.tx} />
+            </div>
+          ))}
+        </div>
+        <p className="dim text-[13px] mb-5">
+          The correct settle for the attack obligation is receipt 12, transaction Ho97UjQEDDfe7Go66uHrVSJvbF8narZJ2YBH3hWarxi, agent 800 to
+          900.
+        </p>
         <p className="dim text-[13px] mt-5">
           Final state at demo time (2026-11-08): test policy p6-001 spent 3,700, agent balance 1,000. Live state now is on the status strip. Step 4, verification:{" "}
           <span className="mono text-[13px]" style={{ color: "var(--accent-text)" }}>
@@ -305,7 +369,7 @@ node frontend/dist-test/cli/cynex.js verify-live cynex-vault.cynexmaster.testnet
     id: "p10proof",
     group: "start",
     title: "Demo proof",
-    path: "docs/phase10-demo-proof.md",
+    path: "",
     commit: DOC_COMMITS.p10proof,
     body: (
       <>
@@ -346,6 +410,9 @@ index,prev_hash,obligation_id,recipient,amount,token_id,timestamp,tx_ref,verifie
           The proof doc records 14 receipts, indices 0 to 13, at demo time. Counts move as the vaults are used, the current numbers are read
           live on the <a href="#/proof">Proof page</a>.
         </p>
+        <p className="dim text-[13px] mt-3">
+          <LiveReceiptExpectation />
+        </p>
       </>
     ),
   },
@@ -353,7 +420,7 @@ index,prev_hash,obligation_id,recipient,amount,token_id,timestamp,tx_ref,verifie
     id: "reputation",
     group: "reference",
     title: "Reputation signals",
-    path: "README.md:378-394, docs/phase7-lane-b.md, docs/scorecard-code-change-recency.md",
+    path: "README.md:378-394, docs/scorecard-code-change-recency.md",
     commit: DOC_COMMITS.reputation,
     body: (
       <>
@@ -451,7 +518,7 @@ neutral: no contract, or first observation, not a penalty`}
     id: "scorecard",
     group: "reference",
     title: "Scorecard addendum",
-    path: "docs/scorecard-code-change-recency.md and docs/phase10-lane-b.md",
+    path: "docs/scorecard-code-change-recency.md",
     commit: DOC_COMMITS.scorecard,
     body: (
       <>
@@ -464,7 +531,8 @@ neutral: no contract, or first observation, not a penalty`}
               ["Typecheck (web build, tsc -b)", "clean"],
               ["Jest", TEST_COUNTS],
               ["Conformance", "6 / 6"],
-            ].map(([k, v], i, arr) => (
+              ["Contract tests", "142", "contract/src/lib.rs, #[test] count"],
+            ].map(([k, v, src], i, arr) => (
               <div
                 key={k}
                 className={
@@ -475,7 +543,10 @@ neutral: no contract, or first observation, not a penalty`}
                 style={{ borderColor: "var(--line2)" }}
               >
                 <span className="mono text-xs dim">{k}</span>
-                <span className="text-sm font-medium text-ink">{v}</span>
+                <span className="text-sm font-medium text-ink">
+                  {v}
+                  {src ? <span className="mono text-xs dim2 block text-right">source: {src}</span> : null}
+                </span>
               </div>
             ))}
           </div>
@@ -525,6 +596,14 @@ neutral: no contract, or first observation, not a penalty`}
             {MCP_RUN}
           </span>
           . Live proof: test matrix 16 pass, 0 fail, 2 skipped (M10/M11 TEE, by design); production happy path mcp-prod-001 PAID.
+        </p>
+        <h3 className="text-ink text-[15px] mt-6 mb-3">Try it with no funds at stake</h3>
+        <div className="mb-4">
+          <CmdBlock cmdKey="mcpdemo" />
+        </div>
+        <p className="dim text-[13px] leading-relaxed">
+          The local demo starts a sandbox with the real vault and token contracts, seeds five obligations, and serves the same six tools.
+          Nothing is mocked, nothing touches testnet.
         </p>
       </>
     ),
@@ -612,11 +691,10 @@ export function Docs({ active }: { active?: string }) {
           ← Home
         </a>
         <div className="kicker mb-2">Docs</div>
-        <h1 className="text-3xl md:text-4xl mb-2">What is already written</h1>
+        <h1 className="text-3xl md:text-4xl mb-2">Read the record.</h1>
         <p className="dim text-sm max-w-2xl mb-8">
-          A summary of the repo&apos;s own README and docs, with links to the real files. This page is not the docs as-is: each section
-          condenses its source, names its source path and that file&apos;s last-updated commit, and keeps the material caveats in view.
-          Claims link to their proof.
+          A summary of the repo&apos;s own README and docs, with links to the real files. Each section condenses its file; the file itself
+          is the source of truth.
         </p>
         {/* Grid fix: minmax(0,1fr) keeps the 1fr track from expanding to the
             content width, and min-w-0 on the content column lets it shrink.
@@ -676,9 +754,11 @@ export function Docs({ active }: { active?: string }) {
               >
                 <div className="flex flex-wrap items-center gap-3 mb-5">
                   <h2 className="text-xl md:text-2xl">{d.title}</h2>
-                  <span className="hashchip" title={d.path}>
-                    <span>{d.path}</span>
-                  </span>
+                  {d.path ? (
+                    <span className="hashchip" title={d.path}>
+                      <span>{d.path}</span>
+                    </span>
+                  ) : null}
                   <span className="badge b-dim">
                     <span className="bdot"></span>master {MASTER_TIP}
                   </span>

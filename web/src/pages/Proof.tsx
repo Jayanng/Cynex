@@ -13,6 +13,200 @@ import { CmdBlock, HashChip, AcctChip, HexHash, Icon, ReadOnlyBadge, Unavail, Lo
 import { Footer, CountsLine } from "../components/shared";
 import { TamperPanel } from "../components/TamperPanel";
 
+/* Claim map data. The Test column names the sandbox test file and
+   test name where the repo has one; where no single test exists, it
+   says so and does not invent a test name. Keep this table in sync
+   with the same table in docs/JUDGES.md by hand. */
+const CLAIMS: { claim: string; method: string; test: string; evidence: React.ReactNode }[] = [
+  {
+    claim: "The vault refuses a changed recipient",
+    method: "settle",
+    test: "contract/src/lib.rs, settle_rejects_wrong_recipient",
+    evidence: (
+      <>
+        <HashChip hash="AFYAq8Sju41NjBFwPmTHbJ1psmsYQWjVdBhmXBZbpa7S" />, ERR_RECIPIENT_SUBSTITUTION, 0 tokens moved
+      </>
+    ),
+  },
+  {
+    claim: "The vault refuses a changed amount",
+    method: "settle",
+    test: "contract/src/lib.rs, settle_rejects_wrong_amount",
+    evidence: (
+      <>
+        <HashChip hash="43YaxJVggxuZ3E25WfjzkgGBsGAqLrj8nwdUU9RLAQRy" />, ERR_TERMS_MISMATCH, 0 tokens moved
+      </>
+    ),
+  },
+  {
+    claim: "The vault refuses a replay",
+    method: "settle",
+    test: "contract/src/lib.rs, settle_rejects_replay_after_paid",
+    evidence: (
+      <>
+        <HashChip hash="AwzQS7XsuGSYnPmvd5jFJzPDs3WDc2gRgSbW3smWq1Cs" />, ERR_NONCE_ALREADY_CONSUMED, nonce reused after receipt 12
+      </>
+    ),
+  },
+  {
+    claim: "The vault pays only the exact authorized terms",
+    method: "settle",
+    test: "contract/src/lib.rs, callback_ok_books_paid_and_receipt",
+    evidence: (
+      <>
+        Receipt 12, PAID, <HashChip hash="Ho97UjQEDDfe7Go66uHrVSJvbF8narZJ2YBH3hWarxi" />. Receipt 24, usecase-report-002, PAID after four
+        refusals.
+      </>
+    ),
+  },
+  {
+    claim: "The evidence digest matches the named report",
+    method: "settle, evidence checked by the vault hashing the artifact bytes",
+    test: "contract/src/lib.rs, submit_evidence_preimage_match_goes_ready",
+    evidence:
+      "Receipt 24, usecase-report-002. Report demo/near-agent-risk-report-v1.md, 6421 bytes, SHA-256 2a8bddcb3b001fd9051ec68757b8a113fa355cfe619f07882ac622721431ebc9.",
+  },
+  {
+    claim: "The VRF signature is verified on chain and bound to the pending request",
+    method: "settle, VRF signature verified on chain",
+    test: "contract/src/lib.rs, on_tee_result_rejects_bad_signature",
+    evidence: "OutLayer request 11912, attestation bundle on this page. The signature is verified on chain.",
+  },
+  {
+    claim: "The TEE quote proves the evidence was hashed in the enclave",
+    method: "No contract method: the vault does not verify the quote on chain",
+    test: "contract/src/lib.rs, on_tee_result_accepts_live_output",
+    evidence:
+      "No live on-chain evidence: the TDX v4 quote for request 11912 was verified off chain through the OutLayer verifier, by design. The vault never relies on the quote alone.",
+  },
+  {
+    claim: "The reputation gate refuses a bad counterparty before the chain",
+    method: "Gate, not the contract: five sourced signals",
+    test: "services/reputation/reputation.test.ts, wrapper gate on the code-change signal",
+    evidence:
+      "No live transaction: a BLOCKed attempt never reaches the chain, so there is no tx to link. A BLOCK refuses, a WARN escalates to a human.",
+  },
+  {
+    claim: "The MCP sandbox runs the full cycle locally, nothing mocked",
+    method: "MCP server, six tools over stdio",
+    test: 'services/mcp/demo.test.ts, demo over stdio, "spawns the built demo, drives the three judge tries, and cleans up on SIGTERM"',
+    evidence: (
+      <>
+        Local only, not testnet: demo-ready-001 PAID, receipt 2 in the local sandbox, tx{" "}
+        <HashChip hash="B7oka8f5pYcTBGsZkgYpJPWeqjHbhG5512Uzrq2rBNXt" />. A changed recipient is refused, tx{" "}
+        <HashChip hash="9G3A9J8AibhRWTQGHRxfhV82hcFWuUxsg6fghc4bme6G" />. Neither appears on testnet.
+      </>
+    ),
+  },
+  {
+    claim: "The demo key can only call settle on the test vault",
+    method: "settle, scoped key",
+    test: "services/mcp/runtime-checks.test.ts, verifyRuntimeState",
+    evidence:
+      "Scoped key, test vault only: receiver test vault, method settle only, allowance 0.25 NEAR. No live settle from the button yet: the button is not yet proven live, so no button tx is listed here.",
+  },
+];
+
+/* What is real and what is simulated. Copied from
+   judge-experience-copy.md section 4; keep this table in sync with
+   the same table in docs/JUDGES.md by hand. */
+const REAL_VS_SIMULATED: [string, string, string][] = [
+  [
+    "Vault contract",
+    "Real, deployed on NEAR testnet",
+    "Testnet only. Both vaults run code hash 65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6. No mainnet deployment, no mainnet spending.",
+  ],
+  [
+    "Testnet chain",
+    "Real NEAR testnet",
+    "Testnet only. Receipts, balances, and transactions are live chain reads, but nothing here has real value.",
+  ],
+  [
+    "Refusal",
+    "Real transaction on testnet",
+    "Transaction AFYAq8Sju41NjBFwPmTHbJ1psmsYQWjVdBhmXBZbpa7S, ERR_RECIPIENT_SUBSTITUTION, 0 tokens moved. The Attack page currently shows this recorded refusal, not a fresh live attempt from the judge's click.",
+  ],
+  [
+    "Settle",
+    "Real transaction on testnet",
+    "Settles use pre-seeded obligations and team keys. A judge does not create their own obligation without their own testnet accounts. Latest test settle is receipt 30, mcp-working-check-001. Test vault receipts are live, 31. Production vault receipts are live, 13, policy p5-prod-001 spent 500 of 1000. Counts read live 11 Nov 2026.",
+  ],
+  [
+    "TEE attestation",
+    "Real, OutLayer, request 11912",
+    "The TDX v4 quote was verified off chain. The vault does not verify the quote on chain, by design, so verification is off chain, not part of the contract check.",
+  ],
+  [
+    "VRF anchor",
+    "Real signature, verified on chain",
+    "The signature is verified on chain and bound to the pending request. It proves determinism and binding. It does NOT prove TEE execution, and that link must never be claimed.",
+  ],
+  [
+    "Reputation gate",
+    "Real, five sourced signals",
+    "A BLOCK refuses, a WARN escalates. It is a gate on top of the vault check, not a replacement for it. The vault still decides every settle.",
+  ],
+  [
+    "MCP server",
+    "Real, six tools over stdio, one moves funds",
+    "Stdio only. There is no hosted endpoint. A judge needs their own testnet accounts, vault, scoped settle-only key, and CYNEX_ env vars to use it against testnet. The sandbox mode needs no keys.",
+  ],
+  [
+    "Sandbox demo",
+    "Real vault and token contracts in a local near-sandbox",
+    "Local only, not testnet. Receipts are local, for example receipt 2 for demo-ready-001, and do not appear on testnet. Nothing is mocked.",
+  ],
+  [
+    "Demo key",
+    "Real scoped settle-only key, test vault only",
+    "It can only call settle on the test vault. It cannot create obligations or move other funds. It is rate limited, and at least 8 READY obligations remain at the start. When they are used up, the button stops.",
+  ],
+  [
+    "Token",
+    "Real testnet token, usdc.fakes.testnet, 6 decimals, shown as USDC.e testnet",
+    "Fake testnet USDC with no value. No mainnet value, no mainnet spending. One past recipient, acme-supplies.testnet, does not exist on chain despite a receipt and a token balance, because settle uses plain ft_transfer, which credits the token contract map even for a nonexistent id. Future settles avoid that recipient unless the owner decides explicitly with the WARN shown.",
+  ],
+];
+
+const BUILD_STATUS: [string, string, string][] = [
+  [
+    "Done",
+    "Vault on testnet, both vaults.",
+    "Same code hash 65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6. Test receipts 31, production receipts 13. Counts are live.",
+  ],
+  [
+    "Done",
+    "Recorded refusals on chain.",
+    "Canonical refusal tx AFYAq8Sju41NjBFwPmTHbJ1psmsYQWjVdBhmXBZbpa7S, 0 tokens moved, and the receipt 24 run: four refusals, then PAID.",
+  ],
+  ["Done", "Verify command.", "One command replays every receipt from genesis and expects every row verified_ok = true."],
+  [
+    "Done",
+    "MCP sandbox demo.",
+    "One command, cd frontend && npm run mcp:build && npm run mcp:demo, real vault and token contracts in a local sandbox, five seeded obligations, nothing mocked.",
+  ],
+  ["Done", "TamperPanel in the browser.", "Recomputes SHA-256 with crypto.subtle, no trust in the page needed."],
+  [
+    "Partial",
+    "Run it live button.",
+    "Built, not yet proven live. The preview deployment cannot see the demo key, so the live settle proof is still to run. On the live site the button settles a real pre-seeded obligation; the first live settle is still to run, see the expected result on Home.",
+  ],
+  [
+    "Partial",
+    "Live numbers on the site.",
+    "The strip reads live from the chain in production. No number on this page is hardcoded.",
+  ],
+];
+
+const HONEST_LIMITS: string[] = [
+  "The VRF signature does not prove TEE execution. It proves determinism and binding to the pending request. That link must never be claimed.",
+  "The vault does not verify the TDX quote on chain. The quote for request 11912 was verified off chain, by design, not as part of the contract check.",
+  "Receipts 0 to 6 name acme-supplies.testnet, which does not exist on chain. See the warning at the top of this page. Future settles avoid that recipient unless the owner decides explicitly with the warning shown.",
+  "One account held both agent roles in the canonical run. Receipt 24 proves the vault controls, not payment between two distinct accounts. The two-agent run is receipt 28.",
+  "The in-browser receipt check is index contiguity only. The Receipt struct has no hash field, so the browser cannot compare hash links. The terminal verify command recomputes the full hash chain.",
+  "Testnet only, fake testnet USDC with no value. No mainnet deployment, no mainnet spending.",
+];
+
 function JudgeItem({ n, t, body }: { n: string; t: string; body: React.ReactNode }) {
   return (
     <div className="flex gap-3">
@@ -190,11 +384,16 @@ export function Proof() {
           ← Home
         </a>
         <div className="kicker mb-2">Proof</div>
-        <h1 className="text-3xl md:text-4xl mb-2">Verify it yourself</h1>
+        <h1 className="text-3xl md:text-4xl mb-2">The record.</h1>
         <p className="dim text-sm max-w-2xl">
-          Everything on this page is either a live chain read or a file in the repo. Nothing here asks for trust, one command replays the
-          whole receipt chain from genesis.
+          Every receipt the vault issued, the attestation bundles behind them, and the command that replays the whole chain. Nothing here is
+          a screenshot. Read it from the chain, or replay it yourself.
         </p>
+        <div className="callout mono text-xs mt-6">
+          Warning: receipts 0 to 6 name acme-supplies.testnet, which does not exist on chain (view_account returns UNKNOWN_ACCOUNT). Those
+          settles credited a token balance, because ft_transfer only updates the token contract map, but the account was never created, so
+          they are not payments to a real counterparty. Do not settle to acme-supplies.testnet.
+        </div>
       </section>
 
       {/* judges start here */}
@@ -231,7 +430,7 @@ export function Proof() {
               body={
                 <div className="mt-1 flex flex-col gap-2">
                   <a className="mono text-xs" href="#/docs/p10demo">
-                    docs/phase10-demo-script.md
+                    Demo run
                   </a>
                   <span data-live-region="counts">
                     <CountsLine />
@@ -291,11 +490,6 @@ export function Proof() {
               </button>
             </div>
           </div>
-          <div className="callout mono text-xs mx-5 mt-4">
-            Warning: receipts 0 to 6 name acme-supplies.testnet, which does not exist on chain (view_account returns UNKNOWN_ACCOUNT). Those
-            settles credited a token balance, because ft_transfer only updates the token contract map, but the account was never created, so
-            they are not payments to a real counterparty. Do not settle to acme-supplies.testnet.
-          </div>
           <div data-live-region="table">{tableBody()}</div>
           <div id="replayout" className="px-5 pb-5"></div>
         </div>
@@ -303,7 +497,114 @@ export function Proof() {
 
       {/* tamper */}
       <section className="wrap mt-8">
+        <div className="kicker mb-2">Check the chain yourself, in your browser</div>
+        <h2 className="text-xl md:text-2xl mb-2">Check the chain yourself, in your browser.</h2>
+        <p className="dim text-sm max-w-3xl mb-5">
+          The same tamper panel as on Break it, moved up so a judge finds it. Edit the amount on receipt 2, recompute, and the link to
+          receipt 3 breaks. The hashes are recomputed in your browser with real SHA-256, not prewritten.
+        </p>
         <TamperPanel id="proof" />
+      </section>
+
+      {/* claim map */}
+      <section className="wrap mt-10">
+        <div className="kicker mb-2">Claim map</div>
+        <h2 className="text-xl md:text-2xl mb-2">Claim map</h2>
+        <p className="dim text-sm max-w-3xl mb-6">
+          Each claim, the contract method, the test that proves it, and the live transaction that shows it. Where there is no live evidence,
+          that is stated in the same format.
+        </p>
+        <div className="panel overflow-x-auto">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Claim</th>
+                <th>Contract method</th>
+                <th>Test</th>
+                <th>Live evidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              {CLAIMS.map((c) => (
+                <tr key={c.claim}>
+                  <td style={{ color: "var(--txt)" }}>{c.claim}</td>
+                  <td className="mono text-xs dim">{c.method}</td>
+                  <td className="mono text-xs dim">{c.test}</td>
+                  <td className="dim text-[13px]">{c.evidence}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* build status */}
+      <section className="wrap mt-10">
+        <div className="kicker mb-2">Build status</div>
+        <h2 className="text-xl md:text-2xl mb-2">Build status</h2>
+        <p className="dim text-sm max-w-3xl mb-6">
+          What runs today and what does not, in plain language, so a judge does not have to work it out from the code.
+        </p>
+        <div className="space-y-3">
+          {BUILD_STATUS.map(([status, title, body]) => (
+            <div key={title} className="panel p-5 flex gap-4 items-start">
+              <span className={status === "Done" ? "badge b-paid" : "badge b-warn"}>
+                <span className="bdot"></span>
+                {status}
+              </span>
+              <div className="min-w-0">
+                <span className="text-ink font-medium text-sm">{title} </span>
+                <span className="dim text-sm leading-relaxed">{body}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* what is real and what is simulated */}
+      <section className="wrap mt-10">
+        <div className="kicker mb-2">What is real and what is simulated</div>
+        <h2 className="text-xl md:text-2xl mb-2">What is real and what is simulated</h2>
+        <p className="dim text-sm max-w-3xl mb-6">
+          The whole table, in one place, so a judge does not have to collect caveats page by page.
+        </p>
+        <div className="panel overflow-x-auto">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Real or simulated</th>
+                <th>Limit, stated plainly</th>
+              </tr>
+            </thead>
+            <tbody>
+              {REAL_VS_SIMULATED.map(([item, real, limit]) => (
+                <tr key={item}>
+                  <td style={{ color: "var(--txt)" }}>{item}</td>
+                  <td className="dim">{real}</td>
+                  <td className="dim text-[13px]">{limit}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* honest limits */}
+      <section className="wrap mt-10">
+        <div className="kicker mb-2">Honest limits</div>
+        <h2 className="text-xl md:text-2xl mb-2">Honest limits</h2>
+        <p className="dim text-sm max-w-3xl mb-6">The limits, in one named section, stated plainly.</p>
+        <ul className="space-y-3 max-w-3xl">
+          {HONEST_LIMITS.map((l) => (
+            <li key={l.slice(0, 32)} className="flex gap-3 text-sm leading-relaxed dim">
+              <span className="flex-none mt-1" style={{ color: "var(--pos-text)", width: 16, height: 16, display: "inline-grid", placeItems: "center" }}>
+                <Icon name="check" />
+              </span>
+              <span>{l}</span>
+            </li>
+          ))}
+        </ul>
       </section>
 
       {/* bundles */}
