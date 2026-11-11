@@ -181,7 +181,7 @@ export function buildServer(ctx: McpContext): McpServer {
   const limiter = createDefaultRateLimiter();
   const server = new McpServer({
     name: "cynex",
-    version: "0.1.0",
+    version: "0.1.1",
   });
   for (const name of Object.keys(TOOL_SCHEMAS) as (keyof typeof TOOL_SCHEMAS)[]) {
     server.tool(name, TOOL_DESCRIPTIONS[name] as string, TOOL_SCHEMAS[name], async (args: Record<string, unknown>) => {

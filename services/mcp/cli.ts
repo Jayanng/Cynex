@@ -13,6 +13,7 @@
  * server with the same six tools, pointed at a local chain by the
  * demo entry point, not a second server.
  */
+import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { runDemo } from "./demo.js";
 import { runServer } from "./server.js";
@@ -49,6 +50,45 @@ export function parseCliArgs(argv: readonly string[]): CliMode {
   );
 }
 
+/**
+ * Resolve a path to its real location, following symlinks. Returns
+ * the input unchanged when it cannot be resolved, so a missing file
+ * does not throw here; the entry check below then simply does not
+ * match.
+ */
+export function resolveEntryPath(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch {
+    return path;
+  }
+}
+
+/**
+ * True when argv1 names this module as the process entry point.
+ * The argv path is resolved first, because npm installs the bin as
+ * a symlink (node_modules/.bin/cynex-mcp points at
+ * dist/cynex-mcp.mjs), so argv[1] is the symlink path while
+ * import.meta.url is the real file. Comparing the raw argv path
+ * against import.meta.url fails for the symlink and main() never
+ * runs, so the binary exits silently. Resolving first makes the
+ * symlink and the direct path agree. The name check stays, so
+ * importing this file as a library from a process whose argv
+ * happens to name the entry file cannot auto-run main().
+ */
+export function isEntryPoint(argv1: string, importMetaUrl: string): boolean {
+  if (argv1 === "") {
+    return false;
+  }
+  const entry = resolveEntryPath(argv1);
+  return (
+    fileURLToPath(importMetaUrl) === entry &&
+    (entry.endsWith("cli.js") ||
+      entry.endsWith("cynex-mcp.mjs") ||
+      entry.endsWith("cynex-mcp"))
+  );
+}
+
 async function main(): Promise<number> {
   let mode: CliMode;
   try {
@@ -75,15 +115,11 @@ async function main(): Promise<number> {
  * quiet when the bundle runs. The import.meta.url equality is kept
  * alongside the name check, so importing this file as a library
  * from a process whose argv happens to name the entry file cannot
- * auto-run main().
+ * auto-run main(). The argv path is resolved through symlinks
+ * first, because the npm-installed bin is a symlink.
  */
 const entry = process.argv[1] ?? "";
-if (
-  fileURLToPath(import.meta.url) === entry &&
-  (entry.endsWith("cli.js") ||
-    entry.endsWith("cynex-mcp.mjs") ||
-    entry.endsWith("cynex-mcp"))
-) {
+if (isEntryPoint(entry, import.meta.url)) {
   main()
     .then((code) => {
       process.exitCode = code;
