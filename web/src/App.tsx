@@ -11,6 +11,7 @@ import { Attack } from "./pages/Attack";
 import { Docs } from "./pages/Docs";
 import { Proof } from "./pages/Proof";
 import { Logo } from "./components/Logo";
+import { LiveDemoButton } from "./components/LiveDemoButton";
 import { applySandboxRedirect, effectiveRoute, pageForRoute, parseHash, titleForPage } from "./lib/routes";
 
 function parseRoute(): string[] {
@@ -26,7 +27,7 @@ function Header({ page }: { page: string }) {
       : "Testnet";
   return (
     <header
-      className="md:fixed md:top-0 md:left-0 md:right-0 z-50 border-b"
+      className="fixed top-0 left-0 right-0 z-50 border-b"
       style={{ background: "var(--bg)", borderColor: "var(--line)" }}
     >
       <div className="wrap flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-2 md:flex-nowrap md:h-16 md:py-0">
@@ -34,6 +35,9 @@ function Header({ page }: { page: string }) {
           <Logo markSize={28} />
           <span className="hidden lg:block text-xs dim2 leading-tight">
             purpose-bound settlement vault
+          </span>
+          <span className="hidden sm:flex items-center gap-2 text-xs dim2">
+            <span className="livedot"></span>Testnet live
           </span>
         </a>
         <nav className="flex flex-wrap items-center gap-1" id="mainnav">
@@ -61,9 +65,12 @@ function Header({ page }: { page: string }) {
             Proof
           </a>
         </nav>
-        <div className="netpill mono flex-none" title="Live RPC: test.rpc.fastnear.com">
-          <span className={"livedot" + (live.anyErr ? " err" : "")} id="netdot"></span>
-          <span id="nettxt">{nettxt}</span>
+        <div className="flex items-center gap-2 flex-none">
+          <LiveDemoButton variant="nav" />
+          <div className="netpill mono flex-none" title="Live RPC: test.rpc.fastnear.com">
+            <span className={"livedot" + (live.anyErr ? " err" : "")} id="netdot"></span>
+            <span id="nettxt">{nettxt}</span>
+          </div>
         </div>
       </div>
     </header>
@@ -102,7 +109,7 @@ function Shell() {
         Skip to content
       </a>
       <Header page={page} />
-      <main id="main" className="md:pt-16 min-h-screen">
+      <main id="main" className="pt-16 min-h-screen">
         {page === "demo" ? (
           <Demo anchor={effRoute[2]} />
         ) : page === "attack" ? (

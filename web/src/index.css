@@ -73,6 +73,19 @@ h1,h2,h3{font-weight:500;letter-spacing:0}
    (767 or 860) closes the gap. */
 @media(max-width:640px){.wrap{padding:0 24px}.hero-h{font-size:clamp(36px,11vw,44px)}.attempt{max-width:100%}.badge{text-align:left;line-height:1.6}.btn{text-align:left}}
 .strip{display:grid;grid-template-columns:repeat(7,1fr);border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card)}
+/* 5-stat ledger strip: the same live cells on every page, one set of
+   live reads, no drift. Cells reuse .strip-cell, .strip-label and
+   .strip-val. */
+.statgrid{display:grid;grid-template-columns:repeat(5,1fr);border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card)}
+.statbar{display:block;height:8px;border-radius:99px;background:var(--raised);border:1px solid var(--line);overflow:hidden;margin-top:12px}
+.statbar i{display:block;height:100%;background:var(--accent)}
+@media(max-width:1150px){.statgrid{grid-template-columns:repeat(3,1fr)}.statgrid .strip-cell{border-bottom:1px solid var(--line2)}}
+@media(max-width:640px){.statgrid{grid-template-columns:repeat(2,1fr)}}
+/* Conflict line above the hero, and the expected-result box under the
+   Run it live button. */
+.conflict{font-size:20px;font-weight:700;letter-spacing:-.01em;margin:22px 0 0;color:var(--neg-text)}
+.expected{background:var(--accent-soft);border:1px solid #f3cfa5;border-radius:12px;padding:14px 18px;font-size:15px;margin-top:18px}
+.expected span{display:block;font-size:13.5px;color:var(--secondary);margin-top:4px}
 .strip-cell{padding:16px;border-right:1px solid var(--line2);min-width:0}
 .strip-cell:last-child{border-right:0}
 .strip-label{font-size:12px;color:var(--muted);margin-bottom:8px;font-weight:500}

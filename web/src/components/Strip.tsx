@@ -1,15 +1,15 @@
 /* Cynex web, live status strip (on every page).
-   The policy cell is wired to the real view method: get_policy with the
-   demo policy id p6-001 on the test vault. The old page called get_policy
-   with no arguments, which the contract rejects, so the cell showed a
-   permanent "Unavailable, retrying". That is fixed here.
+   Five live stats, all read from the chain at runtime: receipts on both
+   vaults, demo policy spent, agent balance, and the code hash. Nothing
+   here is hardcoded: a failed read shows "Unavailable, retrying", never
+   a stale or cached number.
    Amounts are shown in base units so the numbers match the demo labels
    (100, 2700); the decimal USDC value is in the title attribute. */
 
 import { VAULT_PROD, VAULT_TEST, TOKEN, RPC_URL } from "../lib/data";
 import { useLive, type LiveState } from "../lib/live";
-import { fmtToken, fmtTs, trunc } from "../lib/near";
-import { Icon, CopyButton, Unavail, LoadTxt } from "./ui";
+import { fmtToken, trunc } from "../lib/near";
+import { CopyButton, Unavail, LoadTxt } from "./ui";
 
 /* Spendable headroom is min(limit, funded) minus spent minus reserved:
    the contract checks spent plus reserved plus amount against both limit
@@ -25,12 +25,6 @@ function headroom(p: NonNullable<LiveState["policy"]["v"]>): string | null {
   } catch {
     return null;
   }
-}
-
-function policyText(p: NonNullable<LiveState["policy"]["v"]>): string {
-  const head = headroom(p);
-  if (head != null) return "spent " + p.spent + " · headroom " + head + " units";
-  return "policy " + p.policy_id;
 }
 
 function policyTitle(p: NonNullable<LiveState["policy"]["v"]>): string {
@@ -58,127 +52,106 @@ function policyTitle(p: NonNullable<LiveState["policy"]["v"]>): string {
 
 export function Strip() {
   const { live: L } = useLive();
+  const f = <T,>(st: { err: boolean; v: T | null }, fn: (v: T) => React.ReactNode) =>
+    st.err ? <Unavail /> : st.v == null ? <LoadTxt /> : fn(st.v);
+
+  const policyCell = () => {
+    if (L.policy.err) return <Unavail />;
+    if (L.policy.v == null) return <LoadTxt />;
+    const p = L.policy.v;
+    let pct: number | null = null;
+    try {
+      const spent = Number(BigInt(p.spent));
+      const limit = Number(BigInt(p.limit));
+      pct = limit > 0 ? Math.round((spent / limit) * 100) : null;
+    } catch {
+      pct = null;
+    }
+    return (
+      <span className="block w-full" title={policyTitle(p)}>
+        <span className="mono" style={{ fontSize: 15, fontWeight: 700 }}>
+          {p.spent} <small style={{ fontSize: 13, fontWeight: 500, color: "var(--muted)" }}>of {p.limit}</small>
+        </span>
+        {pct != null ? (
+          <span className="statbar">
+            <i style={{ width: pct + "%" }}></i>
+          </span>
+        ) : null}
+      </span>
+    );
+  };
+
+  const codeCell = () => {
+    if (L.codeProd.err || L.codeTest.err) return <Unavail />;
+    if (L.codeProd.v == null || L.codeTest.v == null) return <LoadTxt />;
+    const prod = L.codeProd.v;
+    const test = L.codeTest.v;
+    if (prod === test) {
+      return (
+        <span className="inline-flex items-center gap-2 min-w-0">
+          <a
+            className="hover:text-ink mono"
+            href={"https://testnet.nearblocks.io/address/" + VAULT_TEST}
+            target="_blank"
+            rel="noopener"
+            title={test + " (same on both vaults)"}
+            style={{ overflowWrap: "anywhere" }}
+          >
+            {trunc(test, 10, 8)}
+          </a>
+          <CopyButton text={test} />
+          <span className="dim2 text-xs">same on both vaults</span>
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex flex-col gap-1 min-w-0">
+        <span className="inline-flex items-center gap-2">
+          <span className="dim2 text-xs">test</span>
+          <a className="hover:text-ink mono" href={"https://testnet.nearblocks.io/address/" + VAULT_TEST} target="_blank" rel="noopener" title={test}>
+            {trunc(test, 10, 8)}
+          </a>
+          <CopyButton text={test} />
+        </span>
+        <span className="inline-flex items-center gap-2">
+          <span className="dim2 text-xs">prod</span>
+          <a className="hover:text-ink mono" href={"https://testnet.nearblocks.io/address/" + VAULT_PROD} target="_blank" rel="noopener" title={prod}>
+            {trunc(prod, 10, 8)}
+          </a>
+          <CopyButton text={prod} />
+        </span>
+      </span>
+    );
+  };
+
   const cell = (label: string, inner: React.ReactNode) => (
     <div className="strip-cell" key={label}>
       <div className="strip-label">{label}</div>
       <div className="strip-val">{inner}</div>
     </div>
   );
-  const f = <T,>(st: { err: boolean; v: T | null }, fn: (v: T) => React.ReactNode) =>
-    st.err ? <Unavail /> : st.v == null ? <LoadTxt /> : fn(st.v);
-
-  const recCell = () => {
-    if (L.recProd.err || L.recTest.err) return <Unavail />;
-    if (L.recProd.v == null || L.recTest.v == null) return <LoadTxt />;
-    const ok = L.recProd.link?.allOk && L.recTest.link?.allOk;
-    const icon = ok ? (
-      <span style={{ color: "var(--pos-text)", width: 16, height: 16, display: "inline-grid", placeItems: "center" }}>
-        <Icon name="check" />
-      </span>
-    ) : (
-      <span style={{ color: "var(--warn-text)", width: 16, height: 16, display: "inline-grid", placeItems: "center" }}>
-        <Icon name="warn" />
-      </span>
-    );
-    return (
-      <>
-        {icon} prod {L.recProd.v} · test {L.recTest.v}{" "}
-        <span className="dim2 text-xs">
-          index contiguity only
-        </span>
-      </>
-    );
-  };
-
-  const checked = L.checkedAt ? L.checkedAt.toLocaleTimeString() : null;
-  const lastSettle = () => {
-    if (L.recTest.err) return <Unavail />;
-    if (!L.recTest.rows || !L.recTest.rows.length) return <LoadTxt />;
-    const r = L.recTest.rows[L.recTest.rows.length - 1];
-    const when = fmtTs(r.timestamp);
-    const ref = r.tx_ref ? (
-      <a href={"https://testnet.nearblocks.io/txns/" + r.tx_ref} target="_blank" rel="noopener" title={r.tx_ref}>
-        {when}
-      </a>
-    ) : (
-      <span title="tx_ref is empty on chain for this receipt">{when}</span>
-    );
-    return (
-      <>
-        {ref} <span className="dim2">· #{r.index}</span>
-      </>
-    );
-  };
 
   return (
-    <div className="strip">
+    <div className="statgrid">
+      {cell("Receipts, test vault", f(L.recTest, (v) => <span style={{ fontSize: 15, fontWeight: 700 }}>{v}</span>))}
+      {cell("Receipts, production vault", f(L.recProd, (v) => <span style={{ fontSize: 15, fontWeight: 700 }}>{v}</span>))}
+      {cell("Demo policy spent", policyCell())}
       {cell(
-        "Last checked",
-        checked == null && !L.anyErr ? (
-          <LoadTxt />
-        ) : L.anyErr && !checked ? (
-          <Unavail />
-        ) : (
-          <>
-            <span className={"livedot" + (L.anyErr ? " err" : "")}></span>
-            {checked || "-"}
-            {L.blockHeight ? <span className="dim2"> · block {String(L.blockHeight)}</span> : null}
-          </>
-        )
-      )}
-      {cell(
-        "Code hash, prod",
-        f(L.codeProd, (v) => (
-          <>
-            <a
-              className="hover:text-ink"
-              href={"https://testnet.nearblocks.io/address/" + VAULT_PROD}
-              target="_blank"
-              rel="noopener"
-              title={v}
-            >
-              {trunc(v, 10, 8)}
-            </a>
-            <CopyButton text={v} />
-          </>
-        ))
-      )}
-      {cell(
-        "Code hash, test",
-        f(L.codeTest, (v) => (
-          <>
-            <a
-              className="hover:text-ink"
-              href={"https://testnet.nearblocks.io/address/" + VAULT_TEST}
-              target="_blank"
-              rel="noopener"
-              title={v}
-            >
-              {trunc(v, 10, 8)}
-            </a>
-            <CopyButton text={v} />
-          </>
-        ))
-      )}
-      {cell("Receipts, link-check", recCell())}
-      {cell(
-        "Agent balance",
+        "Agent balance, test USDC",
         f(L.agent, (v) => (
-          <span title={"raw: " + String(v) + " · " + fmtToken(v) + " USDC · " + TOKEN + ", 6 decimals"}>
-            {String(v)} units
+          <span title={"raw: " + String(v) + " · " + fmtToken(v) + " USDC · " + TOKEN + ", 6 decimals"} style={{ fontSize: 15, fontWeight: 700 }}>
+            {String(v)}
           </span>
         ))
       )}
-      {cell(
-        "Demo policy, spent and headroom",
-        f(L.policy, (v) => <span title={policyTitle(v)}>{policyText(v)}</span>)
-      )}
-      {cell("Last settle", lastSettle())}
+      {cell("Code hash, both vaults", codeCell())}
     </div>
   );
 }
 
 export function StripSection() {
+  const { live: L } = useLive();
+  const checked = L.checkedAt ? L.checkedAt.toLocaleTimeString() : null;
   return (
     <div className="wrap mt-8">
       <div data-live-region="strip">
@@ -187,6 +160,12 @@ export function StripSection() {
       <div className="mono text-xs dim2 mt-2 flex flex-wrap gap-x-5 gap-y-1">
         <span>live RPC reads · {RPC_URL}</span>
         <span>on failure a field shows “Unavailable, retrying”, never a cached value</span>
+        {checked ? (
+          <span>
+            Last read {checked}
+            {L.blockHeight ? " · block " + String(L.blockHeight) : ""}
+          </span>
+        ) : null}
       </div>
     </div>
   );
