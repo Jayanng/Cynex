@@ -168,6 +168,46 @@ describe("demoButtonCanRun", () => {
       }),
     ).toBe(false);
   });
+
+  test("success with no settles left cannot run, and neither can unconfirmed", () => {
+    expect(
+      demoButtonCanRun({
+        status: "success",
+        result: successResult(0),
+        error: null,
+        fallback: null,
+      }),
+    ).toBe(false);
+    expect(
+      demoButtonCanRun({
+        status: "unconfirmed",
+        result: null,
+        error: "The settle could not be confirmed on chain.",
+        fallback: null,
+        txHash: "ABCDEF1234",
+        obligationId: "demo-live-002",
+      }),
+    ).toBe(false);
+  });
+
+  test("success with no settles left ignores start, and unconfirmed does too", () => {
+    const done: DemoButtonState = {
+      status: "success",
+      result: successResult(0),
+      error: null,
+      fallback: null,
+    };
+    expect(demoButtonReducer(done, { type: "start" })).toBe(done);
+    const uncertain: DemoButtonState = {
+      status: "unconfirmed",
+      result: null,
+      error: "The settle could not be confirmed on chain.",
+      fallback: null,
+      txHash: "ABCDEF1234",
+      obligationId: "demo-live-002",
+    };
+    expect(demoButtonReducer(uncertain, { type: "start" })).toBe(uncertain);
+  });
 });
 
 describe("parseDemoSettleResponse", () => {
@@ -211,6 +251,35 @@ describe("parseDemoSettleResponse", () => {
     expect(parsed.outcome).toBe("usedUp");
     if (parsed.outcome === "usedUp") {
       expect(parsed.fallback).toBe(DEMO_SETTLE_FALLBACK);
+    }
+  });
+
+  test("a timeout answer parses as unconfirmed, never as an error to retry", () => {
+    const parsed = parseDemoSettleResponse({
+      success: false,
+      code: "SETTLE_TIMEOUT",
+      error: "Confirmation timed out.",
+      obligationId: "demo-live-002",
+      txHash: null,
+    });
+    expect(parsed.outcome).toBe("unconfirmed");
+    if (parsed.outcome === "unconfirmed") {
+      expect(parsed.obligationId).toBe("demo-live-002");
+    }
+  });
+
+  test("an unconfirmed answer parses as unconfirmed with the tx hash kept", () => {
+    const parsed = parseDemoSettleResponse({
+      success: false,
+      code: "SETTLE_UNCONFIRMED",
+      error: "The settle could not be confirmed on chain.",
+      obligationId: "demo-live-002",
+      txHash: "ABCDEF1234",
+    });
+    expect(parsed.outcome).toBe("unconfirmed");
+    if (parsed.outcome === "unconfirmed") {
+      expect(parsed.txHash).toBe("ABCDEF1234");
+      expect(parsed.obligationId).toBe("demo-live-002");
     }
   });
 

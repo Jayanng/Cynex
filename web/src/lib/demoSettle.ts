@@ -35,13 +35,20 @@ export type DemoButtonStatus =
   | "loading"
   | "success"
   | "error"
-  | "usedUp";
+  | "usedUp"
+  | "unconfirmed";
 
+/* "unconfirmed" means a settle was attempted but payment could not be
+ * confirmed on chain: the tx may still land, so the button never
+ * offers a retry in this state. txHash and obligationId are kept so
+ * the panel can link at the explorer for the user to check. */
 export interface DemoButtonState {
   status: DemoButtonStatus;
   result: DemoSettleResult | null;
   error: string | null;
   fallback: string | null;
+  txHash?: string | null;
+  obligationId?: string | null;
 }
 
 export const initialDemoButtonState: DemoButtonState = {
@@ -49,6 +56,8 @@ export const initialDemoButtonState: DemoButtonState = {
   result: null,
   error: null,
   fallback: null,
+  txHash: null,
+  obligationId: null,
 };
 
 export type DemoButtonAction =
@@ -56,6 +65,12 @@ export type DemoButtonAction =
   | { type: "succeeded"; result: DemoSettleResult }
   | { type: "failed"; error: string; fallback?: string }
   | { type: "usedUp"; error: string; fallback?: string }
+  | {
+      type: "unconfirmed";
+      error: string;
+      txHash?: string | null;
+      obligationId?: string | null;
+    }
   | { type: "reset" };
 
 /* One transition per action. Loading only starts from a state that
@@ -67,16 +82,32 @@ export function demoButtonReducer(
 ): DemoButtonState {
   switch (action.type) {
     case "start":
-      if (state.status === "loading" || state.status === "usedUp") {
+      if (
+        state.status === "loading" ||
+        state.status === "usedUp" ||
+        state.status === "unconfirmed"
+      ) {
         return state;
       }
-      return { status: "loading", result: null, error: null, fallback: null };
+      if (state.status === "success" && state.result?.remaining === 0) {
+        return state;
+      }
+      return {
+        status: "loading",
+        result: null,
+        error: null,
+        fallback: null,
+        txHash: null,
+        obligationId: null,
+      };
     case "succeeded":
       return {
         status: "success",
         result: action.result,
         error: null,
         fallback: null,
+        txHash: null,
+        obligationId: null,
       };
     case "failed":
       return {
@@ -84,6 +115,8 @@ export function demoButtonReducer(
         result: null,
         error: action.error,
         fallback: action.fallback ?? null,
+        txHash: null,
+        obligationId: null,
       };
     case "usedUp":
       return {
@@ -91,26 +124,50 @@ export function demoButtonReducer(
         result: null,
         error: action.error,
         fallback: action.fallback ?? DEMO_SETTLE_FALLBACK,
+        txHash: null,
+        obligationId: null,
+      };
+    case "unconfirmed":
+      return {
+        status: "unconfirmed",
+        result: null,
+        error: action.error,
+        fallback: null,
+        txHash: action.txHash ?? null,
+        obligationId: action.obligationId ?? null,
       };
     case "reset":
       return initialDemoButtonState;
   }
 }
 
-/* The button runs from idle, from a shown receipt (run it again),
- * and from an error (retry). It never runs while a settle is in
- * flight, and never runs once the demo settles are used up. */
+/* The button runs from idle, from a shown receipt (run it again,
+ * unless that receipt was the last settle), and from an error
+ * (retry). It never runs while a settle is in flight, never runs
+ * once the demo settles are used up, and never runs after an
+ * unconfirmed settle: that tx may still land, so a retry would spend
+ * a second obligation. */
 export function demoButtonCanRun(state: DemoButtonState): boolean {
-  return (
-    state.status === "idle" ||
-    state.status === "success" ||
-    state.status === "error"
-  );
+  if (state.status === "idle" || state.status === "error") return true;
+  if (state.status === "success") {
+    return (
+      state.result?.remaining === null ||
+      state.result?.remaining === undefined ||
+      state.result.remaining > 0
+    );
+  }
+  return false;
 }
 
 export type DemoSettleOutcome =
   | { outcome: "success"; result: DemoSettleResult }
   | { outcome: "usedUp"; error: string; fallback: string }
+  | {
+      outcome: "unconfirmed";
+      error: string;
+      txHash: string | null;
+      obligationId: string | null;
+    }
   | { outcome: "error"; error: string; fallback: string | null };
 
 function asString(value: unknown): string | null {
@@ -160,6 +217,14 @@ export function parseDemoSettleResponse(json: unknown): DemoSettleOutcome {
       code: code ?? undefined,
     };
     return { outcome: "success", result };
+  }
+  if (code === "SETTLE_TIMEOUT" || code === "SETTLE_UNCONFIRMED") {
+    return {
+      outcome: "unconfirmed",
+      error,
+      txHash: asString(body.txHash),
+      obligationId: asString(body.obligationId),
+    };
   }
   if (code === "DEMO_USED_UP" || /used up/i.test(error)) {
     return { outcome: "usedUp", error, fallback };

@@ -216,7 +216,13 @@ How it works:
   and settles the first whose state is READY, using the recipient and
   amount from the chain row, never from the client. Each obligation
   settles once: the chain nonce protection is the backstop.
-- Rate limit: 1 settle per minute per IP, max 5 per hour per IP
-  (HTTP 429 with a retry-after). When no demo obligation is READY,
-  the endpoint answers that the demo settles are used up and points
+- Rate limit: 1 settle per minute per IP, max 5 per hour per IP,
+  per warm serverless instance (HTTP 429 with a retry-after). The
+  counter is in memory, so it is approximate: a cold start resets
+  it. The hard bound is the 10 pre-seeded obligations, each settles
+  once, enforced by the vault nonce. The backend confirms the
+  obligation reads PAID on chain before reporting success; if
+  payment cannot be confirmed it answers SETTLE_UNCONFIRMED and the
+  button offers no retry. When no demo obligation is READY, the
+  endpoint answers that the demo settles are used up and points
   at the sandbox demo (`npx cynex-mcp --sandbox`) and this MCP demo.

@@ -87,6 +87,7 @@ interface StubOptions {
   settleTx?: string;
   settleError?: Error | null;
   settleHangs?: boolean;
+  neverPaid?: boolean;
   keyList?: unknown;
   keyListError?: Error | null;
 }
@@ -96,6 +97,7 @@ function stubChain(opts: StubOptions = {}): {
   settleCalls: { id: string; recipient: string; amount: string }[];
 } {
   const ready = new Set(opts.readyIds ?? ["demo-live-002"]);
+  const settled = new Set<string>();
   const settleCalls: { id: string; recipient: string; amount: string }[] = [];
   const chain: DemoChain = {
     viewAccessKeyList: async () => {
@@ -103,6 +105,14 @@ function stubChain(opts: StubOptions = {}): {
       return opts.keyList ?? { keys: [] };
     },
     getObligation: async (id: string): Promise<ObligationRow | null> => {
+      if (settled.has(id)) {
+        return {
+          obligation_id: id,
+          recipient: AGENT2,
+          amount: 100,
+          state: "PAID",
+        };
+      }
       if (ready.has(id)) {
         return {
           obligation_id: id,
@@ -128,6 +138,7 @@ function stubChain(opts: StubOptions = {}): {
       settleCalls.push({ id, recipient, amount });
       if (opts.settleHangs) return new Promise<string>(() => undefined);
       if (opts.settleError) throw opts.settleError;
+      if (!opts.neverPaid) settled.add(id);
       return opts.settleTx ?? "FAKESETTLETXHASH";
     },
   };
@@ -320,6 +331,9 @@ describe("handleDemoSettle", () => {
     expect(sent.status).toBe(503);
     expect((sent.body as { code?: string }).code).toBe("DEMO_NOT_CONFIGURED");
     expect((sent.body as { fallback?: string }).fallback).toContain("sandbox");
+    expect((sent.body as { fallback?: string }).fallback).not.toContain(
+      "used up",
+    );
     expect(settleCalls).toHaveLength(0);
   });
 
@@ -486,6 +500,9 @@ describe("handleDemoSettle", () => {
     expect(body.code).toBe("SETTLE_FAILED");
     expect(body.error).toContain("ERR_TERMS_MISMATCH");
     expect(body.obligationId).toBe("demo-live-002");
+    expect((sent.body as { fallback?: string }).fallback).not.toContain(
+      "used up",
+    );
   });
 
   test("a settle whose confirmation hangs returns the timeout answer and never retries", async () => {
@@ -511,5 +528,56 @@ describe("handleDemoSettle", () => {
     expect(body.code).toBe("SETTLE_TIMEOUT");
     expect(body.obligationId).toBe("demo-live-002");
     expect(body.error).toContain("timed out");
+  });
+
+  test("a settle that resolves without the obligation reaching PAID returns SETTLE_UNCONFIRMED", async () => {
+    const { res, sent } = mockRes();
+    const key = freshKey();
+    const { chain, settleCalls } = stubChain({
+      keyList: keyListFor(key.publicKey),
+      neverPaid: true,
+    });
+    await handleDemoSettle(postReq("203.0.113.19"), res, {
+      env: { CYNEX_DEMO_KEY: key.secret },
+      createChain: () => chain,
+      confirmTimeoutMs: 10,
+      confirmIntervalMs: 5,
+    });
+    expect(settleCalls).toHaveLength(1);
+    const body = sent.body as {
+      success: boolean;
+      code?: string;
+      txHash?: string | null;
+      obligationId: string;
+    };
+    expect(body.success).toBe(false);
+    expect(body.code).toBe("SETTLE_UNCONFIRMED");
+    expect(body.obligationId).toBe("demo-live-002");
+    expect(body.txHash).toBe("FAKESETTLETXHASH");
+  });
+
+  test("a settle with no usable tx hash returns SETTLE_UNCONFIRMED even when the obligation reads PAID", async () => {
+    const { res, sent } = mockRes();
+    const key = freshKey();
+    const { chain, settleCalls } = stubChain({
+      keyList: keyListFor(key.publicKey),
+      settleTx: "unknown",
+    });
+    await handleDemoSettle(postReq("203.0.113.20"), res, {
+      env: { CYNEX_DEMO_KEY: key.secret },
+      createChain: () => chain,
+      confirmTimeoutMs: 10,
+      confirmIntervalMs: 5,
+    });
+    expect(settleCalls).toHaveLength(1);
+    const body = sent.body as {
+      success: boolean;
+      code?: string;
+      txHash?: string | null;
+      obligationId: string;
+    };
+    expect(body.success).toBe(false);
+    expect(body.code).toBe("SETTLE_UNCONFIRMED");
+    expect(body.txHash).toBeNull();
   });
 });

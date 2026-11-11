@@ -13,6 +13,7 @@ import { fmtToken } from "../lib/near";
 import {
   DEMO_EXPLORER_TX,
   DEMO_SETTLE_ENDPOINT,
+  DEMO_SETTLE_FALLBACK,
   demoButtonCanRun,
   demoButtonReducer,
   initialDemoButtonState,
@@ -46,6 +47,13 @@ export function LiveDemoButton() {
           error: parsed.error,
           fallback: parsed.fallback,
         });
+      } else if (parsed.outcome === "unconfirmed") {
+        dispatch({
+          type: "unconfirmed",
+          error: parsed.error,
+          txHash: parsed.txHash,
+          obligationId: parsed.obligationId,
+        });
       } else {
         dispatch({
           type: "failed",
@@ -56,7 +64,7 @@ export function LiveDemoButton() {
     } catch {
       dispatch({
         type: "failed",
-        error: "The request did not reach the demo endpoint. Check the connection and try again.",
+        error: "The request did not return an answer. The settle may still have gone through, check the receipt list on the test vault before running again.",
       });
     }
   };
@@ -102,7 +110,9 @@ export function LiveDemoButton() {
                 ? "Run it again"
                 : state.status === "error"
                   ? "Try again"
-                  : "Run it live"}
+                  : state.status === "unconfirmed"
+                    ? "Settle unconfirmed"
+                    : "Run it live"}
           </button>
           <span className="mono text-xs dim2">
             {remaining !== null && state.status === "success"
@@ -146,6 +156,9 @@ export function LiveDemoButton() {
                 "No tx hash was returned: check the receipt list on the test vault."
               )}
             </div>
+            {remaining === 0 ? (
+              <p className="dim text-sm leading-relaxed">{DEMO_SETTLE_FALLBACK}</p>
+            ) : null}
           </div>
         ) : null}
 
@@ -155,6 +168,30 @@ export function LiveDemoButton() {
             {state.fallback ? (
               <p className="dim text-sm leading-relaxed">{state.fallback}</p>
             ) : null}
+          </div>
+        ) : null}
+
+        {state.status === "unconfirmed" && state.error ? (
+          <div className="mt-5 space-y-2">
+            <p className="text-sm text-ink">{state.error}</p>
+            {state.txHash ? (
+              <div className="pt-1">
+                <HashChip hash={state.txHash} />
+              </div>
+            ) : null}
+            <div className="text-xs dim2 mono">
+              {state.txHash ? (
+                <a href={DEMO_EXPLORER_TX(state.txHash)} target="_blank" rel="noopener">
+                  Open the settle transaction in the explorer
+                </a>
+              ) : (
+                "No tx hash was returned: check the receipt list on the test vault."
+              )}
+            </div>
+            <p className="dim text-sm leading-relaxed">
+              Do not run it again until the explorer shows the outcome for{" "}
+              {state.obligationId ?? "the obligation"}.
+            </p>
           </div>
         ) : null}
 

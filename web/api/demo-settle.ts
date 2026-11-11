@@ -20,15 +20,30 @@
  *
  * Rate limit: 1 settle per minute per IP, max 5 per hour per IP, in a
  * simple in-memory map keyed by the client IP (x-forwarded-for, first
- * entry). Vercel reuses warm instances so this holds approximately;
- * the chain nonce protection is the hard backstop, each obligation
- * settles once. A limited call gets HTTP 429 with retry-after seconds.
+ * entry) on one warm serverless instance. Vercel reuses warm instances
+ * so this holds approximately, per instance, and a cold start resets
+ * the counter; it is an abuse control, not a safety control. The hard
+ * backstop is the chain: 10 pre-seeded obligations, each settles once
+ * by nonce, and the key only allows settle on the test vault. A
+ * limited call gets HTTP 429 with retry-after seconds. Vercel
+ * overwrites x-forwarded-for with the client public IP and does not
+ * forward external values, so a client cannot spoof the bucket by
+ * sending its own header (Vercel request-headers docs).
  *
  * Timeout: a settle takes a few seconds and the function allows 30
- * seconds (exported config below). If the settle was submitted but
- * confirmation timed out, the response says so with the obligation id
- * and points at the explorer. It never retries: a retry would waste a
- * second obligation, and the nonce protects the first one.
+ * seconds (exported config below). The settle call races a 20 second
+ * soft timeout and the confirmation poll that follows gets at most
+ * 5 seconds, so the whole call stays inside the 30 second budget.
+ * A returned transaction outcome proves the vault accepted the settle
+ * call, not that the tokens moved: the NEP-141 transfer and its
+ * callback run asynchronously, and a failed transfer rolls the
+ * obligation back to READY. So after the settle resolves, the
+ * handler polls get_obligation until the obligation reads PAID, then
+ * reads the receipt and the policy spent. Only then does it answer
+ * success. If payment cannot be confirmed in the window, it answers
+ * SETTLE_UNCONFIRMED with the obligation id and the tx hash, and
+ * never retries: a retry would waste a second obligation, and the
+ * nonce protects the first one.
  */
 
 import { Account, JsonRpcProvider, KeyPair, KeyPairSigner } from "near-api-js";
@@ -42,7 +57,10 @@ const DEMO_AGENT = "cynex-agent.cynexmaster.testnet";
 const DEMO_POLICY_ID = "p6-001";
 const DEMO_EVIDENCE_REF = "live-demo-button";
 const SETTLE_GAS = 100000000000000n;
-const SETTLE_SOFT_TIMEOUT_MS = 25000;
+const SETTLE_SOFT_TIMEOUT_MS = 20000;
+const CONFIRM_TIMEOUT_MS = 5000;
+const CONFIRM_POLL_MS = 1000;
+const RECEIPT_SCAN_BACK = 10;
 
 const DEMO_OBLIGATION_IDS = [
   "demo-live-001",
@@ -60,12 +78,19 @@ const DEMO_OBLIGATION_IDS = [
 export const DEMO_USED_UP_FALLBACK =
   "The 10 demo settles are used up. Run the same flow locally with the sandbox demo (npx cynex-mcp --sandbox) or the MCP demo, both documented in services/mcp/README.md.";
 
+// Fallback for failures that do NOT mean the settles are used up
+// (missing key, failed settle). It must not claim exhaustion.
+export const DEMO_NEUTRAL_FALLBACK =
+  "You can run the same flow locally with the sandbox demo (npx cynex-mcp --sandbox) or the MCP demo, both documented in services/mcp/README.md.";
+
 /* ---------- response shape ---------- */
 
 export interface DemoSettleResponse {
   success: boolean;
   obligationId: string | null;
   receiptIndex: number | null;
+  // Present on SETTLE_UNCONFIRMED so the user can check the explorer;
+  // null when no usable hash came back from the settle call.
   txHash: string | null;
   recipient: string | null;
   amount: string | null;
@@ -264,6 +289,9 @@ export function checkRateLimit(
   return { allowed: true, retryAfterSeconds: 0 };
 }
 
+// Vercel overwrites x-forwarded-for with the client public IP and
+// does not forward external values, so the first entry is the
+// platform-set client IP, not a client-supplied one.
 export function getClientIp(req: {
   headers: Record<string, string | string[] | undefined>;
   socket?: { remoteAddress?: string };
@@ -415,9 +443,73 @@ export interface DemoHandlerDeps {
   createChain: (secretKey: string) => DemoChain;
   rateLimitStore?: RateLimitStore;
   settleTimeoutMs?: number;
+  confirmTimeoutMs?: number;
+  confirmIntervalMs?: number;
 }
 
 const sharedRateLimitStore = createRateLimitStore();
+
+/* Scan the ten demo obligations in order and return the READY rows,
+ * with their terms read from the chain. Used before the settle and
+ * again after confirmation, so the remaining count is fresh. */
+async function findReady(chain: DemoChain): Promise<ObligationRow[]> {
+  const ready: ObligationRow[] = [];
+  for (const id of DEMO_OBLIGATION_IDS) {
+    const row = await chain.getObligation(id);
+    if (row !== null && row.state === "READY") ready.push(row);
+  }
+  return ready;
+}
+
+/* Poll get_obligation until the row reads PAID or the window ends.
+ * A settled call resolving does not prove the tokens moved: the
+ * NEP-141 transfer and its callback run after the vault accepts the
+ * call, and a failed transfer rolls the obligation back to READY.
+ * Only PAID on chain counts as paid. A read error counts as not yet
+ * paid, never as paid. */
+async function waitForPaid(
+  chain: DemoChain,
+  obligationId: string,
+  timeoutMs: number,
+  intervalMs: number,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const row = await chain.getObligation(obligationId).catch(() => null);
+    if (row !== null && row.state === "PAID") return true;
+    if (Date.now() >= deadline) return false;
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+}
+
+/* Find the receipt for one obligation among the newest receipts.
+ * The latest receipt is not necessarily this settle: another settle
+ * could have landed between reads. Scan back a few entries and match
+ * on obligation_id. */
+async function findReceiptIndex(
+  chain: DemoChain,
+  obligationId: string,
+): Promise<number | null> {
+  const count = await chain.getReceiptCount();
+  const start = Math.max(0, count - RECEIPT_SCAN_BACK);
+  for (let i = count - 1; i >= start; i--) {
+    const receipt = await chain.getReceipt(i).catch(() => null);
+    if (receipt !== null && receipt.obligation_id === obligationId) return i;
+  }
+  return null;
+}
+
+/* A failed settle reports a fixed message plus the contract error
+ * code when the failure carries one (ERR_TERMS_MISMATCH and the like).
+ * Raw SDK or RPC error text is never passed through: it is unbounded
+ * and the backend promises the key never appears in an error, so only
+ * a known code is echoed. */
+function settleFailureMessage(err: unknown): string {
+  const message = err instanceof Error ? err.message : "unknown error";
+  const code = /ERR_[A-Z_]+/.exec(message)?.[0];
+  if (code !== undefined) return "The settle failed: " + code + ".";
+  return "The settle failed. Check the obligation on the test vault before running again.";
+}
 
 export async function handleDemoSettle(
   req: DemoRequest,
@@ -436,6 +528,24 @@ export async function handleDemoSettle(
     return;
   }
 
+  // The key check comes first: a deployment without the key can never
+  // settle, so throttling its 503 answers would only hide the real
+  // problem for a minute. The rate limit still runs before any chain
+  // read or settle, so a caller cannot hammer the RPC through us.
+  const secretKey = deps.env.CYNEX_DEMO_KEY;
+  if (secretKey === undefined || secretKey.trim() === "") {
+    res
+      .status(503)
+      .json(
+        fail(
+          "DEMO_NOT_CONFIGURED",
+          "The live demo is not configured yet: the demo key is missing on the server.",
+          { fallback: DEMO_NEUTRAL_FALLBACK },
+        ),
+      );
+    return;
+  }
+
   const ip = getClientIp(req);
   const limit = checkRateLimit(store, ip, Date.now());
   if (!limit.allowed) {
@@ -448,20 +558,6 @@ export async function handleDemoSettle(
           " seconds.",
       ),
     );
-    return;
-  }
-
-  const secretKey = deps.env.CYNEX_DEMO_KEY;
-  if (secretKey === undefined || secretKey.trim() === "") {
-    res
-      .status(503)
-      .json(
-        fail(
-          "DEMO_NOT_CONFIGURED",
-          "The live demo is not configured yet: the demo key is missing on the server.",
-          { fallback: DEMO_USED_UP_FALLBACK },
-        ),
-      );
     return;
   }
 
@@ -504,12 +600,9 @@ export async function handleDemoSettle(
     return;
   }
 
-  let ready: ObligationRow[] = [];
+  let ready: ObligationRow[];
   try {
-    for (const id of DEMO_OBLIGATION_IDS) {
-      const row = await chain.getObligation(id);
-      if (row !== null && row.state === "READY") ready.push(row);
-    }
+    ready = await findReady(chain);
   } catch {
     res
       .status(502)
@@ -550,13 +643,15 @@ export async function handleDemoSettle(
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown error";
     if (/timed out/i.test(message)) {
-      // The settle may still land on chain: the nonce protects the
-      // obligation, so there is no retry here, only a pointer at the
-      // explorer. The obligation id is the lookup key.
+      // The timer races the whole settle call, including signing and
+      // submission, so a timeout proves neither submission nor
+      // failure. The settle may still land on chain: the nonce
+      // protects the obligation, so there is no retry here, only a
+      // pointer at the explorer. The obligation id is the lookup key.
       res.status(200).json(
         fail(
           "SETTLE_TIMEOUT",
-          "The settle was submitted but confirmation timed out. Do not click again: the obligation can only settle once, check the explorer for " +
+          "Confirmation timed out, and it could not be established whether the settle was submitted. Do not click again: the obligation can only settle once, check the explorer for " +
             target.obligation_id +
             " and the receipt list on the test vault.",
           { obligationId: target.obligation_id },
@@ -565,9 +660,9 @@ export async function handleDemoSettle(
       return;
     }
     res.status(200).json(
-      fail("SETTLE_FAILED", "The settle failed: " + message.slice(0, 500), {
+      fail("SETTLE_FAILED", settleFailureMessage(err), {
         obligationId: target.obligation_id,
-        fallback: DEMO_USED_UP_FALLBACK,
+        fallback: DEMO_NEUTRAL_FALLBACK,
       }),
     );
     return;
@@ -577,25 +672,52 @@ export async function handleDemoSettle(
     if (timer !== undefined) clearTimeout(timer);
   }
 
-  // The settle landed. Read the new receipt index and the updated
-  // policy spent from the chain. If those reads fail, the settle
-  // still happened: report it with the tx hash and nulls, not an
-  // error.
+  // The settle call resolved, which only proves the vault accepted
+  // the call. Confirm the obligation reads PAID on chain before
+  // reporting success: a failed transfer rolls it back to READY.
+  // A missing tx hash cannot be linked to the explorer, so it counts
+  // as unconfirmed even when the obligation reads PAID.
+  const confirmTimeoutMs = deps.confirmTimeoutMs ?? CONFIRM_TIMEOUT_MS;
+  const confirmIntervalMs = deps.confirmIntervalMs ?? CONFIRM_POLL_MS;
+  const paid = await waitForPaid(
+    chain,
+    target.obligation_id,
+    confirmTimeoutMs,
+    confirmIntervalMs,
+  );
+  if (!paid || txHash === "unknown") {
+    res.status(200).json({
+      ...fail(
+        "SETTLE_UNCONFIRMED",
+        "The settle could not be confirmed on chain. Do not run it again: check the explorer for " +
+          target.obligation_id +
+          " and the receipt list on the test vault.",
+        { obligationId: target.obligation_id },
+      ),
+      txHash: txHash === "unknown" ? null : txHash,
+    });
+    return;
+  }
+
+  // Payment is confirmed. Read the receipt for this obligation, the
+  // updated policy spent, and a fresh READY count for the remaining
+  // settles. If those reads fail, the settle still happened: report
+  // it with the tx hash and nulls, not an error.
   let receiptIndex: number | null = null;
   let policySpent: string | null = null;
+  let remaining: number | null = null;
   try {
-    const count = await chain.getReceiptCount();
-    const candidate = count - 1;
-    const receipt = await chain.getReceipt(candidate);
-    if (receipt !== null && receipt.obligation_id === target.obligation_id) {
-      receiptIndex = candidate;
-    }
+    receiptIndex = await findReceiptIndex(chain, target.obligation_id);
     const policy = await chain.getPolicy(DEMO_POLICY_ID);
     policySpent = String(policy.spent);
+    const stillReady = await findReady(chain);
+    remaining = stillReady.length;
   } catch {
     receiptIndex = null;
     policySpent = null;
+    remaining = null;
   }
+  if (remaining === null) remaining = ready.length - 1;
 
   console.log(
     "demo-settle " +
@@ -613,7 +735,7 @@ export async function handleDemoSettle(
     recipient,
     amount,
     policySpent,
-    remaining: ready.length - 1,
+    remaining,
   });
 }
 
