@@ -20,7 +20,7 @@ import {
   DEMO_BUTTON_UNPROVEN_LINE,
   showUnprovenLine,
 } from "../../web/src/lib/demoSettle.js";
-import { receiptHash } from "../../web/src/lib/near.js";
+import { bytesToHex, receiptHash } from "../../web/src/lib/near.js";
 import { policySpentPct } from "../../web/src/lib/policyPct.js";
 import { normalizeTamperAmount } from "../../web/src/lib/tamperAmount.js";
 
@@ -141,11 +141,28 @@ describe("normalizeTamperAmount", () => {
 });
 
 /* Tamper recompute: the fixture is the real receipt 24, usecase-report-002,
- * with every field read live from the test vault on 11 Nov 2026. The
+ * with every field read live from the test vault
+ * cynex-testvault.cynexmaster.testnet on 11 Nov 2026, receipts view, in
+ * two separate RPC calls to https://rpc.testnet.fastnear.com with finality
+ * final, one with start 24 limit 1 and one with start 25 limit 1, both at
+ * block height 277234489, cross checked with start 24 limit 2. The
  * timestamp is a string so the u64 nanosecond value stays exact: JSON
  * numbers would round it. The recomputed hash equals receipt 25 prev_hash
- * on chain, so this test checks the frozen formula against the live record,
- * not just against itself. */
+ * as read independently from the chain in the second call, not computed
+ * from this fixture: the expected hex below is the hex encoding of the
+ * receipt 25 prev_hash byte array read in that call, and the test below
+ * asserts that encoding directly. So this test checks the frozen formula
+ * against the live record, not just against itself.
+ * tx_ref is empty on chain, and that is the live value, not a gap.
+ * Callback booked receipts store an empty tx_ref because a NEP-141
+ * callback carries no transaction hash (contract/src/lib.rs,
+ * append_receipt). The settle transaction hash
+ * 2VLL134m83x5fWZLr2qBbPkjJ7gL9YR7V7U9eur7qoVC is the NEAR transaction
+ * hash of the settle call, recorded in the project live proof record,
+ * not the stored tx_ref field. Putting that hash into tx_ref would
+ * recompute to 8ea5de556152c1d3d832e69ec8ae2f2cb4d38faf128bf6cbdb87ec83af40f15f,
+ * which does not match receipt 25 prev_hash, so the test below locks
+ * that in as a regression guard. */
 describe("tamper recompute", () => {
   const receipt = {
     index: 24,
@@ -158,14 +175,30 @@ describe("tamper recompute", () => {
     tx_ref: "",
   };
 
+  /* Receipt 25 prev_hash, read independently from the chain on 11 Nov 2026
+   * (receipts view, start 25, limit 1, block 277234489), as raw bytes. */
+  const RECEIPT_25_PREV_HASH_BYTES = [43, 98, 221, 20, 193, 97, 112, 40, 17, 149, 96, 180, 205, 9, 152, 75, 98, 162, 129, 169, 10, 212, 225, 76, 221, 242, 99, 8, 149, 22, 59, 23];
+  const RECEIPT_25_PREV_HASH_HEX =
+    "2b62dd14c1617028119560b4cd09984b62a281a90ad4e14cddf2630895163b17";
+  const SETTLE_TX_HASH = "2VLL134m83x5fWZLr2qBbPkjJ7gL9YR7V7U9eur7qoVC";
+
   test("the frozen formula is deterministic", async () => {
     await expect(receiptHash(receipt)).resolves.toBe(await receiptHash(receipt));
   });
 
+  test("receipt 25 prev_hash bytes read live encode to the expected hex", () => {
+    expect(bytesToHex(RECEIPT_25_PREV_HASH_BYTES)).toBe(RECEIPT_25_PREV_HASH_HEX);
+  });
+
   test("recomputing receipt 24 matches receipt 25 prev_hash on chain", async () => {
-    await expect(receiptHash(receipt)).resolves.toBe(
-      "2b62dd14c1617028119560b4cd09984b62a281a90ad4e14cddf2630895163b17",
-    );
+    await expect(receiptHash(receipt)).resolves.toBe(RECEIPT_25_PREV_HASH_HEX);
+  });
+
+  test("receipt 24 tx_ref is empty on chain by design, and the settle tx hash is not the stored tx_ref", async () => {
+    expect(receipt.tx_ref).toBe("");
+    await expect(
+      receiptHash({ ...receipt, tx_ref: SETTLE_TX_HASH }),
+    ).resolves.not.toBe(RECEIPT_25_PREV_HASH_HEX);
   });
 
   test("changing the amount changes the recomputed hash", async () => {
