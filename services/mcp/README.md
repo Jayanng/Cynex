@@ -187,3 +187,36 @@ contract code. The suite asserts that hash.
 - `SECURITY.md`: the tool security contract, the layering decision, the threat model, and the adversarial matrix.
 - `acceptance-matrix.md`: the production acceptance matrix, with the layer and expected outcome per row.
 - `tools.test.ts`, `config.test.ts`, `runtime-checks.test.ts`, `server.test.ts`, `test-client.test.ts`: Jest unit tests, mocked chain reads where the test is about the server own logic, not the chain.
+
+## Live demo button (hosted site)
+
+The hosted site has a "Run it live" button on the Home page, under the
+live refusal panel. One click settles the next pre-seeded READY demo
+obligation on the test vault, with the exact terms read from the chain,
+and shows the new receipt index, the settle transaction hash, the
+recipient, the amount, the updated policy spent, and how many demo
+settles remain. No wallet, no login, no install. Testnet only, fake
+USDC, no real value.
+
+How it works:
+
+- The button is a thin client: it POSTs to `/api/demo-settle` with no
+  body and no parameters, and holds no key. All signing happens in the
+  serverless backend in `web/api/demo-settle.ts`.
+- The backend holds only one key, a fresh scoped settle-only key for
+  the test vault, stored only as the `CYNEX_DEMO_KEY` Vercel env var.
+  It is never committed, never logged, and never returned. The key is
+  revocable by deleting it from the agent account or the env var.
+- On every invocation the backend re-verifies the key scope on chain,
+  with the same rule as the MCP startup check: function-call key,
+  receiver exactly the test vault, methods exactly `["settle"]`,
+  finite positive allowance. A scope failure refuses and settles
+  nothing.
+- The backend scans `demo-live-001` through `demo-live-010` in order
+  and settles the first whose state is READY, using the recipient and
+  amount from the chain row, never from the client. Each obligation
+  settles once: the chain nonce protection is the backstop.
+- Rate limit: 1 settle per minute per IP, max 5 per hour per IP
+  (HTTP 429 with a retry-after). When no demo obligation is READY,
+  the endpoint answers that the demo settles are used up and points
+  at the sandbox demo (`npx cynex-mcp --sandbox`) and this MCP demo.

@@ -11,6 +11,7 @@ import { fmtToken, trunc } from "../lib/near";
 import { useChainRead } from "../lib/useChainRead";
 import { Badge, ChainReadOut, HashChip, AcctChip, Icon, LoadTxt, Unavail } from "../components/ui";
 import { StripSection } from "../components/Strip";
+import { LiveDemoButton } from "../components/LiveDemoButton";
 import { RefusalPanel, TrustRow, VerifyHome, Footer } from "../components/shared";
 
 function LatestSettle() {
@@ -340,6 +341,8 @@ export function Home() {
       </section>
 
       <RefusalPanel />
+
+      <LiveDemoButton />
 
 
       <StripSection />
