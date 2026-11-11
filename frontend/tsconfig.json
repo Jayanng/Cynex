@@ -19,6 +19,7 @@
   "exclude": [
     "src/route-smoke.test.ts",
     "src/demoSettle.test.ts",
-    "src/demoSettleApi.test.ts"
+    "src/demoSettleApi.test.ts",
+    "src/v2Fixes.test.ts"
   ]
 }
