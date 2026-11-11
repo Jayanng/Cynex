@@ -63,6 +63,12 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install dependencies
         run: npm ci
+      - name: Install MCP dependencies
+        run: npm ci
+        working-directory: services/mcp
+      - name: Build MCP binary
+        run: npm run build
+        working-directory: services/mcp
       - name: Typecheck
         run: npm run typecheck
       - name: Tests

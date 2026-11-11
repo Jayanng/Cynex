@@ -13,8 +13,9 @@
  *
  * The spawn test runs the built binary through a symlink, the way
  * npm installs it, and asserts --help prints usage and --bogus
- * exits 1 with the unknown-arguments error. It builds dist first
- * when it is missing.
+ * exits 1 with the unknown-arguments error. It rebuilds dist first
+ * on every run, so a stale binary from an earlier build cannot make
+ * the test pass or fail for the wrong code.
  */
 import { spawnSync } from "node:child_process";
 import {
@@ -123,11 +124,18 @@ describe("built binary through a symlink", () => {
   const distBin = join(__dirname, "dist", "cynex-mcp.mjs");
 
   beforeAll(() => {
+    const result = spawnSync("npm", ["run", "build"], {
+      cwd: __dirname,
+      encoding: "utf-8",
+    });
+    if (result.status !== 0) {
+      throw new Error(
+        "dist/cynex-mcp.mjs build failed, cannot test the symlink entry: " +
+          (result.stderr || result.stdout || "unknown error")
+      );
+    }
     if (!existsSync(distBin)) {
-      spawnSync("npm", ["run", "build"], {
-        cwd: __dirname,
-        stdio: "ignore",
-      });
+      throw new Error("dist/cynex-mcp.mjs was not built, cannot test the symlink entry");
     }
   });
 
