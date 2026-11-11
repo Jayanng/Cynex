@@ -79,7 +79,7 @@ npm install
 npm run mcp:build
 ```
 
-`npm run mcp:build` compiles `services/mcp/server.ts` and `services/mcp/test-client.ts` (plus everything they import) with the frontend `tsc`, following the same custom `tsc` line pattern the console uses in the README "Reproduce it" section, because the frontend `tsconfig.json` includes only `src` and `scripts`. The output is `dist-test/services/mcp/server.js` and `dist-test/services/mcp/test-client.js`. Like the console line, `tsc` may report known `near-api-js` type errors and exit non-zero while still emitting working JavaScript; the emitted `dist-test/` is what matters.
+`npm run mcp:build` compiles the MCP entry points (`services/mcp/server.ts`, `test-client.ts`, `demo.ts`, `cli.ts`, plus everything they import, and the standalone sandbox runner) with the frontend `tsc` using `frontend/tsconfig.mcp.json`. It is also the typecheck for the MCP files: the main `npm run typecheck` covers only `frontend/src` and `frontend/scripts`, so it never sees them. The config exists for two reasons: the frontend `tsconfig.json` includes only `src` and `scripts`, and the MCP files live outside `frontend/`, so their bare imports (`near-api-js`, `@modelcontextprotocol/sdk`, `zod`) do not resolve from `frontend/node_modules` by file location. The config maps those imports there with `paths`. The build exits 0. The output is `dist-test/services/mcp/server.js`, `test-client.js`, `demo.js`, and `cli.js`.
 
 Run the server as a plain node command over stdio:
 
@@ -177,12 +177,107 @@ The vault wasm the suite deploys hashes to
 deployed testnet vaults, so the sandbox run exercises byte-identical
 contract code. The suite asserts that hash.
 
+## Local sandbox demo mode
+
+The fastest way to try the server: a local sandbox demo that needs
+no testnet account, no key, and no funds. It starts a real
+near-sandbox chain on the local machine, deploys the real vault wasm
+and the real test token, funds a policy, seeds five obligations, and
+serves the real MCP server over stdio against that chain.
+
+From `frontend/`:
+
+```sh
+npm run mcp:build && npm run mcp:demo
+```
+
+Or, once the package is published:
+
+```sh
+npx cynex-mcp --sandbox
+```
+
+The first run downloads the near-sandbox 2.13.4 binary once to
+`~/.near`, so it needs network that once; later runs reuse it.
+
+What it provisions and seeds, all on policy `sandbox-policy-001`
+(limit 10000, funded 10000), each amount 100 with PREIMAGE evidence
+for the bytes `cynex-sandbox-report-v1`:
+
+| Obligation | Recipient | State at startup | For |
+| --- | --- | --- | --- |
+| `demo-bootstrap-001` | `recipient.test.near` | PAID (receipt 0) | Prior receipt so the gate can ALLOW the recipient |
+| `demo-bootstrap-002` | `recipient2.test.near` | PAID (receipt 1) | Prior receipt so the gate can ALLOW the recipient |
+| `demo-ready-001` | `recipient.test.near` | READY | Settle it through MCP |
+| `demo-ready-002` | `recipient2.test.near` | READY | Attempt it with a changed recipient |
+| `demo-created-001` | `recipient.test.near` | CREATED | Attempt it and see the not-READY refusal |
+
+The two bootstrap obligations are settled directly with the agent
+key during provisioning, bypassing MCP and the reputation gate, so
+both recipients hold a prior receipt. Without them the gate
+correctly WARNs on a fresh account and no MCP settle could ever
+succeed. The demo prints a ready summary to stderr with the vault,
+the RPC URL, the policy, the five obligations, and the Claude Code
+config snippet to paste into your MCP settings:
+
+```json
+{
+  "mcpServers": {
+    "cynex": {
+      "command": "node",
+      "args": ["<path to>/frontend/dist-test/services/mcp/demo.js"],
+      "env": {}
+    }
+  }
+}
+```
+
+What the judge can try, through any MCP client:
+
+1. Settle `demo-ready-001` with `cynex_request_settlement` (recipient `recipient.test.near`, amount `100`): PAID, receipt 2, balance delta exactly 100.
+2. Settle `demo-ready-002` with a changed recipient (`recipient.test.near` instead of `recipient2.test.near`): the vault refuses with `ERR_RECIPIENT_SUBSTITUTION`, no funds move, the obligation stays READY.
+3. Settle `demo-created-001`: the server refuses it as not READY, and no transaction is submitted.
+
+Limits: sandbox only, not testnet, not production. No live funds
+move, the agent key is ephemeral and local-only (written to a temp
+directory inside the sandbox home and removed on exit), and the
+sandbox is removed when the demo stops. The demo keeps running until
+it is killed (SIGINT, SIGTERM, or the client disconnecting).
+Pressing Ctrl-C while the demo is still starting up waits for
+provisioning to finish, then exits cleanly with the sandbox
+removed: the interrupt does not cut provisioning short, so the
+exit takes the rest of the roughly 24 second startup. The
+vault wasm it deploys hashes to
+`65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6`, the same hash as the
+deployed vaults, and the test token wasm hashes to
+`DVzJjN5Q4niR5vW4iqE2j5z1a3zBgrEb2huiVcFkBu3f`; the demo refuses to
+run on any other hash for either one. If a local contract build exists
+but is stale, so its hash no longer matches the pinned
+EXPECTED_VAULT_CODE_HASH or EXPECTED_FT_CODE_HASH, the demo fails fast
+at the hash pin instead of falling back to the bundled wasm. Fix it by
+deleting the local build so the bundled wasm is used, or by rebuilding
+the contract from the same source so the local build matches the pin.
+Copying rebuilt bytes into services/mcp/wasms/ alone does not help when
+the bytes differ from the pins; changing the pinned hashes is an
+intentional code change, not a file copy.
+
+## Publishing the package
+
+`services/mcp/package.json` builds the bundle before packing
+(`prepack` runs `npm run build`), so `npm publish` from
+`services/mcp/` ships the built `dist/cynex-mcp.mjs` bin. Publishing
+needs an npm account with publish rights on the `cynex-mcp` name.
+
 ## Layout
 
 - `config.ts`: `CYNEX_*` configuration, key file reading, the testnet RPC allowlist, the expected vault code hash, and the startup scope check.
 - `runtime-checks.ts`: the per-settle runtime checks as pure functions over a live state snapshot: network, vault code hash, signing key scope and allowance sufficiency, echo verification, the off-chain budget check, and the settle target assertion.
 - `tools.ts`: the six tools, input validation, the prepare-obligation rules, the settle orchestration, and the rate limiter. It reuses `CynexClient`, `evaluateCounterparty` with `makeLiveSources`, `gateSettleOnReputation`, `buildSettle`, and the console `createObligationArgs` and settle gas.
 - `server.ts`: the MCP server over stdio, the startup check, the live runtime state reads, the signer wiring, and the single settle submitter (`createSettleWithKey`).
+- `demo.ts`: the local sandbox demo mode: provisions a sandbox, seeds five obligations, serves the server over stdio, prints the ready summary to stderr, and stops the sandbox on exit.
+- `cli.ts`: the `cynex-mcp` command line: `--sandbox` runs the demo, no flag runs the normal server.
+- `sandbox-harness.ts`: the near-sandbox harness and `provisionSandbox()`, shared by the suite and the demo.
+- `wasms/`: the prebuilt vault and test-token wasms the demo and the suite deploy when present, so no Rust build is needed to run them.
 - `test-client.ts`: the SDK test client, the canonical reproduction path, plus the vault guard, the budget print, and the acceptance matrix runner (`--matrix`).
 - `SECURITY.md`: the tool security contract, the layering decision, the threat model, and the adversarial matrix.
 - `acceptance-matrix.md`: the production acceptance matrix, with the layer and expected outcome per row.

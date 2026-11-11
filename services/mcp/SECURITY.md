@@ -119,3 +119,35 @@ A submission error is reported as a vault refusal only when the error names a co
 ## 6. What is still proven live, not by these tests
 
 The unit tests prove the server logic against test doubles. They do not prove a live settlement, a live vault refusal, or a live attestation. Those are proven by the production acceptance matrix in `services/mcp/acceptance-matrix.md`, run by the matrix runner in `test-client.ts --matrix`, with transaction hashes recorded per row. No live settle runs until that matrix runs after the focused re-review.
+
+## 7. Local sandbox demo mode
+
+The demo mode (`services/mcp/demo.ts`, `npx cynex-mcp --sandbox`)
+reuses the sandbox checks that already exist, it does not bypass
+them. The server runs through the same `config.ts` sandbox path
+(loopback RPC URL only, `CYNEX_RPC_URL` unset) and the same
+`verifyRuntimeState` per-settle checks, with the expected vault code
+hash and chain id read live from the node the demo started. A
+replaced vault still fails the per-settle check.
+
+The demo never touches testnet. The RPC URL is the loopback sandbox
+node, `CYNEX_RPC_URL` is deleted, snapshots and the blocklist are
+empty, and the NearBlocks indexer is pointed at a closed loopback
+port (`http://127.0.0.1:1`) so the deployment check fails closed as
+unavailable instead of reaching the testnet indexer. An empty
+NearBlocks URL would fall back to the testnet indexer, so empty is
+not used. The demo obligations exist only on the local chain, and
+the demo key is a settle-only function-call key created fresh on
+that chain, written to a file inside the sandbox home directory
+(outside the repo), and removed with the sandbox on exit. No secret
+key is printed, logged, or returned in any tool output; the ready
+summary carries account ids and the agent public key only.
+
+The bundled wasms (`services/mcp/wasms/`) are the same builds the
+suite deploys, and the demo still verifies the vault wasm hashes to
+`65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6` and the test token
+wasm hashes to `DVzJjN5Q4niR5vW4iqE2j5z1a3zBgrEb2huiVcFkBu3f`
+before deploying either, so a stale or tampered bundle fails fast
+instead of serving a different contract. Stdout stays the MCP
+JSON-RPC transport: every demo log and the ready summary go to
+stderr.

@@ -328,7 +328,10 @@ async function main(): Promise<number> {
   return 0;
 }
 
-if (fileURLToPath(import.meta.url) === process.argv[1]) {
+if (
+  fileURLToPath(import.meta.url) === process.argv[1] &&
+  process.argv[1].endsWith("test-client.js")
+) {
   main()
     .then((code) => {
       process.exitCode = code;

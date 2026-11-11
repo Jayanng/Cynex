@@ -37,6 +37,10 @@
  *
  * The harness throws on the first failed expectation, naming the
  * exact on-chain values it saw. A failure is a failure, never a skip.
+ *
+ * provisionSandbox() factors steps 1 to 5 out of runSandboxMcpSuite, so the
+ * demo mode (services/mcp/demo.ts) seeds its own obligations on the same
+ * provisioning instead of duplicating it.
  */
 import { createHash } from "node:crypto";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
@@ -87,6 +91,12 @@ const GENESIS_ACCOUNT = "test.near";
 // unless it hashes to exactly this.
 export const EXPECTED_VAULT_CODE_HASH = "65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6";
 
+// Code hash of the test token wasm. Same rule as the vault: the
+// suite refuses to run unless the token it is about to deploy
+// hashes to exactly this, so a stale or tampered token bundle
+// fails fast instead of deploying silently.
+export const EXPECTED_FT_CODE_HASH = "DVzJjN5Q4niR5vW4iqE2j5z1a3zBgrEb2huiVcFkBu3f";
+
 const POLICY_ID = "sandbox-policy-001";
 const POLICY_LIMIT = 10_000n;
 const OBLIGATION_AMOUNT = "100";
@@ -106,6 +116,31 @@ function sleepMs(ms: number): Promise<void> {
 }
 
 function repoRoot(): string {
+  // Walk up from this file until a directory looks like the repo
+  // root (it holds contract/), so the lookup works from the source
+  // tree, from the tsc-built demo under frontend/dist-test/, and
+  // from anywhere else in the checkout. The root is detected on
+  // contract/ alone, not on the wasms directory: if the wasms are
+  // ever absent, the fallback that builds from source still needs
+  // the real crate directory, and that is exactly the case where
+  // the old both-directories check failed. The old two-levels-up
+  // form only worked from the source layout: from the built demo
+  // it resolved to frontend/dist-test, and the contract/target
+  // candidate and the buildWasm crate directory pointed at a
+  // directory that does not exist. In the published npm package
+  // there is no repo root, so fall back to the old form and let
+  // the bundled wasm lookup carry the demo instead.
+  let dir = dirname(fileURLToPath(import.meta.url));
+  for (let depth = 0; depth < 8; depth++) {
+    if (existsSync(join(dir, "contract"))) {
+      return dir;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) {
+      break;
+    }
+    dir = parent;
+  }
   return join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 }
 
@@ -285,8 +320,6 @@ export interface RunningSandbox {
   rpcUrl: string;
   chainId: string;
   homeDir: string;
-  /** FullAccess secret key for test.near, read from the node's own validator_key.json. */
-  masterSecretKey: string;
   stop(): Promise<void>;
 }
 
@@ -349,10 +382,8 @@ export async function startSandbox(opts: {
   const netPort = await freePort();
   // Init runs before the stop closure exists, so a failure here
   // would leak the temporary home. Remove it and rethrow.
-  let masterSecretKey: string;
   try {
     await execFileAsync(bin, ["--home", homeDir, "init", "--fast"], { timeout: 120_000 });
-    masterSecretKey = readMasterSecretKey(homeDir);
   } catch (error) {
     rmSync(homeDir, { recursive: true, force: true });
     throw error;
@@ -417,7 +448,7 @@ export async function startSandbox(opts: {
       "near-sandbox did not answer /status within the timeout, log tail:\n" + tail,
     );
   }
-  return { rpcUrl, chainId, homeDir, masterSecretKey, stop };
+  return { rpcUrl, chainId, homeDir, stop };
 }
 
 // ---------------------------------------------------------------------------
@@ -472,7 +503,31 @@ function wasmTargetDir(envName: string, existing: string, fresh: string): string
   return join(scratchBase(), fresh);
 }
 
-/** Vault wasm, built on demand when it is missing. */
+
+/**
+ * A wasm bundled with the MCP package (services/mcp/wasms/) or next to
+ * the bundled server (dist/../wasms/), or in the source tree when the
+ * demo runs from the tsc build under frontend/dist-test/. Checked
+ * after the local build directories, so a packaged demo with no local
+ * build still runs with no Rust and no cargo-near, while a local
+ * build wins over the bundled copy when one exists, fresh or stale;
+ * the hash pin is what guards the chain.
+ */
+function bundledWasmPath(name: string): string | null {
+  const here = dirname(fileURLToPath(import.meta.url));
+  for (const candidate of [
+    join(here, "wasms", name),
+    join(here, "..", "wasms", name),
+    join(repoRoot(), "services", "mcp", "wasms", name),
+  ]) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+/** Vault wasm, preferring a local build over the bundle when one exists, built on demand when it is missing. */
 export async function ensureVaultWasm(): Promise<string> {
   const fromEnv = (process.env.CYNEX_WASM_PATH ?? "").trim();
   const targetDir = wasmTargetDir(
@@ -480,12 +535,20 @@ export async function ensureVaultWasm(): Promise<string> {
     "/data/workspace/cynex-build-tmp/cynex-phase5",
     "cynex_vault-build",
   );
+  const bundled = bundledWasmPath("cynex_vault.wasm");
+  // A local build wins over the bundle when one exists, fresh or
+  // stale: a developer who rebuilds the contract and does not refresh
+  // services/mcp/wasms/ gets the rebuilt wasm, not the bundled copy. The bundle
+  // is the fallback for the packaged demo, where there are no local
+  // build directories. Whatever path is returned is still checked
+  // against EXPECTED_VAULT_CODE_HASH before deploy.
   const candidates =
     fromEnv !== ""
       ? [fromEnv]
       : [
           join(repoRoot(), "contract", "target", "near", "cynex_vault.wasm"),
           join(targetDir, "near", "cynex_vault.wasm"),
+          ...(bundled === null ? [] : [bundled]),
         ];
   for (const candidate of candidates) {
     if (existsSync(candidate)) {
@@ -495,7 +558,7 @@ export async function ensureVaultWasm(): Promise<string> {
   return buildWasm(join(repoRoot(), "contract"), "cynex_vault", targetDir);
 }
 
-/** Test token wasm, built on demand when it is missing. */
+/** Test token wasm, preferring a local build over the bundle when one exists, built on demand when it is missing. */
 export async function ensureFtWasm(): Promise<string> {
   const fromEnv = (process.env.CYNEX_FT_WASM_PATH ?? "").trim();
   const targetDir = wasmTargetDir(
@@ -503,12 +566,18 @@ export async function ensureFtWasm(): Promise<string> {
     "/data/workspace/cynex-build-tmp/ft-test-token",
     "ft_test_token-build",
   );
+  const bundled = bundledWasmPath("ft_test_token.wasm");
+  // A local build wins over the bundle when one exists, fresh or
+  // stale, for the same reason as the vault wasm above. Whatever path
+  // is returned is still
+  // checked against EXPECTED_FT_CODE_HASH before deploy.
   const candidates =
     fromEnv !== ""
       ? [fromEnv]
       : [
           join(repoRoot(), "contract", "ft-test-token", "target", "near", "ft_test_token.wasm"),
           join(targetDir, "near", "ft_test_token.wasm"),
+          ...(bundled === null ? [] : [bundled]),
         ];
   for (const candidate of candidates) {
     if (existsSync(candidate)) {
@@ -719,18 +788,90 @@ export interface SandboxSuiteResult {
   txHashes: Record<string, string>;
 }
 
+/** One obligation to seed on the sandbox policy. */
+export interface SandboxSeedSpec {
+  id: string;
+  recipient: string;
+}
+
 /**
- * Run the full sandbox suite and return the checks and transaction
- * hashes. Throws on the first failed expectation, naming the exact
- * on-chain values it saw. The sandbox is stopped even on failure.
+ * Sandbox recipient accounts, fixed so the suite and the demo seed the
+ * same accounts. The ids are the account ids, not nicknames, so a
+ * caller passes them straight into a seed spec.
  */
-export async function runSandboxMcpSuite(): Promise<SandboxSuiteResult> {
+export const SANDBOX_RECIPIENT_ID = "recipient.test.near";
+export const SANDBOX_SECOND_RECIPIENT_ID = "recipient2.test.near";
+
+export interface ProvisionSandboxOptions {
+  /** READY obligations settled directly during provisioning, receipts 0 and up. */
+  bootstrap?: SandboxSeedSpec[];
+  /** READY obligations left for the caller to settle. */
+  ready?: SandboxSeedSpec[];
+  /** Obligations left CREATED, with no evidence submitted. */
+  created?: SandboxSeedSpec[];
+  /** Where provisioning progress goes; defaults to console.log. The demo
+   * passes console.error, because in demo mode stdout is the MCP
+   * JSON-RPC transport and must carry nothing else. */
+  log?: (message: string) => void;
+}
+
+export interface ProvisionedSandbox {
+  sandbox: RunningSandbox;
+  provider: JsonRpcProvider;
+  vault: CynexClient;
+  ownerId: string;
+  vaultId: string;
+  tokenId: string;
+  agentId: string;
+  recipientId: string;
+  secondRecipientId: string;
+  policyId: string;
+  policyLimit: bigint;
+  vaultCodeHash: string;
+  vaultWasmPath: string;
+  ftWasmPath: string;
+  agentPublicKey: string;
+  keyFile: string;
+  evidenceHashHex: string;
+  expiresAtNs: number;
+  checks: SandboxCheck[];
+  txHashes: Record<string, string>;
+  stop(): Promise<void>;
+  readObligation(obligationId: string): Promise<Record<string, unknown>>;
+  readPolicy(): Promise<Record<string, unknown>>;
+}
+
+/**
+ * Provision a local sandbox the same way the suite does, and seed it.
+ * Steps, in order: start the sandbox, build or verify the wasms (the
+ * vault wasm must hash to EXPECTED_VAULT_CODE_HASH), create the
+ * accounts, deploy and init both contracts, create and fund the
+ * policy, drive the bootstrap and ready obligations to READY through
+ * the real evidence flow, leave the created obligations CREATED, give
+ * the agent a settle-only function-call key on the vault and verify
+ * its scope on chain, write the agent key file into the sandbox home
+ * directory (outside the repo, removed when the sandbox stops), then
+ * settle the bootstrap obligations directly so both recipients hold
+ * a prior receipt and the reputation gate can ALLOW them.
+ *
+ * The caller owns the sandbox after this returns and must call stop(),
+ * even on failure of its own later steps. If provisioning itself
+ * fails, the sandbox is stopped here so no node is left running.
+ */
+export async function provisionSandbox(
+  options: ProvisionSandboxOptions = {},
+): Promise<ProvisionedSandbox> {
   const checks: SandboxCheck[] = [];
   const txHashes: Record<string, string> = {};
+  const log = options.log ?? console.log;
   const check = (name: string, detail: string): void => {
     checks.push({ name, detail });
-    console.log("SANDBOX CHECK " + name + ": " + detail);
+    log("SANDBOX CHECK " + name + ": " + detail);
   };
+  const bootstrapSpecs = options.bootstrap ?? [];
+  const readySpecs = options.ready ?? [];
+  const createdSpecs = options.created ?? [];
+  let obligationNonce = 1;
 
   const sandbox = await startSandbox();
   try {
@@ -758,9 +899,23 @@ export async function runSandboxMcpSuite(): Promise<SandboxSuiteResult> {
       );
     }
     check("vault wasm", vaultWasmPath + ", code hash " + vaultCodeHash);
+    // Same rule for the test token: the token wasm must hash to the
+    // pinned value before anything is deployed, so a stale or
+    // tampered token bundle fails fast like a bad vault wasm does.
+    const ftCodeHash = codeHashOfWasm(ftWasm);
+    if (ftCodeHash !== EXPECTED_FT_CODE_HASH) {
+      throw new Error(
+        "local FT token wasm hash " +
+          ftCodeHash +
+          " is not the expected hash " +
+          EXPECTED_FT_CODE_HASH,
+      );
+    }
 
     const provider = new JsonRpcProvider({ url: sandbox.rpcUrl });
-    const masterKey = KeyPair.fromString(sandbox.masterSecretKey as never);
+    // Read the genesis key at the point of use, from the sandbox home,
+    // instead of carrying the secret on the sandbox handle.
+    const masterKey = KeyPair.fromString(readMasterSecretKey(sandbox.homeDir) as never);
     const master = accountFor(provider, GENESIS_ACCOUNT, masterKey);
 
     const ownerId = "owner.test.near";
@@ -823,7 +978,16 @@ export async function runSandboxMcpSuite(): Promise<SandboxSuiteResult> {
         "token owner balance is " + ownerTokenBalance.toString() + ", expected " + FT_TOTAL_SUPPLY,
       );
     }
-    check("token deployed", tokenId + " total supply " + FT_TOTAL_SUPPLY + ", owner holds it all");
+    check(
+      "token deployed",
+      tokenId +
+        " total supply " +
+        FT_TOTAL_SUPPLY +
+        ", owner holds it all, wasm " +
+        ftWasmPath +
+        ", code hash " +
+        ftCodeHash,
+    );
 
     for (const id of [vaultId, recipientId, secondRecipientId]) {
       await owner.account.callFunctionRaw({
@@ -946,11 +1110,59 @@ export async function runSandboxMcpSuite(): Promise<SandboxSuiteResult> {
         );
       }
     }
-    await makeReadyObligation("sandbox-bootstrap-001", recipientId, "1");
-    await makeReadyObligation("sandbox-bootstrap-002", secondRecipientId, "2");
-    await makeReadyObligation("sandbox-mcp-001", recipientId, "3");
-    await makeReadyObligation("sandbox-negative-001", recipientId, "4");
-    check("obligations READY", "four PREIMAGE obligations READY on " + POLICY_ID);
+    async function makeCreatedObligation(
+      obligationId: string,
+      recipient: string,
+      nonce: string,
+    ): Promise<void> {
+      await owner.account.callFunctionRaw({
+        contractId: vaultId,
+        methodName: "create_obligation",
+        args: {
+          obligation_id: obligationId,
+          policy_id: POLICY_ID,
+          recipient,
+          amount: Number(OBLIGATION_AMOUNT),
+          evidence_type: "PREIMAGE",
+          evidence_hash: evidenceHash,
+          expires_at_ns: expiresAtNs,
+          nonce: Number(nonce),
+        },
+        gas: GAS_30_TGAS,
+        deposit: 0n,
+      });
+      const created = await waitForValue(
+        "CREATED state for " + obligationId,
+        () => readObligation(vault, obligationId),
+        (row) => String(row.state ?? "") === "CREATED",
+      );
+      if (String(created.state ?? "") !== "CREATED") {
+        throw new Error(
+          "obligation " +
+            obligationId +
+            " is " +
+            String(created.state ?? "") +
+            ", not CREATED",
+        );
+      }
+    }
+    for (const spec of [...bootstrapSpecs, ...readySpecs]) {
+      await makeReadyObligation(spec.id, spec.recipient, String(obligationNonce));
+      obligationNonce += 1;
+    }
+    for (const spec of createdSpecs) {
+      await makeCreatedObligation(spec.id, spec.recipient, String(obligationNonce));
+      obligationNonce += 1;
+    }
+    check(
+      createdSpecs.length === 0
+        ? "obligations READY"
+        : "obligations READY (" + createdSpecs.length + " CREATED)",
+      String(bootstrapSpecs.length + readySpecs.length) +
+        " PREIMAGE obligations READY on " +
+        POLICY_ID +
+        (createdSpecs.length === 0 ? "" : ", " + createdSpecs.length + " CREATED"),
+    );
 
     const agentKeyPair = KeyPair.fromRandom("ed25519");
     await agentAccount.account.signAndSendTransaction({
@@ -1001,6 +1213,7 @@ export async function runSandboxMcpSuite(): Promise<SandboxSuiteResult> {
     );
     const keyFile = join(sandbox.homeDir, "agent-key.txt");
     writeFileSync(keyFile, agentKeyPair.toString() + "\n", "utf-8");
+    chmodSync(keyFile, 0o600);
 
     const agentSigner = accountFor(provider, agentId, agentKeyPair);
     async function directSettle(obligationId: string, recipient: string): Promise<string> {
@@ -1026,31 +1239,121 @@ export async function runSandboxMcpSuite(): Promise<SandboxSuiteResult> {
       }
       return hash;
     }
-    txHashes["bootstrap-001"] = await directSettle("sandbox-bootstrap-001", recipientId);
-    txHashes["bootstrap-002"] = await directSettle("sandbox-bootstrap-002", secondRecipientId);
-    const receiptsAfterBootstrap = await waitForValue(
-      "two bootstrap receipts",
-      async () => (await vault.receipts(0n, 10n)) as Array<Record<string, unknown>>,
-      (rows) =>
-        rows.length === 2 &&
-        rows[0]?.obligation_id === "sandbox-bootstrap-001" &&
-        rows[1]?.obligation_id === "sandbox-bootstrap-002",
-    );
-    if (
-      receiptsAfterBootstrap.length !== 2 ||
-      receiptsAfterBootstrap[0]?.obligation_id !== "sandbox-bootstrap-001" ||
-      receiptsAfterBootstrap[1]?.obligation_id !== "sandbox-bootstrap-002"
-    ) {
-      throw new Error(
-        "receipts after bootstrap are not the two bootstrap receipts: " +
-          JSON.stringify(receiptsAfterBootstrap),
+    for (let i = 0; i < bootstrapSpecs.length; i++) {
+      const spec = bootstrapSpecs[i] as SandboxSeedSpec;
+      txHashes["bootstrap-00" + (i + 1)] = await directSettle(spec.id, spec.recipient);
+    }
+    if (bootstrapSpecs.length > 0) {
+      const bootstrapIds = bootstrapSpecs.map((spec) => spec.id);
+      const receiptsAfterBootstrap = await waitForValue(
+        bootstrapIds.length + " bootstrap receipts",
+        async () => (await vault.receipts(0n, 10n)) as Array<Record<string, unknown>>,
+        (rows) =>
+          rows.length === bootstrapIds.length &&
+          rows.every((row, i) => row.obligation_id === bootstrapIds[i]),
+      );
+      if (
+        receiptsAfterBootstrap.length !== bootstrapIds.length ||
+        !receiptsAfterBootstrap.every((row, i) => row.obligation_id === bootstrapIds[i])
+      ) {
+        throw new Error(
+          "receipts after bootstrap are not the bootstrap receipts: " +
+            JSON.stringify(receiptsAfterBootstrap),
+        );
+      }
+      let receiptHolders: string;
+      if (bootstrapIds.length === 1) {
+        receiptHolders = "the recipient holds a prior receipt";
+      } else if (bootstrapIds.length === 2) {
+        receiptHolders = "both recipients hold a prior receipt";
+      } else {
+        receiptHolders = bootstrapIds.length + " recipients hold a prior receipt";
+      }
+      check(
+        "reputation bootstrap",
+        bootstrapIds.length +
+          " direct settles PAID, receipts 0 to " +
+          (bootstrapIds.length - 1) +
+          ", " +
+          receiptHolders,
       );
     }
-    check(
-      "reputation bootstrap",
-      "two direct settles PAID, receipts 0 and 1, both recipients hold a prior receipt",
-    );
+    const provisioned: ProvisionedSandbox = {
+      sandbox,
+      provider,
+      vault,
+      ownerId,
+      vaultId,
+      tokenId,
+      agentId,
+      recipientId,
+      secondRecipientId,
+      policyId: POLICY_ID,
+      policyLimit: POLICY_LIMIT,
+      vaultCodeHash,
+      vaultWasmPath,
+      ftWasmPath,
+      agentPublicKey: agentKeyPair.getPublicKey().toString(),
+      keyFile,
+      evidenceHashHex,
+      expiresAtNs,
+      checks,
+      txHashes,
+      stop: () => sandbox.stop(),
+      readObligation: async (obligationId: string): Promise<Record<string, unknown>> => {
+        return readObligation(vault, obligationId);
+      },
+      readPolicy: async (): Promise<Record<string, unknown>> => {
+        return readPolicy(vault, POLICY_ID);
+      },
+    };
+    return provisioned;
+  } catch (error) {
+    try {
+      await sandbox.stop();
+    } catch {
+      // stopping after a failed provision must not hide the failure
+    }
+    throw error;
+  }
+}
 
+/**
+ * Run the full sandbox suite and return the checks and transaction
+ * hashes. Throws on the first failed expectation, naming the exact
+ * on-chain values it saw. The sandbox is stopped even on failure.
+ */
+export async function runSandboxMcpSuite(): Promise<SandboxSuiteResult> {
+  const provisioned = await provisionSandbox({
+    bootstrap: [
+      { id: "sandbox-bootstrap-001", recipient: SANDBOX_RECIPIENT_ID },
+      { id: "sandbox-bootstrap-002", recipient: SANDBOX_SECOND_RECIPIENT_ID },
+    ],
+    ready: [
+      { id: "sandbox-mcp-001", recipient: SANDBOX_RECIPIENT_ID },
+      { id: "sandbox-negative-001", recipient: SANDBOX_RECIPIENT_ID },
+    ],
+  });
+  const sandbox = provisioned.sandbox;
+  const provider = provisioned.provider;
+  const vault = provisioned.vault;
+  const agentPublicKey = provisioned.agentPublicKey;
+  const keyFile = provisioned.keyFile;
+  const vaultCodeHash = provisioned.vaultCodeHash;
+  const evidenceHashHex = provisioned.evidenceHashHex;
+  const expiresAtNs = provisioned.expiresAtNs;
+  const vaultId = provisioned.vaultId;
+  const tokenId = provisioned.tokenId;
+  const agentId = provisioned.agentId;
+  const recipientId = provisioned.recipientId;
+  const secondRecipientId = provisioned.secondRecipientId;
+  const checks = provisioned.checks;
+  const txHashes = provisioned.txHashes;
+  const check = (name: string, detail: string): void => {
+    checks.push({ name, detail });
+    console.log("SANDBOX CHECK " + name + ": " + detail);
+  };
+  try {
     const savedEnv: Record<string, string | undefined> = {};
     for (const name of [
       "CYNEX_VAULT",
@@ -1322,7 +1625,7 @@ export async function runSandboxMcpSuite(): Promise<SandboxSuiteResult> {
         async function agentNonce(): Promise<bigint> {
           const key = (await provider.viewAccessKey({
             accountId: agentId,
-            publicKey: agentKeyPair.getPublicKey().toString(),
+            publicKey: agentPublicKey,
             finalityQuery: { finality: "final" },
           })) as unknown as { nonce?: unknown };
           return nonceAsBigInt(key.nonce);
@@ -1431,7 +1734,6 @@ export async function runSandboxMcpSuite(): Promise<SandboxSuiteResult> {
       }
     })();
     check("MCP tools over sandbox", "counterparty " + mcp.counterpartyVerdict);
-
     return {
       rpcUrl: sandbox.rpcUrl,
       chainId: sandbox.chainId,

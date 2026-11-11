@@ -454,6 +454,7 @@ export const MCP_TOOLS: [string, string, boolean][] = [
   ["cynex_get_policy", "Read a policy. Read-only.", false],
 ];
 export const MCP_RUN = "node dist-test/services/mcp/server.js";
+export const MCP_DEMO_RUN = "cd frontend && npm run mcp:build && npm run mcp:demo";
 export const MCP_FACTS =
   "Six tools, one moves funds. Stdio only for v1, no HTTP: the MCP client spawns the server as a subprocess and talks JSON-RPC over stdin and stdout. At startup the server verifies its key scope on chain and refuses to start on a full-access key, a wrong receiver, or broader methods: the key must be a function-call key, receiver must equal the vault, methods must be exactly [settle], allowance finite and positive. Every cynex_request_settlement call re-runs runtime checks first: testnet chain id, vault code hash, signing key re-check, allowance against the live gas price, echo checks on getPolicy and getObligation, budget check, settle target assertion. Threat model assumes a compromised client. Adversarial matrix: 21 rows (services/mcp/SECURITY.md). Acceptance matrix: 14 rows, M1 to M14 (services/mcp/acceptance-matrix.md). A reputation refusal is not a vault refusal.";
 

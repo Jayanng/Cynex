@@ -1,0 +1,32 @@
+{
+  // The paths below pin the exact type-entry files tsc resolves the
+  // MCP bare imports to. They were verified against near-api-js
+  // 7.4.0, zod 4.6.7, and @modelcontextprotocol/sdk 1.32.2: a future
+  // upgrade that moves a package's type entry breaks mcp:build here
+  // first, with a TS2307 naming the import.
+  "compilerOptions": {
+    "baseUrl": ".",
+    "esModuleInterop": true,
+    "lib": ["es2022", "dom"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "dist-test",
+    "paths": {
+      "@modelcontextprotocol/sdk/*": ["./node_modules/@modelcontextprotocol/sdk/dist/esm/*"],
+      "near-api-js": ["./node_modules/near-api-js/lib/index.d.ts"],
+      "zod": ["./node_modules/zod/index.d.cts"]
+    },
+    "rootDir": "..",
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2022",
+    "typeRoots": ["./node_modules/@types"]
+  },
+  "include": [
+    "../services/mcp/server.ts",
+    "../services/mcp/test-client.ts",
+    "../services/mcp/demo.ts",
+    "../services/mcp/cli.ts",
+    "../tests/integration/sandbox.ts"
+  ]
+}

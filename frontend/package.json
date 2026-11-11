@@ -20,9 +20,11 @@
     "conformance": "tsc && node dist/scripts/conformance.js",
     "typecheck": "tsc --noEmit",
     "jest": "NODE_OPTIONS=--experimental-vm-modules npx jest --roots src ../services --runInBand",
-    "jest:sandbox": "CYNEX_SANDBOX_TESTS=1 NODE_OPTIONS=--experimental-vm-modules npx jest --roots src ../services --runInBand services/mcp/sandbox",
-    "mcp:build": "npx tsc --outDir dist-test --rootDir .. --module NodeNext --moduleResolution NodeNext --target ES2022 --strict --skipLibCheck --esModuleInterop --lib es2022,dom --typeRoots ./node_modules/@types ../services/mcp/server.ts ../services/mcp/test-client.ts ../tests/integration/sandbox.ts",
+    "jest:sandbox": "CYNEX_SANDBOX_TESTS=1 NODE_OPTIONS=--experimental-vm-modules npx jest --roots src ../services --runInBand \"services/mcp/(sandbox|demo)\"",
+    "mcp:build": "npx tsc -p tsconfig.mcp.json",
     "mcp": "node dist-test/services/mcp/server.js",
-    "mcp:test-client": "node dist-test/services/mcp/test-client.js"
+    "mcp:test-client": "node dist-test/services/mcp/test-client.js",
+    "mcp:demo": "node dist-test/services/mcp/demo.js",
+    "mcp:cli": "node dist-test/services/mcp/cli.js"
   }
 }

@@ -195,7 +195,7 @@ export function buildServer(ctx: McpContext): McpServer {
   return server;
 }
 
-async function main(): Promise<number> {
+export async function runServer(): Promise<number> {
   let ctx: McpContext;
   try {
     ctx = await buildContext();
@@ -209,8 +209,11 @@ async function main(): Promise<number> {
   return 0;
 }
 
-if (fileURLToPath(import.meta.url) === process.argv[1]) {
-  main()
+if (
+  fileURLToPath(import.meta.url) === process.argv[1] &&
+  process.argv[1].endsWith("server.js")
+) {
+  runServer()
     .then((code) => {
       process.exitCode = code;
     })
