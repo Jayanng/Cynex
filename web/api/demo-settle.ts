@@ -36,8 +36,9 @@
  * 5 seconds, and the post-confirmation reads get at most 5 seconds.
  * Every stage races the time left to a 28 second deadline set when
  * the handler starts, inside the 30 second function budget, so a
- * hung RPC cannot push the call past it: the handler always
- * answers, even if the answer is SETTLE_UNCONFIRMED or a 502.
+ * hung RPC cannot push the call past it: every async stage has a
+ * bounded answer, so the handler replies SETTLE_UNCONFIRMED or a
+ * 502 instead of letting the function time out.
  * A returned transaction outcome proves the vault accepted the settle
  * call, not that the tokens moved: the NEP-141 transfer and its
  * callback run asynchronously, and a failed transfer rolls the
