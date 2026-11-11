@@ -3,7 +3,7 @@
    strip, the refusal dark band, how it works, what it is for, run it
    yourself, honest limits, and the Footer. */
 
-import { AGENT2, MCP_DEMO_RUN, USECASE } from "../lib/data";
+import { AGENT2, USECASE } from "../lib/data";
 import { useLive } from "../lib/live";
 import { StripSection } from "../components/Strip";
 import { LiveDemoButton } from "../components/LiveDemoButton";
@@ -55,7 +55,7 @@ function JudgesSteps() {
           "30 to 60 sec",
           "Verify on chain",
           <>
-            <b className="text-ink">Do:</b> Run <span className="mono text-[12px]">cynex.js verify-live</span> on the test vault.{" "}
+            <b className="text-ink">Do:</b> Run <span className="mono text-[12px]">node frontend/dist-test/cli/cynex.js verify-live cynex-testvault.cynexmaster.testnet</span> on the test vault.{" "}
             <b className="text-ink">See:</b> Every row verified_ok = true, {count != null ? count : "all"} receipts, all ok.
           </>,
         )}
@@ -247,13 +247,6 @@ export function Home() {
         <div className="mono text-xs dim2 mb-2 mt-5">Verify the live testnet record</div>
         <VerifyHome />
         <p className="mono text-xs dim2 mt-5">Everything above runs on testnet. Nothing here spends real funds, and nothing here needs your keys.</p>
-        <p className="dim text-[13px] mt-2">
-          Run it from <span className="mono text-[13px] text-ink">frontend/</span>:{" "}
-          <span className="mono text-[13px]" style={{ color: "var(--accent-text)" }}>
-            {MCP_DEMO_RUN}
-          </span>
-          . The local demo starts a sandbox with five seeded obligations and serves the same six tools over stdio against it.
-        </p>
       </section>
 
       <section className="wrap mt-24">

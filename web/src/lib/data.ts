@@ -517,7 +517,7 @@ export const DOC_COMMITS: Record<string, string> = {
   deployment: "d9cdf40",
   p10demo: "fc3ceac",
   p10proof: "fc3ceac",
-  reputation: "620fcb3 (README.md), 69b9fd7 (docs/phase7-lane-b.md, docs/scorecard-code-change-recency.md)",
+  reputation: "620fcb3 (README.md), 69b9fd7 (reputation engine doc, docs/scorecard-code-change-recency.md)",
   receipts: "6b40576",
   scorecard: "e26edfb", // docs/scorecard-code-change-recency.md (69b9fd7), latest
   mcp: "23114cf", // services/mcp/README.md (23114cf), SECURITY.md 92cfcfc

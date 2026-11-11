@@ -50,7 +50,7 @@ The same three steps, plus:
 | Reputation gate | Real, five sourced signals | A BLOCK refuses, a WARN escalates. It is a gate on top of the vault check, not a replacement for it. The vault still decides every settle. |
 | MCP server | Real, six tools over stdio, one moves funds | Stdio only. There is no hosted endpoint. A judge needs their own testnet accounts, vault, scoped settle-only key, and CYNEX_ env vars to use it against testnet. The sandbox mode needs no keys. |
 | Sandbox demo | Real vault and token contracts in a local near-sandbox | Local only, not testnet. Receipts are local, for example receipt 2 for demo-ready-001, and do not appear on testnet. Nothing is mocked. |
-| Demo key | Real scoped settle-only key, test vault only | It can only call settle on the test vault. It cannot create obligations or move other funds. It is rate limited, and at least 8 READY obligations remain at the start. When they are used up, the button stops. |
+| Demo key | Real scoped settle-only key, test vault only | It can only call settle on the test vault. It cannot create obligations or move other funds. It is rate limited, and at least 9 READY obligations remain for judges after the single live proof settle. When they are used up, the button stops. |
 | Token | Real testnet token, usdc.fakes.testnet, 6 decimals, shown as USDC.e testnet | Fake testnet USDC with no value. No mainnet value, no mainnet spending. One past recipient, acme-supplies.testnet, does not exist on chain despite a receipt and a token balance, because settle uses plain ft_transfer, which credits the token contract map even for a nonexistent id. Future settles avoid that recipient unless the owner decides explicitly with the WARN shown. |
 
 ## Troubleshooting

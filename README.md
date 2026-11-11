@@ -80,7 +80,7 @@ What the hosted demo can do:
   refuses, with the real error code and the real refusal transaction.
 - Live mode: a judge's chosen attack is signed in the judge's browser
   with the demo token and refused on chain. Only attacks are offered
-  in live mode — never a correct settle.
+  in live mode, never a correct settle.
 - Verify it yourself: one copy-paste command replays every receipt
   from genesis and recomputes each hash link, with the live receipt
   table and the four TEE attestation bundles on the Proof page.
@@ -133,7 +133,7 @@ Testnet throughout. The vault is deployed at
 (code-change recency) is merged, and the live demo runs the full story
 end to end.
 
-Live state, last verified 2026-11-08: both vaults run code hash
+Live state, last verified 2026-11-11: both vaults run code hash
 65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6. Test vault policy
 p6-001: funded 10000, spent 5400, reserved 0, frozen false. The test
 vault has 31 receipts. Production vault policy p5-prod-001: funded
@@ -319,7 +319,7 @@ The four executions, all on testnet. The first three ran on the test vault, the 
 - OutLayer request 13324, the production proof, obligation `prod-tee-001`, 100 units to the agent, receipt 11, transaction
   `9rLoxGuEFYSLWPJ8Jc2cv1krSLtummWszASUcX7kzuxZ`
 
-The production proof is the first production TEE execution with a fetched and independently verified TDX attestation. An earlier production TEE settle exists, receipt 9, obligation `prod-console-tee-001` from Phase 9, but no attestation was ever recorded for it, so it was never independently verified.
+The production proof is the first production TEE execution with a fetched and independently verified TDX attestation. An earlier production TEE settle exists, receipt 9, obligation `prod-console-tee-001` from an earlier production run, but no attestation was ever recorded for it, so it was never independently verified.
 
 Verify a bundle offline, no network needed. First install the verifier:
 
@@ -392,9 +392,8 @@ history, WARN if within 7 days, ALLOW if the code has not changed or is
 stable for over 7 days. No contract and first observation are neutral, not
 a penalty. The answer is ALLOW, WARN, or BLOCK, with reasons. BLOCK
 refuses outright. WARN goes to the owner for a decision and never settles
-silently. Unknown maps to WARN, never to a silent ALLOW. The full spec is
-in `docs/phase7-lane-b.md`, and the fifth signal is in
-`docs/scorecard-code-change-recency.md`.
+silently. Unknown maps to WARN, never to a silent ALLOW. The full spec is in the reputation engine notes, and the fifth signal
+is in `docs/scorecard-code-change-recency.md`.
 
 ## The attack demo
 
@@ -433,13 +432,13 @@ node frontend/dist-test/cli/cynex.js attack cynex-testvault.cynexmaster.testnet 
 The dry run prints what each scenario would settle and the code it
 expects, and sends no transaction. The live run needs the agent key.
 
-The attack transcript is in `docs/phase6-attack-transcript.md`. The
+The attack transcript records the same story. The
 compromised-agent scenario is the point: the agent is assumed hostile,
 and the vault still does not pay. The live demo runs the same story
 end to end on the test vault, happy path, three attack tries, TEE and
 VRF, and verification, each step with its real transaction hash: the
-script is in `docs/phase10-demo-script.md` and the proof record is in
-`docs/phase10-demo-proof.md`.
+script is the guided demo walkthrough and the proof record is on the
+Proof page.
 
 ## Reproduce it
 
@@ -630,7 +629,7 @@ weaker than the on-chain check, not stronger.
 - `docs/ledger.md`, the signed phase ledger
 - `docs/threat-model.md`, what the vault assumes and what it does not
 - `docs/spike-outlayer.md`, the OutLayer spike report and verdict
-- `docs/phase6-attack-transcript.md`, the attack demo log
-- `docs/phase7-lane-b.md`, the reputation engine
+- the attack demo log (attack transcript)
+- the reputation engine notes
 - `docs/deployment.md`, where the vaults are deployed and how to verify them
 

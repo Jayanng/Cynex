@@ -293,6 +293,13 @@ recipient, the amount, the updated policy spent, and how many demo
 settles remain. No wallet, no login, no install. Testnet only, fake
 USDC, no real value.
 
+Not yet proven live: the button is built and unit-tested, but no live
+settle has been run from it yet. The preview deployment cannot see
+CYNEX_DEMO_KEY, so it returns 503 DEMO_NOT_CONFIGURED with the
+sandbox fallback until the key is targeted at preview in the Vercel
+dashboard. A live end-to-end click on the hosted deployment is still
+to run.
+
 How it works:
 
 - The button is a thin client: it POSTs to `/api/demo-settle` with no

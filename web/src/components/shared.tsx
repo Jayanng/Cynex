@@ -94,7 +94,11 @@ export function RefusalBreakdown({ dark }: { dark?: boolean }) {
                 </td>
                 <td style={td}>
                   <span className="inline-flex flex-wrap items-center gap-2">
-                    <HashChip hash={a.tx} />
+                    {a.tx ? (
+                      <HashChip hash={a.tx} />
+                    ) : (
+                      <span className="mono text-xs dim2">No tx</span>
+                    )}
                     <span className="mono text-xs dim2">0 tokens moved</span>
                   </span>
                 </td>

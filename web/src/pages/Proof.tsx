@@ -159,7 +159,7 @@ const REAL_VS_SIMULATED: [string, string, string][] = [
   [
     "Demo key",
     "Real scoped settle-only key, test vault only",
-    "It can only call settle on the test vault. It cannot create obligations or move other funds. It is rate limited, and at least 8 READY obligations remain at the start. When they are used up, the button stops.",
+    "It can only call settle on the test vault. It cannot create obligations or move other funds. It is rate limited, and at least 9 READY obligations remain for judges after the single live proof settle. When they are used up, the button stops.",
   ],
   [
     "Token",
@@ -172,7 +172,7 @@ const BUILD_STATUS: [string, string, string][] = [
   [
     "Done",
     "Vault on testnet, both vaults.",
-    "Same code hash 65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6. Test receipts 31, production receipts 13. Counts are live.",
+    "Same code hash 65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6. Test receipts 31, production receipts 13 (read live 11 Nov 2026; live counts in the table above).",
   ],
   [
     "Done",
@@ -194,7 +194,7 @@ const BUILD_STATUS: [string, string, string][] = [
   [
     "Partial",
     "Live numbers on the site.",
-    "The strip reads live from the chain in production. No number on this page is hardcoded.",
+    "The strip and receipt table read live from the chain in production; prose tables below carry dated 11 Nov 2026 chain reads.",
   ],
 ];
 
