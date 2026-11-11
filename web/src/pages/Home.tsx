@@ -11,6 +11,7 @@ import { fmtToken, trunc } from "../lib/near";
 import { useChainRead } from "../lib/useChainRead";
 import { Badge, ChainReadOut, HashChip, AcctChip, Icon, LoadTxt, Unavail } from "../components/ui";
 import { StripSection } from "../components/Strip";
+import { LiveDemoButton } from "../components/LiveDemoButton";
 import { RefusalPanel, TrustRow, Footer } from "../components/shared";
 
 function LatestSettle() {
@@ -378,6 +379,7 @@ export function Home() {
 
       <RefusalPanel />
 
+      <LiveDemoButton />
       {/* One live proof */}
       <section className="wrap mt-24">
         <div className="panel p-6">
