@@ -158,6 +158,8 @@ export function TamperPanel({ id }: { id: string }) {
     }
   };
 
+  /* Verify replay: a rejected hash stops the replay, reports the failure,
+     and always clears busy through finally. */
   const doVerify = async () => {
     if (busy) return;
     setBusy(true);
@@ -165,28 +167,36 @@ export function TamperPanel({ id }: { id: string }) {
     setLog(lines);
     let broke = false;
     let ok = 0;
-    for (let k = 0; k < chain.length; k++) {
-      const r = chain[k];
-      const recomputed = await receiptHash(r);
-      const integrity = recomputed === r.hash;
-      const link = k === 0 ? true : bytesToHex(chain[k].prev_hash) === (await receiptHash(chain[k - 1]));
-      await new Promise((res) => setTimeout(res, 90));
-      if (integrity && link && !broke) {
-        ok++;
-        setLog((prev) => [...prev, { kind: "ok", text: `#${r.index} · recompute ok · link ok` }]);
-      } else if (!broke) {
-        broke = true;
-        setLog((prev) => [...prev, { kind: "bad", text: `#${r.index} · MISMATCH, prev_hash ≠ recomputed hash of receipt ${k - 1} · chain broken here` }]);
-      } else {
-        setLog((prev) => [...prev, { kind: "bad", text: `#${r.index} · untrusted, chain already broken` }]);
+    try {
+      for (let k = 0; k < chain.length; k++) {
+        const r = chain[k];
+        const recomputed = await receiptHash(r);
+        const integrity = recomputed === r.hash;
+        const link = k === 0 ? true : bytesToHex(chain[k].prev_hash) === (await receiptHash(chain[k - 1]));
+        await new Promise((res) => setTimeout(res, 90));
+        if (integrity && link && !broke) {
+          ok++;
+          setLog((prev) => [...prev, { kind: "ok", text: `#${r.index} · recompute ok · link ok` }]);
+        } else if (!broke) {
+          broke = true;
+          setLog((prev) => [...prev, { kind: "bad", text: `#${r.index} · MISMATCH, prev_hash ≠ recomputed hash of receipt ${k - 1} · chain broken here` }]);
+        } else {
+          setLog((prev) => [...prev, { kind: "bad", text: `#${r.index} · untrusted, chain already broken` }]);
+        }
       }
+      setLog((prev) => [
+        ...prev,
+        { kind: broke ? "bad" : "ok", text: broke ? "tamper in receipt i was detected at i+1, exactly as designed." : "no tamper detected, chain intact." },
+      ]);
+      void ok;
+    } catch {
+      setLog((prev) => [
+        ...prev,
+        { kind: "bad", text: "hash recompute failed, the verifier replay stopped early." },
+      ]);
+    } finally {
+      setBusy(false);
     }
-    setLog((prev) => [
-      ...prev,
-      { kind: broke ? "bad" : "ok", text: broke ? "tamper in receipt i was detected at i+1, exactly as designed." : "no tamper detected, chain intact." },
-    ]);
-    void ok;
-    setBusy(false);
   };
 
   const logClass = (k: LogLine["kind"]) => "logline " + (k === "ok" ? "ok" : k === "bad" ? "bad" : "diml");

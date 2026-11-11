@@ -13,7 +13,7 @@
 
 import { useState } from "react";
 import { JsonRpcProvider, KeyPairSigner, Account } from "near-api-js";
-import { AGENT, AUTHORIZED_TERMS, BREAK_IT, DEMO_ATTACKER, DEMO_LIVE_LABEL, DEMO_TOKEN, RPC_URL, VAULT_TEST } from "../lib/data";
+import { AUTHORIZED_TERMS, BREAK_IT, DEMO_ATTACKER, DEMO_LIVE_LABEL, DEMO_TOKEN, RPC_URL, VAULT_TEST } from "../lib/data";
 import { evaluateBreakItForm, type BreakItFormMode, type BreakItFormOut } from "../lib/breakItForm";
 import { useLive } from "../lib/live";
 import { getObligation, type Obligation } from "../lib/near";
@@ -103,8 +103,9 @@ export function BreakIt() {
        with no evidence, both keeping the authorized recipient and amount. */
     const sc = BREAK_IT[i];
     setFormMode(sc.key === "replay" ? "replay" : sc.key === "evidence" ? "evidence" : "terms");
-    setFormRecipient(sc.key === "recipient" ? DEMO_ATTACKER : AGENT);
-    setFormAmount(sc.key === "amount" ? "200" : "100");
+    setFormRecipient(sc.key === "recipient" ? DEMO_ATTACKER : AUTHORIZED_TERMS.recipient);
+    /* The inflated amount is twice the authorized amount, so it follows AUTHORIZED_TERMS. */
+    setFormAmount(sc.key === "amount" ? String(BigInt(AUTHORIZED_TERMS.amount) * 2n) : AUTHORIZED_TERMS.amount);
   };
 
   /* Free-form path: evaluate the proposed terms in the browser against

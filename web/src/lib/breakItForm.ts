@@ -51,13 +51,17 @@ export function evaluateBreakItForm(
   /* The attack buttons set the tampered dimension, not the fields:
      replay resubmits the consumed nonce, remove-evidence submits with
      no evidence, both keeping the authorized recipient and amount. */
+  /* The nonce comes from AUTHORIZED_TERMS. Receipt 12 is the historical receipt index for p10-demo-attack-001 from the demo run, fixed by that run, so it stays a literal. */
   if (mode === "replay") {
     const sc = scenario("replay");
     return {
       kind: "refused",
       code: "ERR_NONCE_ALREADY_CONSUMED",
       tx: sc ? sc.tx : null,
-      text: "Nonce 1002 was already consumed by receipt 12. Reusing it is a double-pay, so the vault refused before moving anything.",
+      text:
+        "Nonce " +
+        AUTHORIZED_TERMS.nonce +
+        " was already consumed by receipt 12. Reusing it is a double-pay, so the vault refused before moving anything.",
     };
   }
   if (mode === "evidence") {
@@ -65,8 +69,8 @@ export function evaluateBreakItForm(
       kind: "refused",
       code: "ERR_INVALID_STATE",
       tx: null,
-      text: "Settle was called before evidence was submitted, so the obligation was not READY and the vault refused before moving anything.",
-      note: "Verdict by terms: no executed refusal transaction exists for this case in the demo run, so no tx is shown.",
+      text: "Verdict by terms, not an executed settle: for a hypothetical CREATED or EVIDENCE_PENDING obligation, settle before evidence was submitted would leave the obligation not READY, so the vault would refuse with ERR_INVALID_STATE before moving anything. No settle was executed for this case in the demo run.",
+      note: "On the obligation shown here, p10-demo-attack-001, which is already PAID, a live settle returns ERR_NONCE_ALREADY_CONSUMED first, because the nonce check runs before the state check. The real executed ERR_INVALID_STATE refusal is on a different obligation, usecase-report-002, tx BRXXhezVxYvze3imNHkrShnS8ujUvsShy4f3GtgwpCgQ. No executed refusal transaction exists for this case in the demo run, so no tx is shown.",
     };
   }
   if (r !== AUTHORIZED_TERMS.recipient) {
