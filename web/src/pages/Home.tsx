@@ -5,7 +5,7 @@
    action, and the Footer. */
 
 import { useEffect } from "react";
-import { AGENT, AGENT2, MCP_FACTS, MCP_RUN, MCP_TOOLS, SETTLE_CODES, USECASE, VAULT_TEST } from "../lib/data";
+import { AGENT, AGENT2, MCP_DEMO_RUN, MCP_FACTS, MCP_RUN, MCP_TOOLS, SETTLE_CODES, USECASE, VAULT_TEST } from "../lib/data";
 import { useLive } from "../lib/live";
 import { fmtToken, trunc } from "../lib/near";
 import { useChainRead } from "../lib/useChainRead";
@@ -203,6 +203,13 @@ function McpSection() {
         . The MCP transcript is one of the deliverables carried through the use case, alongside the console run, the attack log, the receipt,
         and the proof page. Docs: <span className="mono text-xs text-ink">services/mcp/README.md</span> and{" "}
         <span className="mono text-xs text-ink">services/mcp/SECURITY.md</span>.
+      </p>
+      <p className="dim text-sm leading-relaxed max-w-3xl mt-3">
+        Try it with no funds at stake:{" "}
+        <span className="mono text-[13px]" style={{ color: "var(--accent-text)" }}>
+          {MCP_DEMO_RUN}
+        </span>{" "}
+        starts a local sandbox with five seeded obligations and serves the same six tools over stdio against it.
       </p>
     </section>
   );

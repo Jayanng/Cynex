@@ -668,7 +668,10 @@ async function liveRun(): Promise<number> {
   return 0;
 }
 
-if (import.meta.url === "file://" + process.argv[1]) {
+if (
+  import.meta.url === "file://" + process.argv[1] &&
+  process.argv[1].endsWith("console.js")
+) {
   liveRun()
     .then((code) => {
       process.exitCode = code;
