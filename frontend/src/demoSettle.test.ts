@@ -230,6 +230,32 @@ describe("parseDemoSettleResponse", () => {
     }
   });
 
+  test("a success body without a receipt index is an error, never a proven settle", () => {
+    const parsed = parseDemoSettleResponse({
+      success: true,
+      obligationId: "demo-live-002",
+      txHash: "ABCDEF1234",
+      recipient: "cynex-agent2.cynexmaster.testnet",
+      amount: "100",
+      policySpent: "5500",
+      remaining: 8,
+    });
+    expect(parsed.outcome).toBe("error");
+    if (parsed.outcome === "error") {
+      expect(parsed.error).toMatch(/receipt index/);
+    }
+  });
+
+  test("a success body with a non-numeric receipt index is an error", () => {
+    const parsed = parseDemoSettleResponse({
+      success: true,
+      obligationId: "demo-live-002",
+      receiptIndex: "31",
+      txHash: "ABCDEF1234",
+    });
+    expect(parsed.outcome).toBe("error");
+  });
+
   test("a used-up body is recognised by its code", () => {
     const parsed = parseDemoSettleResponse({
       success: false,

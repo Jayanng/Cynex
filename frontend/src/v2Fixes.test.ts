@@ -1,7 +1,9 @@
 /**
  * Tests for the v2 fix round (reviewers GLM, Argon, DeepSeek, skills check).
  * Pure logic only: the components render these helpers, and the helpers are
- * what Jest can cover without a DOM. Run: NODE_OPTIONS=--experimental-vm-modules
+ * what Jest can cover without a DOM. Tests named source check assert an
+ * invariant on component source, because this suite has no DOM; the rest
+ * drive pure functions and assert outputs. Run: NODE_OPTIONS=--experimental-vm-modules
  * npx jest --roots src ../services --runInBand, from frontend/.
  */
 import { readFileSync } from "node:fs";
@@ -103,13 +105,21 @@ describe("evaluateBreakItForm", () => {
     expect(out.kind).toBe("refused");
     expect(out.code).toBe("ERR_NONCE_ALREADY_CONSUMED");
     expect(out.tx).toBe("AwzQS7XsuGSYnPmvd5jFJzPDs3WDc2gRgSbW3smWq1Cs");
+    expect(out.text).toMatch(/Nonce 1002 was already consumed by receipt 12/);
+    expect(out.text).toContain(String(AUTHORIZED_TERMS.nonce));
   });
 
-  test("remove-evidence mode refuses before evidence, with no tx invented", () => {
+  test("remove-evidence mode is a verdict by terms, not an executed settle", () => {
     const out = evaluateBreakItForm(agent, "100", "evidence");
     expect(out.kind).toBe("refused");
     expect(out.code).toBe("ERR_INVALID_STATE");
     expect(out.tx).toBeNull();
+    expect(out.text).toMatch(/verdict by terms/i);
+    expect(out.text).toMatch(/hypothetical CREATED or EVIDENCE_PENDING/);
+    expect(out.text).not.toMatch(/Settle was called/);
+    expect(out.note).toMatch(/ERR_NONCE_ALREADY_CONSUMED/);
+    expect(out.note).toMatch(/BRXXhezVxYvze3imNHkrShnS8ujUvsShy4f3GtgwpCgQ/);
+    expect(out.note).toMatch(/usecase-report-002/);
     expect(out.note).toMatch(/no executed refusal transaction exists/i);
   });
 });
@@ -130,20 +140,32 @@ describe("normalizeTamperAmount", () => {
   });
 });
 
+/* Tamper recompute: the fixture is the real receipt 24, usecase-report-002,
+ * with every field read live from the test vault on 11 Nov 2026. The
+ * timestamp is a string so the u64 nanosecond value stays exact: JSON
+ * numbers would round it. The recomputed hash equals receipt 25 prev_hash
+ * on chain, so this test checks the frozen formula against the live record,
+ * not just against itself. */
 describe("tamper recompute", () => {
   const receipt = {
-    index: 2,
-    prev_hash: new Array(32).fill(0),
+    index: 24,
+    prev_hash: [180, 82, 185, 45, 183, 104, 94, 5, 63, 18, 183, 87, 4, 59, 22, 232, 214, 14, 55, 162, 161, 236, 78, 30, 173, 1, 58, 228, 42, 104, 241, 43],
     obligation_id: "usecase-report-002",
     recipient: "cynex-agent.cynexmaster.testnet",
     amount: "100",
     token_id: "usdc.fakes.testnet",
-    timestamp: "1794166153578831400",
-    tx_ref: "2VLL134m83x5fWZLr2qBbPkjJ7gL9YR7V7U9eur7qoVC",
+    timestamp: "1794147610217529108",
+    tx_ref: "",
   };
 
   test("the frozen formula is deterministic", async () => {
     await expect(receiptHash(receipt)).resolves.toBe(await receiptHash(receipt));
+  });
+
+  test("recomputing receipt 24 matches receipt 25 prev_hash on chain", async () => {
+    await expect(receiptHash(receipt)).resolves.toBe(
+      "2b62dd14c1617028119560b4cd09984b62a281a90ad4e14cddf2630895163b17",
+    );
   });
 
   test("changing the amount changes the recomputed hash", async () => {
@@ -169,7 +191,9 @@ describe("six-ways runner", () => {
     expect(ATTACKS.slice(3).every((a) => a.tx === null)).toBe(true);
   });
 
-  test("the runner shows the verdict immediately, with no delay", () => {
+  /* Source check, not a behaviour test: this suite runs in node with no DOM,
+     so the no-delay invariant is asserted on the runner source. */
+  test("source check: the runner shows the verdict immediately, with no delay", () => {
     const src = readWeb("src/pages/Attack.tsx");
     const start = src.indexOf("function AttackRunner()");
     const end = src.indexOf("/* ---------- playground", start);
@@ -219,7 +243,9 @@ describe("policySpentPct", () => {
     expect(policySpentPct("not-a-number", 10000)).toBeNull();
   });
 
-  test("both call sites use the helper, not Number(BigInt())", () => {
+  /* Source check, not a behaviour test: this suite runs in node with no DOM,
+     so the call-site invariant is asserted on the component source. */
+  test("source check: both call sites use the helper, not Number(BigInt())", () => {
     expect(readWeb("src/components/Strip.tsx")).toMatch(/policySpentPct\(p\.spent, p\.limit\)/);
     expect(readWeb("src/pages/Attack.tsx")).toMatch(/policySpentPct\(p\.spent, p\.limit\)/);
     expect(readWeb("src/components/Strip.tsx")).not.toMatch(/Number\(BigInt\(/);
@@ -246,7 +272,9 @@ describe("RefusalBreakdown rows", () => {
     ]);
   });
 
-  test("a row without a tx renders a No tx fallback, not a broken chip", () => {
+  /* Source check, not a behaviour test: this suite runs in node with no DOM,
+     so the fallback invariant is asserted on the component source. */
+  test("source check: a row without a tx renders a No tx fallback, not a broken chip", () => {
     const src = readWeb("src/components/shared.tsx");
     const start = src.indexOf("export function RefusalBreakdown");
     const end = src.indexOf("/* ---------- refusal card", start);
@@ -255,5 +283,42 @@ describe("RefusalBreakdown rows", () => {
     const fn = src.slice(start, end);
     expect(fn).toMatch(/a\.tx \? \(/);
     expect(fn).toMatch(/No tx/);
+  });
+});
+
+/* Final fix round, component invariants that need a DOM to test as behaviour,
+ * so they are asserted here as labelled source checks. */
+describe("source checks: final fix round", () => {
+  test("source check: TamperPanel doVerify cleans up in finally and reports a failed hash", () => {
+    const src = readWeb("src/components/TamperPanel.tsx");
+    const start = src.indexOf("const doVerify = async () => {");
+    const end = src.indexOf("const logClass", start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const fn = src.slice(start, end);
+    expect(fn).toMatch(/try \{/);
+    expect(fn).toMatch(/finally \{/);
+    expect(fn).toMatch(/setBusy\(false\)/);
+    expect(fn).toMatch(/hash recompute failed/);
+  });
+
+  test("source check: the header offset follows the measured height, with no hardcoded 64px fallback", () => {
+    const app = readWeb("src/App.tsx");
+    expect(app).not.toMatch(/useState\(64\)/);
+    expect(app).toMatch(/useState<number \| null>\(null\)/);
+    expect(app).toMatch(/useLayoutEffect/);
+    expect(app).toMatch(/ResizeObserver/);
+    expect(readWeb("src/components/LiveDemoButton.tsx")).not.toMatch(/top = 64/);
+  });
+
+  test("source check: the expected sentence is replaced by the proven line after success, with no receipt question mark", () => {
+    const src = readWeb("src/components/LiveDemoButton.tsx");
+    const start = src.indexOf("const expectedBox = () => {");
+    const end = src.indexOf("if (variant === \"nav\")", start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const fn = src.slice(start, end);
+    expect(fn).toMatch(/if \(!showUnprovenLine\(state\.status\) && result\)/);
+    expect(fn).not.toMatch(/receipt \{result\.receiptIndex \?\? "\?"\}/);
   });
 });
