@@ -7,7 +7,7 @@
    content column, so the page cannot scroll sideways. */
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { AGENT, CLI_COMMANDS, COMMIT, MASTER_TIP, CONSOLE_FACTS, CONSOLE_RUN, CP, DOC_COMMITS, MCP_FACTS, MCP_RUN, MCP_TOOLS, RPC_URL, SETTLE_CODES, TOKEN, VAULT_PROD, VAULT_TEST } from "../lib/data";
+import { AGENT, CLI_COMMANDS, MASTER_TIP, CONSOLE_FACTS, CONSOLE_RUN, CP, DOC_COMMITS, MCP_FACTS, MCP_RUN, MCP_TOOLS, RPC_URL, SETTLE_CODES, TEST_COUNTS, TOKEN, VAULT_PROD, VAULT_TEST } from "../lib/data";
 import { StripSection } from "../components/Strip";
 import { Badge, CmdBlock, CopyButton, HashChip, Icon } from "../components/ui";
 import { Footer } from "../components/shared";
@@ -234,10 +234,10 @@ const DOCS: DocSection[] = [
           </table>
         </div>
         <p className="dim leading-relaxed mb-3">
-          Last verified 2026-11-07 @ master <span className="mono text-[13px] text-ink">{COMMIT}</span> (docs/deployment.md last updated d9cdf40): both vaults ran
-          code hash <span className="mono text-xs text-ink">65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6</span>.{" "}
-          <b className="text-ink">This will have moved</b>, re-read it live (the status strip on Home/Demo does exactly that). Snapshot from docs/deployment.md, as of 2026-11-07: test policy p6-001 funded 10,000, spent 4,500, 22 receipts; agent balance 1,800; production policy
-          p5-prod-001 funded 1,000, spent 300.
+          Last verified 2026-11-11 @ master <span className="mono text-[13px] text-ink">{MASTER_TIP}</span> (docs/deployment.md last updated d9cdf40): both vaults ran
+          the same code hash, read live in the table above.{" "}
+          <b className="text-ink">This will have moved</b>, re-read it live (the status strip on Home/Demo does exactly that). Snapshot, 11 Nov 2026: test policy p6-001 funded 10,000, spent 5,400, 31 receipts; agent balance 2,700; production policy
+          p5-prod-001 funded 1,000, spent 500, 13 receipts.
         </p>
         <h3 className="text-ink text-[15px] mt-6 mb-3">How to verify (docs/deployment.md:19-38)</h3>
         <pre className="codeblock dimc">
@@ -292,7 +292,7 @@ node frontend/dist-test/cli/cynex.js verify-live cynex-vault.cynexmaster.testnet
           <P10Step t="3b · TEE settle" sub="VRF bound to the pending request" tx="3QV2aCRSiJ8ZYqLECCpK6ZkXpYE4AdxJzmyP3JTaDqWB" verdict="PAID · receipt #13 · agent 900 → 1000" />
         </div>
         <p className="dim text-[13px] mt-5">
-          Final state: test policy p6-001 spent 3,700, agent balance 1,000. Step 4, verification:{" "}
+          Final state at demo time (2026-11-08): test policy p6-001 spent 3,700, agent balance 1,000. Live state now is on the status strip. Step 4, verification:{" "}
           <span className="mono text-[13px]" style={{ color: "var(--accent-text)" }}>
             node frontend/dist-test/cli/cynex.js verify-live cynex-testvault.cynexmaster.testnet
           </span>
@@ -462,7 +462,7 @@ neutral: no contract, or first observation, not a penalty`}
           <div className="flex flex-col">
             {[
               ["Typecheck (web build, tsc -b)", "clean"],
-              ["Jest", "20 suites passed, 1 failed, 1 skipped · 393 tests passed, 1 failed, 3 skipped, 397 total"],
+              ["Jest", TEST_COUNTS],
               ["Conformance", "6 / 6"],
             ].map(([k, v], i, arr) => (
               <div

@@ -137,7 +137,7 @@ vault has 31 receipts. Production vault policy p5-prod-001: funded
 1000, spent 500, reserved 0, frozen false. The production vault has
 13 receipts. Production policy-001:
 funded 1,000,000,000, spent 975,001,000, reserved 0, frozen false.
-The agent's token balance is 2600, and the second agent
+The agent's token balance is 2700, and the second agent
 (`cynex-agent2.cynexmaster.testnet`) holds 100, paid from the test
 vault by the use-case settlement `usecase-report-003`. The token is `usdc.fakes.testnet`
 (USDC.e, 6 decimals). The full ledger is in `docs/ledger.md`.
@@ -476,7 +476,7 @@ RUSTUP_TOOLCHAIN=1.93.0 cargo near build non-reproducible-wasm
 
 3. Frontend, from `frontend/`. Install dependencies first; a fresh
 checkout has no `node_modules`. See a clean install, a clean
-typecheck, and 19 suites passed, 1 skipped, 369 tests passed, 1 skipped, 370 total, the gated
+typecheck, and 23 suites passed, 1 skipped, 441 tests passed, 3 skipped, 444 total, the gated
 near-sandbox suite skipped:
 
 ```sh
