@@ -32,8 +32,11 @@
  *
  * Timeout: a settle takes a few seconds and the function allows 30
  * seconds (exported config below). The settle call races a 20 second
- * soft timeout and the confirmation poll that follows gets at most
- * 5 seconds, so the whole call stays inside the 30 second budget.
+ * soft timeout, the confirmation poll that follows gets at most
+ * 5 seconds, and the post-confirmation reads get at most 5 seconds.
+ * Every confirmation read races the remaining window, so a hung
+ * RPC cannot push the call past the 30 second budget: the handler
+ * always answers, even if the answer is SETTLE_UNCONFIRMED.
  * A returned transaction outcome proves the vault accepted the settle
  * call, not that the tokens moved: the NEP-141 transfer and its
  * callback run asynchronously, and a failed transfer rolls the
@@ -60,6 +63,7 @@ const SETTLE_GAS = 100000000000000n;
 const SETTLE_SOFT_TIMEOUT_MS = 20000;
 const CONFIRM_TIMEOUT_MS = 5000;
 const CONFIRM_POLL_MS = 1000;
+const CONFIRM_READS_TIMEOUT_MS = 5000;
 const RECEIPT_SCAN_BACK = 10;
 
 const DEMO_OBLIGATION_IDS = [
@@ -445,6 +449,7 @@ export interface DemoHandlerDeps {
   settleTimeoutMs?: number;
   confirmTimeoutMs?: number;
   confirmIntervalMs?: number;
+  confirmReadsTimeoutMs?: number;
 }
 
 const sharedRateLimitStore = createRateLimitStore();
@@ -461,6 +466,28 @@ async function findReady(chain: DemoChain): Promise<ObligationRow[]> {
   return ready;
 }
 
+/* Race a promise against a timeout. A hang resolves null, a
+ * rejection resolves null too: the caller treats null as "not
+ * established", never as a fact. The underlying promise keeps
+ * running in the background; there is no abort, only a bounded
+ * wait. */
+async function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), ms);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } catch {
+    return null;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 /* Poll get_obligation until the row reads PAID or the window ends.
  * A settled call resolving does not prove the tokens moved: the
  * NEP-141 transfer and its callback run after the vault accepts the
@@ -475,10 +502,23 @@ async function waitForPaid(
 ): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    const row = await chain.getObligation(obligationId).catch(() => null);
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) return false;
+    // Each poll races the remaining window (at most 4 seconds a
+    // call), so a hung RPC cannot hold the handler past the
+    // deadline: the poll resolves null and the loop gives up.
+    const row = await withTimeout(
+      chain.getObligation(obligationId).catch(() => null),
+      Math.min(remainingMs, 4000),
+    );
     if (row !== null && row.state === "PAID") return true;
     if (Date.now() >= deadline) return false;
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    await new Promise((resolve) =>
+      setTimeout(
+        resolve,
+        Math.min(intervalMs, Math.max(0, deadline - Date.now())),
+      ),
+    );
   }
 }
 
@@ -706,16 +746,29 @@ export async function handleDemoSettle(
   let receiptIndex: number | null = null;
   let policySpent: string | null = null;
   let remaining: number | null = null;
-  try {
-    receiptIndex = await findReceiptIndex(chain, target.obligation_id);
-    const policy = await chain.getPolicy(DEMO_POLICY_ID);
-    policySpent = String(policy.spent);
-    const stillReady = await findReady(chain);
-    remaining = stillReady.length;
-  } catch {
-    receiptIndex = null;
-    policySpent = null;
-    remaining = null;
+  // The reads race a 5 second cap, so a hung RPC cannot hold the
+  // handler past the function budget. On a timeout the settle is
+  // still confirmed (the obligation reads PAID above): the response
+  // reports it with the tx hash and nulls, not an error.
+  const readsTimeoutMs =
+    deps.confirmReadsTimeoutMs ?? CONFIRM_READS_TIMEOUT_MS;
+  const reads = await withTimeout(
+    (async () => {
+      const found = await findReceiptIndex(chain, target.obligation_id);
+      const policy = await chain.getPolicy(DEMO_POLICY_ID);
+      const stillReady = await findReady(chain);
+      return {
+        receiptIndex: found,
+        policySpent: String(policy.spent),
+        remaining: stillReady.length,
+      };
+    })(),
+    readsTimeoutMs,
+  );
+  if (reads !== null) {
+    receiptIndex = reads.receiptIndex;
+    policySpent = reads.policySpent;
+    remaining = reads.remaining;
   }
   if (remaining === null) remaining = ready.length - 1;
 

@@ -88,6 +88,8 @@ interface StubOptions {
   settleError?: Error | null;
   settleHangs?: boolean;
   neverPaid?: boolean;
+  obligationHangsAfterSettle?: boolean;
+  hangReads?: boolean;
   keyList?: unknown;
   keyListError?: Error | null;
 }
@@ -105,6 +107,9 @@ function stubChain(opts: StubOptions = {}): {
       return opts.keyList ?? { keys: [] };
     },
     getObligation: async (id: string): Promise<ObligationRow | null> => {
+      if (settled.has(id) && opts.obligationHangsAfterSettle) {
+        return new Promise<ObligationRow | null>(() => undefined);
+      }
       if (settled.has(id)) {
         return {
           obligation_id: id,
@@ -128,9 +133,22 @@ function stubChain(opts: StubOptions = {}): {
         state: "PAID",
       };
     },
-    getPolicy: async () => ({ spent: 5500 }),
-    getReceiptCount: async () => 32,
+    getPolicy: async () => {
+      if (opts.hangReads) {
+        return new Promise<{ spent: number | string }>(() => undefined);
+      }
+      return { spent: 5500 };
+    },
+    getReceiptCount: async () => {
+      if (opts.hangReads) return new Promise<number>(() => undefined);
+      return 32;
+    },
     getReceipt: async (index: number) => {
+      if (opts.hangReads) {
+        return new Promise<{ obligation_id: string } | null>(
+          () => undefined,
+        );
+      }
       if (index === 31) return { obligation_id: "demo-live-002" };
       return null;
     },
@@ -579,5 +597,69 @@ describe("handleDemoSettle", () => {
     expect(body.success).toBe(false);
     expect(body.code).toBe("SETTLE_UNCONFIRMED");
     expect(body.txHash).toBeNull();
+  });
+
+  test("a confirmation read that never resolves returns SETTLE_UNCONFIRMED", async () => {
+    const { res, sent } = mockRes();
+    const key = freshKey();
+    const { chain, settleCalls } = stubChain({
+      keyList: keyListFor(key.publicKey),
+      obligationHangsAfterSettle: true,
+    });
+    await handleDemoSettle(postReq("203.0.113.21"), res, {
+      env: { CYNEX_DEMO_KEY: key.secret },
+      createChain: () => chain,
+      confirmTimeoutMs: 50,
+      confirmIntervalMs: 10,
+    });
+    expect(settleCalls).toHaveLength(1);
+    const body = sent.body as {
+      success: boolean;
+      code?: string;
+      obligationId: string;
+    };
+    expect(body.success).toBe(false);
+    expect(body.code).toBe("SETTLE_UNCONFIRMED");
+    expect(body.obligationId).toBe("demo-live-002");
+  });
+
+  test("post-confirmation reads that never resolve still report the confirmed success with nulls", async () => {
+    const { res, sent } = mockRes();
+    const key = freshKey();
+    const { chain, settleCalls } = stubChain({
+      readyIds: [
+        "demo-live-002",
+        "demo-live-003",
+        "demo-live-004",
+        "demo-live-005",
+        "demo-live-006",
+        "demo-live-007",
+        "demo-live-008",
+        "demo-live-009",
+        "demo-live-010",
+      ],
+      keyList: keyListFor(key.publicKey),
+      hangReads: true,
+    });
+    await handleDemoSettle(postReq("203.0.113.22"), res, {
+      env: { CYNEX_DEMO_KEY: key.secret },
+      createChain: () => chain,
+      confirmTimeoutMs: 50,
+      confirmIntervalMs: 10,
+      confirmReadsTimeoutMs: 10,
+    });
+    expect(settleCalls).toHaveLength(1);
+    const body = sent.body as {
+      success: boolean;
+      obligationId: string;
+      receiptIndex: number | null;
+      policySpent: string | null;
+      remaining: number;
+    };
+    expect(body.success).toBe(true);
+    expect(body.obligationId).toBe("demo-live-002");
+    expect(body.receiptIndex).toBeNull();
+    expect(body.policySpent).toBeNull();
+    expect(body.remaining).toBe(8);
   });
 });
