@@ -91,6 +91,12 @@ const GENESIS_ACCOUNT = "test.near";
 // unless it hashes to exactly this.
 export const EXPECTED_VAULT_CODE_HASH = "65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6";
 
+// Code hash of the test token wasm. Same rule as the vault: the
+// suite refuses to run unless the token it is about to deploy
+// hashes to exactly this, so a stale or tampered token bundle
+// fails fast instead of deploying silently.
+export const EXPECTED_FT_CODE_HASH = "DVzJjN5Q4niR5vW4iqE2j5z1a3zBgrEb2huiVcFkBu3f";
+
 const POLICY_ID = "sandbox-policy-001";
 const POLICY_LIMIT = 10_000n;
 const OBLIGATION_AMOUNT = "100";
@@ -110,6 +116,30 @@ function sleepMs(ms: number): Promise<void> {
 }
 
 function repoRoot(): string {
+  // Walk up from this file until a directory looks like the repo
+  // root (it holds both services/ and contract/), so the lookup
+  // works from the source tree, from the tsc-built demo under
+  // frontend/dist-test/, and from anywhere else in the checkout.
+  // The old two-levels-up form only worked from the source layout:
+  // from the built demo it resolved to frontend/dist-test, and the
+  // contract/target candidate and the buildWasm crate directory
+  // pointed at a directory that does not exist. In the published
+  // npm package there is no repo root, so fall back to the old form
+  // and let the bundled wasm lookup carry the demo instead.
+  let dir = dirname(fileURLToPath(import.meta.url));
+  for (let depth = 0; depth < 8; depth++) {
+    if (
+      existsSync(join(dir, "services", "mcp", "wasms")) &&
+      existsSync(join(dir, "contract"))
+    ) {
+      return dir;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) {
+      break;
+    }
+    dir = parent;
+  }
   return join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 }
 
@@ -479,12 +509,18 @@ function wasmTargetDir(envName: string, existing: string, fresh: string): string
 
 /**
  * A wasm bundled with the MCP package (services/mcp/wasms/) or next to
- * the bundled server (dist/../wasms/). Checked before the build
- * directories, so a packaged demo runs with no Rust and no cargo-near.
+ * the bundled server (dist/../wasms/), or in the source tree when the
+ * demo runs from the tsc build under frontend/dist-test/. Checked
+ * before the build directories, so a packaged demo runs with no Rust
+ * and no cargo-near.
  */
 function bundledWasmPath(name: string): string | null {
   const here = dirname(fileURLToPath(import.meta.url));
-  for (const candidate of [join(here, "wasms", name), join(here, "..", "wasms", name)]) {
+  for (const candidate of [
+    join(here, "wasms", name),
+    join(here, "..", "wasms", name),
+    join(repoRoot(), "services", "mcp", "wasms", name),
+  ]) {
     if (existsSync(candidate)) {
       return candidate;
     }
@@ -858,6 +894,18 @@ export async function provisionSandbox(
       );
     }
     check("vault wasm", vaultWasmPath + ", code hash " + vaultCodeHash);
+    // Same rule for the test token: the token wasm must hash to the
+    // pinned value before anything is deployed, so a stale or
+    // tampered token bundle fails fast like a bad vault wasm does.
+    const ftCodeHash = codeHashOfWasm(ftWasm);
+    if (ftCodeHash !== EXPECTED_FT_CODE_HASH) {
+      throw new Error(
+        "local FT token wasm hash " +
+          ftCodeHash +
+          " is not the expected hash " +
+          EXPECTED_FT_CODE_HASH,
+      );
+    }
 
     const provider = new JsonRpcProvider({ url: sandbox.rpcUrl });
     const masterKey = KeyPair.fromString(sandbox.masterSecretKey as never);
@@ -923,7 +971,16 @@ export async function provisionSandbox(
         "token owner balance is " + ownerTokenBalance.toString() + ", expected " + FT_TOTAL_SUPPLY,
       );
     }
-    check("token deployed", tokenId + " total supply " + FT_TOTAL_SUPPLY + ", owner holds it all");
+    check(
+      "token deployed",
+      tokenId +
+        " total supply " +
+        FT_TOTAL_SUPPLY +
+        ", owner holds it all, wasm " +
+        ftWasmPath +
+        ", code hash " +
+        ftCodeHash,
+    );
 
     for (const id of [vaultId, recipientId, secondRecipientId]) {
       await owner.account.callFunctionRaw({
@@ -1091,7 +1148,9 @@ export async function provisionSandbox(
       obligationNonce += 1;
     }
     check(
-      "obligations READY",
+      createdSpecs.length === 0
+        ? "obligations READY"
+        : "obligations READY (" + createdSpecs.length + " CREATED)",
       String(bootstrapSpecs.length + readySpecs.length) +
         " PREIMAGE obligations READY on " +
         POLICY_ID +
@@ -1147,6 +1206,7 @@ export async function provisionSandbox(
     );
     const keyFile = join(sandbox.homeDir, "agent-key.txt");
     writeFileSync(keyFile, agentKeyPair.toString() + "\n", "utf-8");
+    chmodSync(keyFile, 0o600);
 
     const agentSigner = accountFor(provider, agentId, agentKeyPair);
     async function directSettle(obligationId: string, recipient: string): Promise<string> {
@@ -1194,12 +1254,21 @@ export async function provisionSandbox(
             JSON.stringify(receiptsAfterBootstrap),
         );
       }
+      let receiptHolders: string;
+      if (bootstrapIds.length === 1) {
+        receiptHolders = "the recipient holds a prior receipt";
+      } else if (bootstrapIds.length === 2) {
+        receiptHolders = "both recipients hold a prior receipt";
+      } else {
+        receiptHolders = bootstrapIds.length + " recipients hold a prior receipt";
+      }
       check(
         "reputation bootstrap",
         bootstrapIds.length +
           " direct settles PAID, receipts 0 to " +
           (bootstrapIds.length - 1) +
-          ", both recipients hold a prior receipt",
+          ", " +
+          receiptHolders,
       );
     }
     const provisioned: ProvisionedSandbox = {

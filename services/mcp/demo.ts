@@ -12,8 +12,8 @@
  * The five seeded obligations, all amount 100 on sandbox-policy-001
  * with PREIMAGE evidence for the bytes "cynex-sandbox-report-v1":
  *
- *   demo-bootstrap-001  recipient.test.near   READY, settled in provisioning (receipt 0)
- *   demo-bootstrap-002  recipient2.test.near  READY, settled in provisioning (receipt 1)
+ *   demo-bootstrap-001  recipient.test.near   PAID, settled in provisioning (receipt 0)
+ *   demo-bootstrap-002  recipient2.test.near  PAID, settled in provisioning (receipt 1)
  *   demo-ready-001      recipient.test.near   READY, for the judge to settle
  *   demo-ready-002      recipient2.test.near  READY, for the changed-recipient attempt
  *   demo-created-001    recipient.test.near   CREATED, no evidence submitted
@@ -157,7 +157,7 @@ export interface DemoSummaryInfo {
 export function claudeCodeConfig(demoPath: string): string {
   // When the demo runs from its own entry point (demo.js), spawning
   // that file starts the demo. When it runs from the published
-  // bundle (cynex-mcp.cjs), the same file without --sandbox would
+  // bundle (cynex-mcp.mjs), the same file without --sandbox would
   // start the normal server instead, so the snippet carries the flag.
   const args = demoPath.endsWith("demo.js") ? [demoPath] : [demoPath, "--sandbox"];
   return JSON.stringify(
@@ -239,6 +239,29 @@ export async function runDemo(): Promise<number> {
     resolveStopped = resolve;
   });
   let shuttingDown = false;
+  // One stop for the whole run, however many paths ask for it: the
+  // signal handler, the provisioning return, and the serve finally
+  // below can all fire, and a second stop must be a no-op, not a
+  // second kill of an already removed sandbox home. It is only ever
+  // invoked once a sandbox exists, so a stop requested before
+  // provisioning finishes must wait for provisioning to produce
+  // one, which the shutting-down branch below does.
+  let stopSandboxPromise: Promise<void> | undefined;
+  const stopSandboxOnce = async (): Promise<void> => {
+    if (stopSandboxPromise !== undefined) {
+      return stopSandboxPromise;
+    }
+    stopSandboxPromise = (async () => {
+      if (provisioned !== undefined) {
+        try {
+          await provisioned.stop();
+        } catch {
+          // stopping must not hide the shutdown
+        }
+      }
+    })();
+    return stopSandboxPromise;
+  };
   const shutdown = async (): Promise<void> => {
     if (shuttingDown) {
       return;
@@ -252,11 +275,7 @@ export async function runDemo(): Promise<number> {
       }
     }
     if (provisioned !== undefined) {
-      try {
-        await provisioned.stop();
-      } catch {
-        // stopping must not hide the shutdown
-      }
+      await stopSandboxOnce();
     }
     resolveStopped();
   };
@@ -275,8 +294,11 @@ export async function runDemo(): Promise<number> {
   console.log = (...args: unknown[]): void => {
     console.error(...args);
   };
+  // The seed specs are built once and reused for the summary below,
+  // so provisioning and the summary can never disagree about what
+  // was seeded.
+  const seeds = demoSeedSpecs();
   try {
-    const seeds = demoSeedSpecs();
     provisioned = await provisionSandbox({
       bootstrap: seeds.bootstrap,
       ready: seeds.ready,
@@ -291,7 +313,15 @@ export async function runDemo(): Promise<number> {
   } finally {
     console.log = originalLog;
   }
-  if (shuttingDown || provisioned === undefined) {
+  if (provisioned === undefined) {
+    return 0;
+  }
+  if (shuttingDown) {
+    // A signal arrived during provisioning: shutdown() ran while
+    // there was nothing to stop, so stop what provisioning just
+    // produced before returning, or the sandbox node, its home
+    // directory, and the agent key file leak behind a clean exit.
+    await stopSandboxOnce();
     return 0;
   }
 
@@ -301,14 +331,11 @@ export async function runDemo(): Promise<number> {
     ctx = await buildContext();
   } catch (error) {
     if (shuttingDown) {
+      await stopSandboxOnce();
       return 0;
     }
     log("refusing to start: " + (error instanceof Error ? error.message : String(error)));
-    try {
-      await provisioned.stop();
-    } catch {
-      // stopping must not hide the startup failure
-    }
+    await stopSandboxOnce();
     return 1;
   }
   server = buildServer(ctx);
@@ -317,41 +344,54 @@ export async function runDemo(): Promise<number> {
     void shutdown();
   };
 
-  // Read the seeded obligations live, so the summary states what the
-  // chain actually holds, not what provisioning intended.
-  const summaries: DemoObligationSummary[] = [];
-  for (const spec of [
-    ...demoSeedSpecs().bootstrap,
-    ...demoSeedSpecs().ready,
-    ...demoSeedSpecs().created,
-  ]) {
-    const row = await provisioned.readObligation(spec.id);
-    summaries.push({
-      id: spec.id,
-      recipient: spec.recipient,
-      amount: DEMO_OBLIGATION_AMOUNT,
-      state: String(row.state ?? "unknown"),
-    });
+  try {
+    // Read the seeded obligations live, so the summary states what
+    // the chain actually holds, not what provisioning intended:
+    // state, recipient, and amount all come from the row, with the
+    // seed spec only as a fallback when the row lacks a field.
+    const summaries: DemoObligationSummary[] = [];
+    for (const spec of [...seeds.bootstrap, ...seeds.ready, ...seeds.created]) {
+      const row = await provisioned.readObligation(spec.id);
+      summaries.push({
+        id: spec.id,
+        recipient: String(row.recipient ?? spec.recipient),
+        amount: String(row.amount ?? DEMO_OBLIGATION_AMOUNT),
+        state: String(row.state ?? "unknown"),
+      });
+    }
+    const policy = await provisioned.readPolicy();
+    console.error(
+      buildReadySummary({
+        vaultId: provisioned.vaultId,
+        rpcUrl: provisioned.sandbox.rpcUrl,
+        chainId: provisioned.sandbox.chainId,
+        policyId: provisioned.policyId,
+        policyLimit: String(provisioned.policyLimit),
+        policyFunded: String(policy.funded ?? "unknown"),
+        policySpent: String(policy.spent ?? "unknown"),
+        agentPublicKey: ctx.agentPublicKey,
+        obligations: summaries,
+        demoPath: fileURLToPath(import.meta.url),
+      }),
+    );
+    await server.connect(transport);
+    log("serving six tools over stdio on sandbox vault " + provisioned.vaultId);
+    await stopped;
+    return 0;
+  } catch (error) {
+    // A shutdown that already happened is a clean exit, not a
+    // failure: the signal handler stopped the sandbox, the read
+    // only failed because the chain went away under it.
+    if (shuttingDown) {
+      return 0;
+    }
+    throw error;
+  } finally {
+    // A throw in the summary reads or in server.connect used to
+    // leak the sandbox: the error reached main() and returned 1
+    // with the node still running. Stop it on every way out.
+    await stopSandboxOnce();
   }
-  const policy = await provisioned.readPolicy();
-  console.error(
-    buildReadySummary({
-      vaultId: provisioned.vaultId,
-      rpcUrl: provisioned.sandbox.rpcUrl,
-      chainId: provisioned.sandbox.chainId,
-      policyId: provisioned.policyId,
-      policyLimit: String(provisioned.policyLimit),
-      policyFunded: String(policy.funded ?? "unknown"),
-      policySpent: String(policy.spent ?? "unknown"),
-      agentPublicKey: ctx.agentPublicKey,
-      obligations: summaries,
-      demoPath: fileURLToPath(import.meta.url),
-    }),
-  );
-  await server.connect(transport);
-  log("serving six tools over stdio on sandbox vault " + provisioned.vaultId);
-  await stopped;
-  return 0;
 }
 
 async function main(): Promise<number> {

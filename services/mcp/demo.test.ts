@@ -2,10 +2,10 @@
  * Tests for the demo mode (services/mcp/demo.ts) and the cynex-mcp
  * command line (services/mcp/cli.ts).
  *
- * The live test is gated by CYNEX_SANDBOX_TESTS=1, like
- * sandbox.test.ts: it starts a real chain and spawns the built demo
- * over stdio. The default run skips it with a note instead of
- * failing on a machine that never asked for it. Run it with:
+ * The live tests are gated by CYNEX_SANDBOX_TESTS=1, like
+ * sandbox.test.ts: they start a real chain and spawn the built demo
+ * over stdio. The default run skips them with a note instead of
+ * failing on a machine that never asked for it. Run them with:
  *
  *   npm run mcp:build && CYNEX_SANDBOX_TESTS=1 npm run jest:sandbox
  *
@@ -16,7 +16,9 @@
  * key is 44, so the check refuses any ed25519 value of 50 characters
  * or more.
  */
-import { existsSync } from "node:fs";
+import { spawn, type ChildProcess } from "node:child_process";
+import { existsSync, readdirSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -51,6 +53,11 @@ const SIX_TOOLS = [
   "cynex_request_settlement",
 ];
 
+const VAULT_ID = "vault.test.near";
+const TOKEN_ID = "token.test.near";
+const AGENT_ID = "agent.test.near";
+const POLICY_ID = "sandbox-policy-001";
+
 function fakeProvisioned(): ProvisionedSandbox {
   return {
     vaultId: "vault.test.near",
@@ -84,6 +91,182 @@ function fakeSummaryInfo(): DemoSummaryInfo {
     ],
     demoPath: "/data/workspace/Cynex-mcp-demo/frontend/dist-test/services/mcp/demo.js",
   };
+}
+
+/**
+ * Read the sandbox chain directly over raw JSON-RPC, the way the
+ * proof script does, so the live test verifies the tool answers
+ * against the chain instead of trusting them.
+ */
+async function rpcQuery(rpcUrl: string, params: Record<string, unknown>): Promise<unknown> {
+  const res = await fetch(rpcUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: "cynex-demo-test", method: "query", params }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  const body = (await res.json()) as { error?: unknown; result?: unknown };
+  if (body.error !== undefined) {
+    throw new Error("RPC query failed: " + JSON.stringify(body.error));
+  }
+  return body.result;
+}
+
+async function rpcCallFunction(
+  rpcUrl: string,
+  contractId: string,
+  methodName: string,
+  args: Record<string, unknown>,
+): Promise<unknown> {
+  const envelope = (await rpcQuery(rpcUrl, {
+    request_type: "call_function",
+    account_id: contractId,
+    method_name: methodName,
+    args_base64: Buffer.from(JSON.stringify(args), "utf-8").toString("base64"),
+    finality: "final",
+  })) as { result?: number[] };
+  // The query envelope carries the return bytes in its own result
+  // field, alongside the block hash and height.
+  return JSON.parse(Buffer.from(envelope.result ?? []).toString("utf-8")) as unknown;
+}
+
+async function tokenBalance(rpcUrl: string, accountId: string): Promise<bigint> {
+  const raw = await rpcCallFunction(rpcUrl, TOKEN_ID, "ft_balance_of", {
+    account_id: accountId,
+  });
+  return BigInt(String(raw));
+}
+
+async function readObligationRpc(
+  rpcUrl: string,
+  obligationId: string,
+): Promise<Record<string, unknown>> {
+  return (await rpcCallFunction(rpcUrl, VAULT_ID, "get_obligation", {
+    obligation_id: obligationId,
+  })) as Record<string, unknown>;
+}
+
+async function readPolicyRpc(rpcUrl: string): Promise<Record<string, unknown>> {
+  return (await rpcCallFunction(rpcUrl, VAULT_ID, "get_policy", {
+    policy_id: POLICY_ID,
+  })) as Record<string, unknown>;
+}
+
+async function agentNonce(rpcUrl: string, publicKey: string): Promise<bigint> {
+  const result = (await rpcQuery(rpcUrl, {
+    request_type: "view_access_key",
+    account_id: AGENT_ID,
+    public_key: publicKey,
+    finality: "final",
+  })) as { nonce?: unknown };
+  if (typeof result.nonce !== "number" || !Number.isSafeInteger(result.nonce)) {
+    throw new Error("agent nonce is not a readable number: " + JSON.stringify(result.nonce));
+  }
+  return BigInt(result.nonce);
+}
+
+function parseRpcUrl(stderr: string): string {
+  const match = /on (http:\/\/127\.0\.0\.1:\d+)/.exec(stderr);
+  if (match === null) {
+    throw new Error("demo stderr did not print a sandbox RPC URL");
+  }
+  return match[1];
+}
+
+function parseAgentPublicKey(stderr: string): string {
+  const match = /Agent public key (ed25519:[1-9A-HJ-NP-Za-km-z]+)/.exec(stderr);
+  if (match === null) {
+    throw new Error("demo stderr did not print the agent public key");
+  }
+  return match[1];
+}
+
+/**
+ * Where startSandbox puts its homes, mirroring scratchBase() in the
+ * harness: CYNEX_BUILD_TMP when set, the shared build tmp dir on
+ * this machine when it exists, the OS temp dir otherwise.
+ */
+function sandboxScratchBase(): string {
+  const fromEnv = (process.env.CYNEX_BUILD_TMP ?? "").trim();
+  if (fromEnv !== "" && existsSync(fromEnv)) {
+    return fromEnv;
+  }
+  if (existsSync("/data/workspace/cynex-build-tmp")) {
+    return "/data/workspace/cynex-build-tmp";
+  }
+  return tmpdir();
+}
+
+function sandboxHomes(): string[] {
+  return readdirSync(sandboxScratchBase()).filter((name) =>
+    name.startsWith("cynex-sandbox-home-"),
+  );
+}
+
+async function rpcIsDead(rpcUrl: string): Promise<boolean> {
+  try {
+    await fetch(rpcUrl + "/status", { signal: AbortSignal.timeout(3_000) });
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+async function waitForTest<T>(
+  label: string,
+  read: () => Promise<T>,
+  accept: (value: T) => boolean,
+  timeoutMs = 60_000,
+): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  let last: T | undefined;
+  while (Date.now() < deadline) {
+    last = await read();
+    if (accept(last)) {
+      return last;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error(
+    "timed out waiting for " + label + ": last value " + JSON.stringify(last),
+  );
+}
+
+function builtDemoPath(): string {
+  const demoPath = join(
+    dirname(fileURLToPath(import.meta.url)),
+    "..",
+    "..",
+    "frontend",
+    "dist-test",
+    "services",
+    "mcp",
+    "demo.js",
+  );
+  if (!existsSync(demoPath)) {
+    throw new Error(
+      "built demo not found at " + demoPath + ", run npm run mcp:build from frontend/ first",
+    );
+  }
+  return demoPath;
+}
+
+function childEnv(): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined) {
+      env[key] = value;
+    }
+  }
+  return env;
+}
+
+function timeoutRace<T>(label: string, ms: number): Promise<T> {
+  return new Promise<T>((resolve) => {
+    // Unref so a resolved race does not keep Jest alive for 30s.
+    const timer = setTimeout(() => resolve(label as T), ms);
+    timer.unref();
+  });
 }
 
 describe("demoSeedSpecs", () => {
@@ -138,7 +321,7 @@ describe("buildReadySummary", () => {
   });
 
   test("the bundled demo carries --sandbox in the config snippet", () => {
-    expect(claudeCodeConfig("/usr/local/lib/cynex-mcp/dist/cynex-mcp.cjs")).toContain(
+    expect(claudeCodeConfig("/usr/local/lib/cynex-mcp/dist/cynex-mcp.mjs")).toContain(
       "--sandbox",
     );
     expect(claudeCodeConfig("/data/workspace/Cynex-mcp-demo/frontend/dist-test/services/mcp/demo.js")).not.toContain(
@@ -192,6 +375,16 @@ describe("parseCliArgs", () => {
     expect(() => parseCliArgs(["--bogus"])).toThrow(/unknown arguments/);
     expect(() => parseCliArgs(["--sandbox", "--bogus"])).toThrow(/unknown arguments/);
   });
+
+  test("--help combined with anything else is an error, not usage", () => {
+    expect(() => parseCliArgs(["--bogus", "--help"])).toThrow(/unknown arguments/);
+    expect(() => parseCliArgs(["--sandbox", "--help"])).toThrow(/unknown arguments/);
+    expect(() => parseCliArgs(["--help", "-h"])).toThrow(/unknown arguments/);
+  });
+
+  test("a repeated flag is an error", () => {
+    expect(() => parseCliArgs(["--sandbox", "--sandbox"])).toThrow(/unknown arguments/);
+  });
 });
 
 const SANDBOX_TESTS = process.env.CYNEX_SANDBOX_TESTS === "1";
@@ -201,34 +394,15 @@ describe("demo over stdio", () => {
   // reports 1 skipped, so the default run never implies demo
   // coverage that did not execute.
   (SANDBOX_TESTS ? test : test.skip)(
-    "spawns the built demo, lists six tools, and seeds the five obligations",
+    "spawns the built demo, drives the three judge tries, and cleans up on SIGTERM",
     async () => {
-      const demoPath = join(
-        dirname(fileURLToPath(import.meta.url)),
-        "..",
-        "..",
-        "frontend",
-        "dist-test",
-        "services",
-        "mcp",
-        "demo.js",
-      );
-      if (!existsSync(demoPath)) {
-        throw new Error(
-          "built demo not found at " + demoPath + ", run npm run mcp:build from frontend/ first",
-        );
-      }
-      const env: Record<string, string> = {};
-      for (const [key, value] of Object.entries(process.env)) {
-        if (value !== undefined) {
-          env[key] = value;
-        }
-      }
+      const demoPath = builtDemoPath();
+      const homesBefore = new Set(sandboxHomes());
       let stderr = "";
       const transport = new StdioClientTransport({
         command: "node",
         args: [demoPath],
-        env,
+        env: childEnv(),
         stderr: "pipe",
       });
       transport.stderr?.on("data", (chunk: Buffer) => {
@@ -240,7 +414,10 @@ describe("demo over stdio", () => {
       );
       // The transport clears its child handle before calling
       // onclose, so the exit code is captured from the child
-      // process directly, right after connect.
+      // process directly, right after connect. _process is a
+      // private field of @modelcontextprotocol/sdk, verified
+      // against 1.32.2: a future SDK bump that renames it breaks
+      // this capture, not the demo.
       let resolveClosed: (code: number | null) => void = () => {};
       const closed = new Promise<number | null>((resolve) => {
         resolveClosed = resolve;
@@ -265,19 +442,22 @@ describe("demo over stdio", () => {
         child?.once("close", (code: number | null) => resolveClosed(code));
         const tools = await client.listTools();
         expect(tools.tools.map((tool) => tool.name).sort()).toEqual([...SIX_TOOLS].sort());
-        for (const [id, state] of [
-          [DEMO_BOOTSTRAP_001, "PAID"],
-          [DEMO_BOOTSTRAP_002, "PAID"],
-          [DEMO_READY_001, "READY"],
-          [DEMO_READY_002, "READY"],
-          [DEMO_CREATED_001, "CREATED"],
+        for (const [id, state, recipient] of [
+          [DEMO_BOOTSTRAP_001, "PAID", SANDBOX_RECIPIENT_ID],
+          [DEMO_BOOTSTRAP_002, "PAID", SANDBOX_SECOND_RECIPIENT_ID],
+          [DEMO_READY_001, "READY", SANDBOX_RECIPIENT_ID],
+          [DEMO_READY_002, "READY", SANDBOX_SECOND_RECIPIENT_ID],
+          [DEMO_CREATED_001, "CREATED", SANDBOX_RECIPIENT_ID],
         ] as const) {
           const out = await callTool("cynex_get_obligation", { obligation_id: id });
           expect(out.ok).toBe(true);
-          expect(String((out.data as Record<string, unknown>).state ?? "")).toBe(state);
+          const data = out.data as Record<string, unknown>;
+          expect(String(data.state ?? "")).toBe(state);
+          expect(String(data.recipient ?? "")).toBe(recipient);
+          expect(BigInt(String(data.amount ?? ""))).toBe(100n);
         }
         const policyOut = await callTool("cynex_get_policy", {
-          policy_id: "sandbox-policy-001",
+          policy_id: POLICY_ID,
         });
         expect(policyOut.ok).toBe(true);
         const policy = (policyOut.data as Record<string, unknown>).policy as Record<
@@ -289,23 +469,190 @@ describe("demo over stdio", () => {
         expect(stderr).toContain("local sandbox demo, not testnet, not production");
         expect(stderr).toContain(DEMO_READY_001);
         expect(stderr).not.toMatch(SECRET_KEY_PATTERN);
+        const rpcUrl = parseRpcUrl(stderr);
+        const agentPublicKey = parseAgentPublicKey(stderr);
+        const homesNow = sandboxHomes().filter((home) => !homesBefore.has(home));
+        expect(homesNow).toHaveLength(1);
+        const homeDir = join(sandboxScratchBase(), homesNow[0]);
+        const keyFile = join(homeDir, "agent-key.txt");
+        expect(existsSync(keyFile)).toBe(true);
+
+        // Try 1: settle demo-ready-001 through MCP. PAID, receipt 2,
+        // balance delta exactly 100, verified against the chain, not
+        // just the tool answer.
+        const balanceBefore = await tokenBalance(rpcUrl, SANDBOX_RECIPIENT_ID);
+        const settleOut = await callTool("cynex_request_settlement", {
+          obligation_id: DEMO_READY_001,
+          proposed_recipient: SANDBOX_RECIPIENT_ID,
+          proposed_amount: "100",
+          evidence_ref: "demo-test-v1",
+        });
+        expect(settleOut.ok).toBe(true);
+        const settleData = settleOut.data as Record<string, unknown>;
+        expect(settleData.state).toBe("PAID");
+        expect(String(settleData.receipt_index ?? "")).toBe("2");
+        expect(BigInt(String(settleData.balance_delta ?? ""))).toBe(100n);
+        expect(String(settleData.settle_tx_hash ?? "")).toMatch(/^[A-Za-z0-9]{43,44}$/);
+        const paidRow = await waitForTest(
+          "demo-ready-001 PAID on chain",
+          () => readObligationRpc(rpcUrl, DEMO_READY_001),
+          (row) => row.state === "PAID",
+        );
+        expect(paidRow.state).toBe("PAID");
+        const receipts = await waitForTest(
+          "three receipts on chain",
+          () =>
+            rpcCallFunction(rpcUrl, VAULT_ID, "receipts", {
+              start: 0,
+              limit: 10,
+            }) as Promise<Array<Record<string, unknown>>>,
+          (rows) => rows.length === 3 && rows[2]?.obligation_id === DEMO_READY_001,
+        );
+        expect(receipts[2]?.obligation_id).toBe(DEMO_READY_001);
+        const balanceAfter = await waitForTest(
+          "recipient balance delta 100 on chain",
+          () => tokenBalance(rpcUrl, SANDBOX_RECIPIENT_ID),
+          (balance) => balance - balanceBefore === 100n,
+        );
+        expect(balanceAfter - balanceBefore).toBe(100n);
+
+        // Try 2: settle demo-ready-002 with a changed recipient. The
+        // vault refuses on chain, no funds move, the obligation stays
+        // READY.
+        const secondBefore = await tokenBalance(rpcUrl, SANDBOX_SECOND_RECIPIENT_ID);
+        const negativeOut = await callTool("cynex_request_settlement", {
+          obligation_id: DEMO_READY_002,
+          proposed_recipient: SANDBOX_RECIPIENT_ID,
+          proposed_amount: "100",
+          evidence_ref: "demo-test-v1",
+        });
+        expect(negativeOut.ok).toBe(false);
+        expect(String(negativeOut.reason ?? "")).toContain("ERR_RECIPIENT_SUBSTITUTION");
+        expect(String(negativeOut.reason ?? "")).toMatch(
+          /settle transaction hash [A-Za-z0-9]+/,
+        );
+        const stillReady = await callTool("cynex_get_obligation", {
+          obligation_id: DEMO_READY_002,
+        });
+        expect(String((stillReady.data as Record<string, unknown>).state ?? "")).toBe(
+          "READY",
+        );
+        expect(await tokenBalance(rpcUrl, SANDBOX_SECOND_RECIPIENT_ID)).toBe(secondBefore);
+
+        // Try 3: settle demo-created-001. The server refuses it as
+        // not READY and submits no transaction, so the agent nonce
+        // does not move and the obligation stays CREATED.
+        const nonceBefore = await agentNonce(rpcUrl, agentPublicKey);
+        const createdOut = await callTool("cynex_request_settlement", {
+          obligation_id: DEMO_CREATED_001,
+          proposed_recipient: SANDBOX_RECIPIENT_ID,
+          proposed_amount: "100",
+          evidence_ref: "demo-test-v1",
+        });
+        expect(createdOut.ok).toBe(false);
+        expect(String(createdOut.reason ?? "")).toContain("not READY");
+        const nonceAfter = await agentNonce(rpcUrl, agentPublicKey);
+        expect(nonceAfter).toBe(nonceBefore);
+        const stillCreated = await callTool("cynex_get_obligation", {
+          obligation_id: DEMO_CREATED_001,
+        });
+        expect(String((stillCreated.data as Record<string, unknown>).state ?? "")).toBe(
+          "CREATED",
+        );
+        const finalPolicy = await waitForTest(
+          "final policy spent 300 on chain",
+          () => readPolicyRpc(rpcUrl),
+          (row) => BigInt(String(row.spent ?? "")) === 300n,
+        );
+        expect(BigInt(String(finalPolicy.spent ?? ""))).toBe(300n);
+
         const pid = transport.pid;
         expect(pid).not.toBeNull();
         process.kill(pid as number, "SIGTERM");
         const code = await Promise.race([
           closed,
-          new Promise<string>((resolve) => {
-            // Unref so a resolved race does not keep Jest alive for 30s.
-            const timer = setTimeout(() => resolve("timeout"), 30_000);
-            timer.unref();
-          }),
+          timeoutRace<string>("timeout", 30_000),
         ]);
         expect(code).toBe(0);
+        // Cleanup, not just exit code: the sandbox RPC must stop
+        // answering and the sandbox home, with the agent key file
+        // inside it, must be gone.
+        await waitForTest(
+          "sandbox RPC to stop answering",
+          () => rpcIsDead(rpcUrl),
+          (dead) => dead === true,
+          30_000,
+        );
+        expect(existsSync(homeDir)).toBe(false);
+        expect(existsSync(keyFile)).toBe(false);
       } finally {
         try {
           await client.close();
         } catch {
           // closing a stopped demo must not hide the test result
+        }
+      }
+    },
+    600_000,
+  );
+
+  (SANDBOX_TESTS ? test : test.skip)(
+    "SIGTERM during provisioning still stops the sandbox and exits 0",
+    async () => {
+      const demoPath = builtDemoPath();
+      const homesBefore = new Set(sandboxHomes());
+      let stderr = "";
+      // Spawned directly, not through the SDK client: the client
+      // handshake only completes once the demo is serving, which is
+      // after provisioning, so a client connect cannot catch the
+      // provisioning window this test is about.
+      const child: ChildProcess = spawn("node", [demoPath], {
+        env: childEnv(),
+        stdio: ["ignore", "ignore", "pipe"],
+      });
+      child.stderr?.on("data", (chunk: Buffer) => {
+        stderr += chunk.toString("utf-8");
+      });
+      let resolveClosed: (code: number | null) => void = () => {};
+      const closed = new Promise<number | null>((resolve) => {
+        resolveClosed = resolve;
+      });
+      child.once("close", (code: number | null) => resolveClosed(code));
+      try {
+        // The sandbox node is up within the first seconds, while
+        // seeding takes about twenty more, so a new sandbox home
+        // means provisioning is still running.
+        const homes = await waitForTest(
+          "a sandbox home to appear",
+          async () => sandboxHomes().filter((home) => !homesBefore.has(home)),
+          (found) => found.length === 1,
+          120_000,
+        );
+        const homeDir = join(sandboxScratchBase(), homes[0]);
+        expect(child.pid).not.toBeUndefined();
+        child.kill("SIGTERM");
+        const code = await Promise.race([
+          closed,
+          timeoutRace<string>("timeout", 120_000),
+        ]);
+        expect(code).toBe(0);
+        // The "sandbox up" check prints the RPC URL during
+        // provisioning, so it is in stderr even though the ready
+        // summary never printed.
+        const rpcUrl = parseRpcUrl(stderr);
+        await waitForTest(
+          "sandbox RPC to stop answering",
+          () => rpcIsDead(rpcUrl),
+          (dead) => dead === true,
+          30_000,
+        );
+        expect(existsSync(homeDir)).toBe(false);
+        expect(existsSync(join(homeDir, "agent-key.txt"))).toBe(false);
+      } finally {
+        try {
+          child.kill("SIGKILL");
+        } catch {
+          // already gone
         }
       }
     },

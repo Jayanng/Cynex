@@ -197,6 +197,9 @@ Or, once the package is published:
 npx cynex-mcp --sandbox
 ```
 
+The first run downloads the near-sandbox 2.13.4 binary once to
+`~/.near`, so it needs network that once; later runs reuse it.
+
 What it provisions and seeds, all on policy `sandbox-policy-001`
 (limit 10000, funded 10000), each amount 100 with PREIMAGE evidence
 for the bytes `cynex-sandbox-report-v1`:
@@ -242,7 +245,16 @@ sandbox is removed when the demo stops. The demo keeps running until
 it is killed (SIGINT, SIGTERM, or the client disconnecting). The
 vault wasm it deploys hashes to
 `65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6`, the same hash as the
-deployed vaults, and the demo refuses to run on any other hash.
+deployed vaults, and the test token wasm hashes to
+`DVzJjN5Q4niR5vW4iqE2j5z1a3zBgrEb2huiVcFkBu3f`; the demo refuses to
+run on any other hash for either one.
+
+## Publishing the package
+
+`services/mcp/package.json` builds the bundle before packing
+(`prepack` runs `npm run build`), so `npm publish` from
+`services/mcp/` ships the built `dist/cynex-mcp.mjs` bin. Publishing
+needs an npm account with publish rights on the `cynex-mcp` name.
 
 ## Layout
 

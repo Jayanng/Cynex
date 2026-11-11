@@ -13,6 +13,7 @@
  * server with the same six tools, pointed at a local chain by the
  * demo entry point, not a second server.
  */
+import { fileURLToPath } from "node:url";
 import { runDemo } from "./demo.js";
 import { runServer } from "./server.js";
 
@@ -29,17 +30,19 @@ export const CLI_USAGE = [
 /**
  * Parse the command line. Exactly one flag is accepted: --sandbox
  * runs the demo, --help prints usage, nothing runs the normal
- * server. Anything else is an error, never silently ignored.
+ * server. --help counts only on its own: combined with any other
+ * argument it is an error like anything else, so no flag is ever
+ * silently ignored. Anything unknown is an error.
  */
 export function parseCliArgs(argv: readonly string[]): CliMode {
-  if (argv.includes("--help") || argv.includes("-h")) {
-    return "help";
-  }
   if (argv.length === 0) {
     return "server";
   }
   if (argv.length === 1 && argv[0] === "--sandbox") {
     return "sandbox";
+  }
+  if (argv.length === 1 && (argv[0] === "--help" || argv[0] === "-h")) {
+    return "help";
   }
   throw new Error(
     "cynex-mcp: unknown arguments: " + argv.join(" ") + ". " + CLI_USAGE,
@@ -69,13 +72,17 @@ async function main(): Promise<number> {
  * cli.js, or as the bundled cynex-mcp bin. The check names the
  * entry file, not just import.meta.url, because the bundle inlines
  * server.ts and demo.ts too, and their own entry guards must stay
- * quiet when the bundle runs.
+ * quiet when the bundle runs. The import.meta.url equality is kept
+ * alongside the name check, so importing this file as a library
+ * from a process whose argv happens to name the entry file cannot
+ * auto-run main().
  */
 const entry = process.argv[1] ?? "";
 if (
-  entry.endsWith("cli.js") ||
-  entry.endsWith("cynex-mcp.mjs") ||
-  entry.endsWith("cynex-mcp")
+  fileURLToPath(import.meta.url) === entry &&
+  (entry.endsWith("cli.js") ||
+    entry.endsWith("cynex-mcp.mjs") ||
+    entry.endsWith("cynex-mcp"))
 ) {
   main()
     .then((code) => {
