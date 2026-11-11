@@ -17,6 +17,7 @@ import { AGENT, BREAK_IT, DEMO_ATTACKER, DEMO_LIVE_LABEL, DEMO_TOKEN, RPC_URL, V
 import { useLive } from "../lib/live";
 import { getObligation, type Obligation } from "../lib/near";
 import { Badge, HashChip, TermsGrid } from "./ui";
+import { RefusalBreakdown } from "./shared";
 
 function demoKeyConfigured(): boolean {
   return !!(
@@ -80,6 +81,9 @@ interface LiveOut {
 export function BreakIt() {
   const { live, refreshLive } = useLive();
   const [selected, setSelected] = useState(0);
+  const [formRecipient, setFormRecipient] = useState(DEMO_ATTACKER);
+  const [formAmount, setFormAmount] = useState("100");
+  const [formOut, setFormOut] = useState<{ kind: "refused" | "none"; code?: string; tx?: string; text: string } | null>(null);
   const [liveStatus, setLiveStatus] = useState<{ text: string; cls: string }>({ text: "not configured", cls: "b-dim" });
   const [liveOut, setLiveOut] = useState<LiveOut | null>(null);
   const [liveBusy, setLiveBusy] = useState(false);
@@ -89,6 +93,42 @@ export function BreakIt() {
   const renderBreak = (i: number) => {
     setSelected(i);
     setLiveOut(null);
+    setFormOut(null);
+    /* The buttons are the fast path to each named attack; they set the
+       form values so the two controls never disagree. */
+    const sc = BREAK_IT[i];
+    setFormRecipient(sc.key === "recipient" ? DEMO_ATTACKER : AGENT);
+    setFormAmount(sc.key === "amount" ? "200" : "100");
+  };
+
+  /* Free-form path: evaluate the proposed terms in the browser against
+     the fixed on-chain terms. The refusal shown is the recorded one
+     from the test vault, not a fresh live attempt from this click. */
+  const runFormAttack = () => {
+    const r = formRecipient.trim();
+    const a = formAmount.trim();
+    if (r && r !== AGENT) {
+      setFormOut({
+        kind: "refused",
+        code: "ERR_RECIPIENT_SUBSTITUTION",
+        tx: "AFYAq8Sju41NjBFwPmTHbJ1psmsYQWjVdBhmXBZbpa7S",
+        text: "The proposed recipient does not match the recipient fixed at authorization. The vault refused before any transfer.",
+      });
+      return;
+    }
+    if (a && a !== "100") {
+      setFormOut({
+        kind: "refused",
+        code: "ERR_TERMS_MISMATCH",
+        tx: "43YaxJVggxuZ3E25WfjzkgGBsGAqLrj8nwdUU9RLAQRy",
+        text: "The proposed amount does not match the amount fixed at authorization, 100 base units. The vault refused before any transfer.",
+      });
+      return;
+    }
+    setFormOut({
+      kind: "none",
+      text: "No attack detected. The recipient and amount match the authorized terms. Change the recipient or the amount to see the vault refuse.",
+    });
   };
 
   const tryLiveAttack = async (i: number) => {
@@ -285,15 +325,76 @@ export function BreakIt() {
   return (
     <section className="wrap mt-24">
       <div className="panel p-6">
-        <div className="kicker mb-2">
-          Try to break it
-        </div>
-        <h2 className="text-2xl md:text-3xl mb-2">Pick an attack. Watch the vault refuse.</h2>
+        <div className="kicker mb-2">01&nbsp;&nbsp;BreakIt</div>
+        <h2 className="text-2xl md:text-3xl mb-2">Try to pay a different recipient and the vault must refuse.</h2>
         <p className="dim text-sm max-w-3xl leading-relaxed mb-5">
-          Your attempt is a simulation, labelled as one, it is evaluated in your browser against the real on-chain obligation terms. The
-          refusal it shows is the real on-chain verdict for the first three attacks, which were executed on the test vault and link to their
-          real refusal transactions. The fourth attack was never executed on chain, so its verdict is simulated, not a real on-chain verdict.
+          The obligation on chain names one recipient and one amount. Change either one and submit. The refusal below is the recorded one
+          from the test vault, not a fresh live attempt from your click.
         </p>
+        <div className="mb-5">
+          <div className="grid gap-4 md:grid-cols-2 mb-4">
+            <div>
+              <label className="mono text-xs dim2 block mb-2" htmlFor="bi-recipient">
+                Proposed recipient
+              </label>
+              <input
+                id="bi-recipient"
+                className="input w-full mono"
+                value={formRecipient}
+                onChange={(e) => setFormRecipient(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="mono text-xs dim2 block mb-2" htmlFor="bi-amount">
+                Proposed amount, base units
+              </label>
+              <input
+                id="bi-amount"
+                className="input w-full mono"
+                value={formAmount}
+                onChange={(e) => setFormAmount(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <button className="btn btn-primary sm" onClick={runFormAttack}>
+              Run attack
+            </button>
+            <span className="mono text-xs dim2">
+              Authorized: <span className="text-ink">cynex-agent.cynexmaster.testnet</span>, 100 base units, nonce 1002.
+            </span>
+          </div>
+          {formOut ? (
+            <div className="mt-4 border-t pt-4 fadein" style={{ borderColor: "var(--line2)" }}>
+              {formOut.kind === "refused" ? (
+                <>
+                  <div className="flex flex-wrap items-center gap-3 mb-2">
+                    <Badge value="REFUSED" extra={formOut.code} />
+                  </div>
+                  <p className="dim text-sm leading-relaxed mb-3">{formOut.text}</p>
+                  {formOut.tx ? (
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="mono text-xs dim2">recorded refusal tx</span>
+                      <HashChip hash={formOut.tx} />
+                      <span className="mono text-xs text-ink">0 tokens moved</span>
+                    </div>
+                  ) : null}
+                  <p className="mono text-xs dim2 mt-3">
+                    Recorded refusal from the test vault. A live attempt from this panel needs the demo key, which the live site supplies
+                    through the Run it live button.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="dim text-sm leading-relaxed">{formOut.text}</p>
+                  <p className="mono text-xs dim2 mt-3">
+                    Nothing was refused, because the proposed terms match the authorized terms.
+                  </p>
+                </>
+              )}
+            </div>
+          ) : null}
+        </div>
         <div className="flex flex-wrap gap-2 mb-5">
           {BREAK_IT.map((sc, i) => (
             <button key={sc.key} className={"btn sm " + (i === selected ? "btn-primary" : "")} onClick={() => renderBreak(i)}>
@@ -348,7 +449,7 @@ export function BreakIt() {
             on-chain verdict, while the simulated fourth attack has no live verdict.
           </p>
           <div className="flex flex-wrap items-center gap-3">
-            <button className="btn btn-primary sm" disabled={liveBusy || !demoKeyConfigured()} onClick={() => void tryLiveAttack(selected)}>
+            <button className="btn btn-primary sm" disabled={liveBusy} onClick={() => void tryLiveAttack(selected)}>
               Try this attack live on chain
             </button>
             {demoKeyConfigured() ? (
@@ -361,6 +462,13 @@ export function BreakIt() {
             )}
           </div>
           <div id="live-out" className="mt-4">{liveOut ? liveOut.html : null}</div>
+        </div>
+        <div className="mt-6 border-t pt-5" style={{ borderColor: "var(--line2)" }}>
+          <h3 className="text-lg mb-2 text-ink">Why the vault refused, item by item</h3>
+          <p className="dim text-sm leading-relaxed mb-4 max-w-3xl">
+            The same four checks as on Home, with the live refusal transaction next to the recipient row. Every row ends with 0 tokens moved.
+          </p>
+          <RefusalBreakdown />
         </div>
       </div>
     </section>

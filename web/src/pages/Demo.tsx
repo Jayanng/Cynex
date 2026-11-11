@@ -1,4 +1,5 @@
 /* Cynex web, Demo page (guided walkthrough only).
+   Five steps telling one story, the attack on p10-demo-attack-001.
    Every action already happened on the test vault, each prints its real
    tx hash, explorer-linked, with a live chain read after it. No login,
    no wallet, no obligation creation. */
@@ -8,8 +9,9 @@ import { GUIDED, VAULT_TEST } from "../lib/data";
 import { useChainRead } from "../lib/useChainRead";
 import { useLive } from "../lib/live";
 import { StripSection } from "../components/Strip";
-import { Badge, ChainReadOut, CmdBlock, CopyButton, HashChip, Icon, ReadOnlyBadge, TermsGrid } from "../components/ui";
-import { Gate, Footer, CountsLine } from "../components/shared";
+import { Badge, ChainReadOut, CmdBlock, CopyButton, HashChip, Icon, TermsGrid } from "../components/ui";
+import { Footer, CountsLine } from "../components/shared";
+import { LiveDemoButton } from "../components/LiveDemoButton";
 
 /* ---------- guided ---------- */
 function Guided({ anchor }: { anchor?: string }) {
@@ -45,74 +47,99 @@ function Guided({ anchor }: { anchor?: string }) {
               </span>
             </div>
             <p className="dim text-sm leading-relaxed mb-5 max-w-3xl">{s.desc}</p>
-            <div className="terms-grid mb-5">
-              <TermsGrid terms={s.terms} />
-            </div>
-            <div className="space-y-2.5 mb-5">
-              {s.attempts.map((a) => (
-                <div className="attempt" key={a.label}>
-                  <span className="att-label">{a.label}</span>
-                  <span className="flex flex-wrap items-center gap-2">
-                    <Badge value={a.verdict} extra={a.code ?? null} />
-                  </span>
-                  <span className="badge b-dim">
-                    <span className="bdot"></span>Historical
-                  </span>
-                  <HashChip hash={a.tx} />
-                  {a.note ? <span className="mono text-xs dim2">{a.note}</span> : null}
+            {s.mono ? <p className="mono text-[13px] mb-5">{s.mono}</p> : null}
+            {s.terms && s.terms.length ? (
+              <div className="terms-grid mb-5">
+                <TermsGrid terms={s.terms} />
+              </div>
+            ) : null}
+            {s.kv && s.kv.length ? (
+              <div className="mono text-[13px] space-y-1.5 mb-5 max-w-2xl">
+                {s.kv.map(([k, v]) => (
+                  <div className="flex flex-wrap justify-between gap-4" key={k}>
+                    <span className="dim2">{k}</span>
+                    {k === "Tx" ? <HashChip hash={v} /> : <span className="text-right">{v}</span>}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {s.attempts && s.attempts.length ? (
+              <div className="space-y-2.5 mb-5">
+                {s.attempts.map((a) => (
+                  <div className="attempt" key={a.label}>
+                    <span className="att-label">{a.label}</span>
+                    <span className="flex flex-wrap items-center gap-2">
+                      <Badge value={a.verdict} extra={a.code ?? null} />
+                    </span>
+                    <span className="badge b-dim">
+                      <span className="bdot"></span>Historical
+                    </span>
+                    <HashChip hash={a.tx} />
+                    {a.note ? <span className="mono text-xs dim2">{a.note}</span> : null}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {s.cmd === "verify" ? (
+              <>
+                <div className="space-y-2 mb-4">
+                  <CmdBlock cmdKey="verify" />
+                  <CmdBlock cmdKey="verifyCsv" />
                 </div>
-              ))}
-            </div>
-            <div className="flex flex-wrap items-center gap-4">
-              <span className="mono text-xs dim">{s.delta}</span>
-              <span className="dim2">·</span>
-              <button className="btn sm" onClick={() => void run(s.receipt)}>
-                Read receipt #{s.receipt} from chain, now
-              </button>
-              <span className="badge b-dim">
-                <span className="bdot"></span>Live
-              </span>
-            </div>
-            <div id={"cr-" + s.receipt}>
-              <ChainReadOut state={states[s.receipt] ?? null} />
-            </div>
+                <div className="flex flex-wrap items-center gap-4">
+                  <span data-live-region="counts">
+                    <CountsLine />
+                  </span>
+                  <a className="mono text-xs inline-flex items-center gap-2" style={{ color: "var(--accent-text)" }} href="#/proof">
+                    full proof page{" "}
+                    <span style={{ width: 16, height: 16, display: "inline-grid", placeItems: "center" }}>
+                      <Icon name="arrow" />
+                    </span>
+                  </a>
+                </div>
+              </>
+            ) : null}
+            {s.receipt != null ? (
+              <>
+                <div className="flex flex-wrap items-center gap-4">
+                  {s.delta ? <span className="mono text-xs dim">{s.delta}</span> : null}
+                  {s.delta ? <span className="dim2">·</span> : null}
+                  <button className="btn sm" onClick={() => void run(s.receipt as number)}>
+                    Read receipt #{s.receipt} from chain, now
+                  </button>
+                  <span className="badge b-dim">
+                    <span className="bdot"></span>Live
+                  </span>
+                </div>
+                <div id={"cr-" + s.receipt}>
+                  <ChainReadOut state={states[s.receipt] ?? null} />
+                </div>
+              </>
+            ) : null}
           </div>
         </div>
       ))}
-      <Gate />
-      {/* step 5, verification (step 4 is the reputation gate) */}
-      <div className="step" id="guided-step5">
+      {/* The reputation gate moved to Break it, section 05, and stays in
+          Docs, reputation signals. This keeps the old guided-gate anchor
+          working for inbound links. */}
+      <div className="step" id="guided-gate">
         <div className="rail">
-          <div className="node">5</div>
+          <div className="node gate">G</div>
         </div>
         <div className="panel p-6">
-          <div className="flex flex-wrap items-center gap-3 mb-2">
-            <h3 className="text-lg md:text-xl">Verification, replay the whole chain</h3>
-            <ReadOnlyBadge />
-          </div>
-          <p className="dim text-sm leading-relaxed mb-4 max-w-3xl">
-            <span className="mono text-[13px]" style={{ color: "var(--accent-text)" }}>
-              node frontend/dist-test/cli/cynex.js verify-live cynex-testvault.cynexmaster.testnet
-            </span>{" "}
-            paginates <span className="mono text-[13px]">receipts(start, limit)</span> from genesis over the test vault, recomputes every
-            hash link, and detects gaps and mismatches. Expected: every row{" "}
-            <span className="mono text-[13px]">verified_ok = true</span>.
-          </p>
-          <div className="space-y-2 mb-4">
-            <CmdBlock cmdKey="verify" />
-            <CmdBlock cmdKey="verifyCsv" />
-          </div>
-          <div className="flex flex-wrap items-center gap-4">
-            <span data-live-region="counts">
-              <CountsLine />
-            </span>
-            <a className="mono text-xs inline-flex items-center gap-2" style={{ color: "var(--accent-text)" }} href="#/proof">
-              full proof page{" "}
-              <span style={{ width: 16, height: 16, display: "inline-grid", placeItems: "center" }}>
-                <Icon name="arrow" />
-              </span>
+          <h3 className="text-lg mb-2">Reputation gate, the moment it says no</h3>
+          <p className="dim text-sm leading-relaxed max-w-3xl">
+            The gate check moved to{" "}
+            <a href="#/attack" style={{ color: "var(--accent-text)" }}>
+              Break it, section 05
             </a>
-          </div>
+            , and stays in{" "}
+            <a href="#/docs/reputation" style={{ color: "var(--accent-text)" }}>
+              Docs, reputation signals
+            </a>
+            . Five sourced signals check the counterparty before anything reaches the chain. A BLOCK refuses, a WARN escalates to a human.
+            The vault still decides every settle.
+          </p>
         </div>
       </div>
     </section>
@@ -140,7 +167,7 @@ export function Demo({ anchor }: { anchor?: string }) {
           <div className="kicker mb-2">Demo · test vault</div>
           <h1 className="text-3xl md:text-4xl">Proof in motion</h1>
           <p className="dim text-sm mt-2 max-w-2xl">
-            Every action below already happened on{" "}
+            Five steps. One refusal. One real settle. Every action below already happened on{" "}
             <span className="mono text-[13px]">{VAULT_TEST}</span>, each prints its real tx hash, explorer-linked, with a live chain
             read after it. No login, no wallet, no obligation creation.
           </p>
@@ -148,6 +175,17 @@ export function Demo({ anchor }: { anchor?: string }) {
       </section>
       <StripSection />
       <Guided anchor={anchor} />
+      <section className="wrap mt-10">
+        <p className="dim text-sm max-w-3xl">
+          All steps are live data from the NEAR testnet. Read receipt 12 from the chain now, with the same command as step 4.
+        </p>
+        <div className="flex flex-wrap gap-3 mt-5 items-start">
+          <LiveDemoButton variant="hero" />
+          <a className="btn ghost" href="#/proof">
+            See the proof
+          </a>
+        </div>
+      </section>
       <section className="wrap mt-10">
         <div className="panel p-6">
           <div className="kicker mb-3">Next</div>

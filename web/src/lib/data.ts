@@ -100,44 +100,39 @@ export interface GuidedStep {
   title: string;
   ob: string;
   desc: string;
-  terms: [string, string][];
-  attempts: GuidedAttempt[];
-  delta: string;
-  receipt: number;
+  terms?: [string, string][];
+  attempts?: GuidedAttempt[];
+  delta?: string;
+  receipt?: number;
+  kv?: [string, string][];
+  cmd?: string;
+  mono?: string;
 }
 export const GUIDED: GuidedStep[] = [
   {
     n: "1",
     anchor: "step1",
     cls: "",
-    title: "Happy path, PREIMAGE evidence",
-    ob: "p10-demo-preimage-001",
-    desc: "The agent delivers the delivery note and presents its SHA-256 preimage. The vault hashes the bytes itself, compares them to the digest committed at creation, enforces the fixed terms, and settles 100 base units (0.0001 test USDC) to the agent. No human in the loop: the contract checked everything.",
+    title: "Authorize",
+    ob: "p10-demo-attack-001",
+    desc: "A human authorizes one obligation: recipient cynex-agent, token usdc.fakes.testnet, amount 100 base units, evidence PREIMAGE, nonce 1002. The terms are fixed on chain before the agent does anything.",
+    mono: "Obligation p10-demo-attack-001, 100 base units (0.0001 testnet USDC)",
     terms: [
       ["recipient", AGENT],
       ["token", TOKEN],
       ["amount", "100 base units (0.0001 test USDC)"],
-      ["nonce", "1001"],
-      ["evidence", "PREIMAGE, SHA-256(delivery note demo-delivery-note-001:p10-demo-preimage-001:100)"],
+      ["nonce", "1002"],
+      ["evidence", "PREIMAGE"],
     ],
-    attempts: [
-      {
-        label: "settle · correct terms · valid preimage",
-        verdict: "PAID",
-        tx: "3Gp3J2zZCKrne1PamDVf6PgXHk4qGc3a58GBvoFcNhrZ",
-        note: "receipt #11",
-      },
-    ],
-    delta: "agent 700 → 800 base units",
-    receipt: 11,
   },
   {
     n: "2",
     anchor: "step2",
     cls: "attack",
-    title: "Attack, substituted terms, then a replay",
+    title: "The failure: attack, substituted terms",
     ob: "p10-demo-attack-001",
-    desc: "A prompt-injected agent tries to pay the wrong recipient, then the wrong amount. The vault refuses both, the terms are on-chain and cannot be argued with. The correct settle succeeds, and the immediate replay is refused as a double-pay.",
+    desc: "A poisoned invoice page tells the agent the vendor rotated their payout account. The agent calls settle with a different recipient, then with an inflated amount of 200, then replays the paid order.",
+    mono: "Three attempts, three refusals. Recipient, amount, replay.",
     terms: [
       ["recipient", AGENT],
       ["token", TOKEN],
@@ -178,32 +173,37 @@ export const GUIDED: GuidedStep[] = [
     n: "3",
     anchor: "step3",
     cls: "",
-    title: "TEE evidence, OutLayer, VRF-bound",
-    ob: "p10-demo-tee-001",
-    desc: "Evidence is produced inside a TEE and verified through OutLayer. The VRF signature is bound to the pending request, so it cannot be replayed against a different obligation. The VRF signature does not prove TEE execution.",
-    terms: [
-      ["recipient", AGENT],
-      ["token", TOKEN],
-      ["amount", "100 base units (0.0001 test USDC)"],
-      ["nonce", "1003"],
-      ["evidence", "TEE, OutLayer request 11912 · 300 TGas console caller gas"],
+    title: "The refusal: the vault already said no",
+    ob: "p10-demo-attack-001",
+    desc: "The vault read the order on chain, checked the terms, and refused before a single token moved. The canonical refusal is the transaction a judge opens first.",
+    kv: [
+      ["Error", "ERR_RECIPIENT_SUBSTITUTION"],
+      ["Tx", "AFYAq8Sju41NjBFwPmTHbJ1psmsYQWjVdBhmXBZbpa7S"],
+      ["Moved", "0 tokens"],
     ],
-    attempts: [
-      {
-        label: "tee_request · OutLayer verification · 300 TGas caller gas",
-        verdict: "OK",
-        tx: "5Xvu78qxd9NfgJzRBeyvdQXnqK8sLfSmzrfVC5dgDK68",
-        note: "OutLayer 11912",
-      },
-      {
-        label: "settle · VRF bound to the pending request",
-        verdict: "PAID",
-        tx: "3QV2aCRSiJ8ZYqLECCpK6ZkXpYE4AdxJzmyP3JTaDqWB",
-        note: "receipt #13",
-      },
+  },
+  {
+    n: "4",
+    anchor: "step4",
+    cls: "",
+    title: "The proof: verify it yourself",
+    ob: "p10-demo-attack-001",
+    desc: "One command replays every receipt from genesis and checks the hash links. No trust in the page is needed: the chain is read directly.",
+    cmd: "verify",
+  },
+  {
+    n: "5",
+    anchor: "step5",
+    cls: "",
+    title: "The settle: a real one, with receipts",
+    ob: "p10-demo-attack-001",
+    desc: "After the refusals, the correct settle went through with the exact authorized terms. The agent moved from 800 to 900, and the receipt is on chain.",
+    kv: [
+      ["Status", "PAID · receipt 12"],
+      ["Tx", "Ho97UjQEDDfe7Go66uHrVSJvbF8narZJ2YBH3hWarxi"],
+      ["Amount", "100 base units (0.0001 testnet USDC)"],
     ],
-    delta: "agent 900 → 1000 base units",
-    receipt: 13,
+    receipt: 12,
   },
 ];
 

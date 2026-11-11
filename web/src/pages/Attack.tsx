@@ -1,102 +1,75 @@
 /* Cynex web, Attack page.
-   Try to break the vault: the attack panel first, then the six-ways
-   attack runner, then the playground and sandbox. Read / explore only:
-   every settle call here is an attack the vault refuses. */
+   Try to break the vault: the attack panel first, then the tamper
+   panel, the six-ways runner, the playground matrix, the reputation
+   gate and budget, and verify. Read / explore only: every settle
+   call here is an attack the vault refuses. */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { AGENT, ATTACKS, PLAYGROUND_INITIAL, PLAYGROUND_SOURCE_INITIAL, TOKEN, VAULT_TEST, type PlaygroundRow } from "../lib/data";
 import { useChainRead } from "../lib/useChainRead";
+import { useLive } from "../lib/live";
 import { StripSection } from "../components/Strip";
-import { Badge, ChainReadOut, HashChip, TermsGrid } from "../components/ui";
+import { Badge, ChainReadOut, CmdBlock, HashChip, TermsGrid } from "../components/ui";
 import { Footer } from "../components/shared";
 import { CMark } from "../components/Logo";
 import { BreakIt } from "../components/BreakIt";
 import { TamperPanel } from "../components/TamperPanel";
 
-/* ---------- attack runner ---------- */
+/* ---------- attack runner: six cards, verdict shown immediately ---------- */
 function AttackRunner() {
-  const [atkOut, setAtkOut] = useState<Record<number, { kind: "loading" | "done"; }>>({});
-  const [atkBusy, setAtkBusy] = useState<Record<number, boolean>>({});
-  const atkTimers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
-  useEffect(() => {
-    const timers = atkTimers.current;
-    return () => {
-      timers.forEach((t) => clearTimeout(t));
-    };
-  }, []);
-
-  const runAttack = (i: number) => {
-    setAtkBusy((prev) => ({ ...prev, [i]: true }));
-    setAtkOut((prev) => ({ ...prev, [i]: { kind: "loading" } }));
-    const t = setTimeout(() => {
-      setAtkOut((prev) => ({ ...prev, [i]: { kind: "done" } }));
-      setAtkBusy((prev) => ({ ...prev, [i]: false }));
-      atkTimers.current.delete(t);
-    }, 650);
-    atkTimers.current.add(t);
-  };
-
+  const [selected, setSelected] = useState(0);
+  const a = ATTACKS[selected];
   return (
     <>
-      {/* attack runner */}
       <div className="mb-4">
-        <div className="kicker mb-2">
-          Attack runner
-        </div>
-        <h2 className="text-xl">Six ways in. Six refusals.</h2>
+        <div className="kicker mb-2">03&nbsp;&nbsp;Six ways in. Six refusals.</div>
+        <h2 className="text-xl md:text-2xl">Pick an attack. The vault answers with a code.</h2>
         <p className="dim text-sm mt-2 max-w-3xl">
-          demo/attack-scenarios.json. Scenarios 1–3 were executed on the test vault, the refusal tx is linked. Scenarios 4–6 show the verdict the on-chain terms require and the reason code.
+          Three of these ran on the test vault with a refusal transaction linked. Three show the verdict the on-chain terms require. No fake
+          delay: the verdict appears immediately and is labelled as recorded. Scenarios 1 to 3 were executed on the test vault, scenarios 4
+          to 6 show the verdict the on-chain terms require and the reason code.
         </p>
       </div>
-      <div className="panel p-6 mb-12">
-        <div className="flex flex-col">
-          {ATTACKS.map((a, i) => (
-            <div
-              key={a.name}
-              className={
-                "flex flex-col gap-2 py-4" +
-                (i === 0 ? " pt-0" : "") +
-                (i === ATTACKS.length - 1 ? " pb-0" : " border-b")
-              }
-              style={{ borderColor: "var(--line2)" }}
-            >
-              <div className="flex flex-wrap items-center gap-3">
-                <h3 className="text-[15px]">{a.name}</h3>
-                <span className="mono text-xs dim2">atk-{i + 1}</span>
-                <span className="mono text-xs dim2">attempt: {a.attempt}</span>
-              </div>
-              <p className="dim text-[13px] leading-relaxed max-w-3xl">{a.vector}</p>
-              <div className="flex flex-wrap items-center gap-3">
-                <button className="btn sm" onClick={() => runAttack(i)} disabled={!!atkBusy[i]}>
-                  Run evaluation
-                </button>
-                <div id={"atk-" + i}>
-                  {atkOut[i]?.kind === "loading" ? (
-                    <div className="logline diml">
-                      <span className="spin g"></span>showing the recorded verdict…
-                    </div>
-                  ) : atkOut[i]?.kind === "done" ? (
-                    <span className="fadein inline-flex flex-wrap items-center gap-3">
-                      <span className="logline bad">
-                        <Badge value="REFUSED" extra={a.code} />
-                      </span>
-                      {a.tx ? (
-                        <>
-                          <span className="mono text-xs dim2">executed on test vault</span>
-                          <HashChip hash={a.tx} />
-                        </>
-                      ) : (
-                        <span className="mono text-xs dim2">expected on-chain verdict, scenario fixture</span>
-                      )}
-                    </span>
-                  ) : null}
-                </div>
-              </div>
+      <div className="grid gap-4 md:grid-cols-3">
+        {ATTACKS.map((sc, i) => (
+          <button
+            key={sc.name}
+            type="button"
+            className="panel panel-h p-5 text-left"
+            style={i === selected ? { borderColor: "var(--accent)", boxShadow: "0 0 0 1px var(--accent)" } : undefined}
+            onClick={() => setSelected(i)}
+            aria-pressed={i === selected}
+          >
+            <div className="mono text-xs mb-2" style={{ color: "var(--neg-text)", fontWeight: 600 }}>
+              {sc.code}
             </div>
-          ))}
-        </div>
+            <h3 className="text-[15px] mb-1 text-ink">{sc.name}</h3>
+            <p className="dim text-[13px] leading-relaxed">{sc.vector}</p>
+            <div className="mono text-xs dim2 mt-3">{sc.tx ? "Tx linked" : "Verdict by terms, no tx"}</div>
+          </button>
+        ))}
       </div>
-
+      <div className="panel p-6 mt-5 fadein" key={selected}>
+        <div className="flex flex-wrap items-center gap-3">
+          <Badge value="REFUSED" extra={a.code} />
+          <span className="mono text-[13px] dim">{a.attempt}</span>
+        </div>
+        <p className="dim text-sm leading-relaxed mt-3 max-w-3xl">{a.vector}</p>
+        {a.tx ? (
+          <div className="flex flex-wrap items-center gap-3 mt-3">
+            <span className="mono text-xs dim2">refusal tx</span>
+            <HashChip hash={a.tx} />
+            <span className="mono text-xs text-ink">0 tokens moved</span>
+          </div>
+        ) : (
+          <p className="mono text-[13px] mt-3" style={{ color: "var(--secondary)" }}>
+            No transaction: the on-chain terms require this refusal, and the verdict is recorded, not executed.
+          </p>
+        )}
+        <p className="mono text-xs dim2 mt-4 border-t pt-3" style={{ borderColor: "var(--line2)" }}>
+          Recorded verdict, shown immediately. No fake delay.
+        </p>
+      </div>
     </>
   );
 }
@@ -297,10 +270,13 @@ function Playground() {
     );
   };
 
-
-
   return (
-    <section className="wrap mt-10">
+    <section className="wrap mt-10" id="attack-matrix">
+      <div className="kicker mb-2">04&nbsp;&nbsp;The playground matrix</div>
+      <h2 className="text-xl md:text-2xl mb-2">Every attack, one row, one code.</h2>
+      <p className="dim text-sm max-w-3xl mb-8">
+        The at-a-glance map. Each row is one way the payment can be tampered with, the code the vault returns, and the transaction where one exists.
+      </p>
       <div className="callout mono text-xs mb-8">
         Read / explore only. Playground obligations are owner-created, this page cannot create obligations. Every settle call here is an
         attack the vault refuses. Fixture:{" "}
@@ -317,7 +293,7 @@ function Playground() {
               not file obligations · amounts are base units
             </div>
           </div>
-          <select className="input" id="pgfilter" value={pgFilter} onChange={(e) => setPgFilter(e.target.value)}>
+          <select className="input" id="pgfilter" aria-label="Filter playground rows" value={pgFilter} onChange={(e) => setPgFilter(e.target.value)}>
             <option value="all">all outcomes</option>
             <option value="paid">PAID</option>
             <option value="refused">REFUSED (ERR_*)</option>
@@ -349,14 +325,108 @@ function Playground() {
           )}
         </div>
       </div>
+    </section>
+  );
+}
 
-      <TamperPanel id="sandbox" />
+/* ---------- reputation gate and budget ---------- */
+function GateBudget() {
+  const { live: L } = useLive();
+  const p = L.policy.v;
+  let pct: number | null = null;
+  let spent = "";
+  let limit = "";
+  if (p) {
+    spent = String(p.spent);
+    limit = String(p.limit);
+    try {
+      const s = Number(BigInt(p.spent));
+      const l = Number(BigInt(p.limit));
+      pct = l > 0 ? Math.round((s / l) * 100) : null;
+    } catch {
+      pct = null;
+    }
+  }
+  const card = (no: string, t: string, body: ReactNode) => (
+    <div className="panel p-5">
+      <span className="mono text-xs" style={{ color: "var(--accent-text)" }}>
+        {no}
+      </span>
+      <h3 className="text-lg mt-2 mb-1 text-ink">{t}</h3>
+      <p className="dim text-sm leading-relaxed">{body}</p>
+    </div>
+  );
+  return (
+    <section className="wrap mt-10" id="attack-gate">
+      <div className="kicker mb-2">05&nbsp;&nbsp;Reputation gate and budget</div>
+      <h2 className="text-xl md:text-2xl mb-2">The vault never sees a BLOCKed attempt.</h2>
+      <p className="dim text-sm max-w-3xl mb-6">
+        Five sourced signals check the counterparty before anything reaches the chain. A BLOCK refuses, a WARN escalates to a human. The vault
+        still decides every settle.{" "}
+        <a href="#/docs/reputation" style={{ color: "var(--accent-text)" }}>
+          The five signals, Docs
+        </a>
+      </p>
+      <div className="grid gap-4 md:grid-cols-3">
+        {card("BLOCK", "Known bad counterparty", "The gate refuses before a settle is even attempted. The vault never sees the attempt.")}
+        {card("WARN", "Uncertain counterparty", "The attempt escalates to a human. The owner completes it from the console with an explicit approval.")}
+        {card(
+          "BUDGET",
+          p ? `Policy spent ${spent} of ${limit}` : "Policy spent",
+          p ? (
+            <>
+              {pct != null ? pct + "%" : ""} of the demo policy is spent. A settle that would cross the budget is refused, even with correct
+              terms.
+              {pct != null ? (
+                <span className="statbar">
+                  <i style={{ width: pct + "%" }}></i>
+                </span>
+              ) : null}
+            </>
+          ) : (
+            "The demo policy spend is read live from the test vault."
+          ),
+        )}
+      </div>
+    </section>
+  );
+}
+
+/* ---------- verify ---------- */
+function AttackVerify() {
+  const { live: L } = useLive();
+  const count = L.recTest.v;
+  return (
+    <section className="wrap mt-10" id="attack-verify">
+      <div className="kicker mb-2">06&nbsp;&nbsp;Verify</div>
+      <h2 className="text-xl md:text-2xl mb-2">Check the record yourself.</h2>
+      <p className="dim text-sm max-w-3xl mb-5">
+        The page ends where the proof starts: one command replays every receipt from genesis and checks the hash links.
+      </p>
+      <CmdBlock cmdKey="verify" />
+      <p className="mono text-xs dim2 mt-4">
+        Expected: every row verified_ok = true, {count != null ? count : "all"} receipts on the test vault, all ok.
+      </p>
     </section>
   );
 }
 
 /* ---------- page ---------- */
 export function Attack() {
+  const chip = (id: string, label: string) => (
+    <button
+      key={id}
+      type="button"
+      className="mono text-xs rounded-full border px-3 py-2"
+      style={{ borderColor: "var(--line)", background: "var(--card)", color: "var(--secondary)" }}
+      onClick={() => {
+        const el = document.getElementById(id);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      }}
+    >
+      {label}
+    </button>
+  );
   return (
     <>
       <section className="wrap pt-12">
@@ -372,20 +442,42 @@ export function Attack() {
             <CMark size={120} light />
           </span>
           <div className="relative">
-            <div className="kicker mb-2">Attack &middot; test vault</div>
-            <h1 className="text-3xl md:text-4xl">Try to break it</h1>
+            <div className="kicker mb-2">Attack, test vault</div>
+            <h1 className="text-3xl md:text-4xl">Attack the vault.</h1>
             <p className="dim text-sm mt-2 max-w-2xl">
-              Every attack here is refused under the real on-chain terms. Every settle call here is an attack the vault refuses.
+              You are the compromised agent. Try to pay the wrong account, inflate the amount, replay a paid order, or drain the budget. The
+              vault refuses, and every refusal is on chain.
             </p>
+            <div className="flex flex-wrap gap-2 mt-5">
+              {chip("attack-breakit", "BreakIt")}
+              {chip("attack-tamper", "Check the chain")}
+              {chip("attack-runner", "Six ways")}
+              {chip("attack-matrix", "Matrix")}
+              {chip("attack-gate", "Gate and budget")}
+              {chip("attack-verify", "Verify")}
+            </div>
           </div>
         </div>
       </section>
       <StripSection />
-      <BreakIt />
-      <section className="wrap mt-10">
+      <div id="attack-breakit">
+        <BreakIt />
+      </div>
+      <section className="wrap mt-10" id="attack-tamper">
+        <div className="kicker mb-2">02&nbsp;&nbsp;Check the chain yourself, in your browser</div>
+        <h2 className="text-xl md:text-2xl mb-2">Check the chain yourself, in your browser.</h2>
+        <p className="dim text-sm max-w-3xl mb-5">
+          Each receipt hash links to the one before it. Edit the amount on receipt 2, recompute, and the link to receipt 3 breaks. The hashes
+          are recomputed in your browser with real SHA-256, not prewritten.
+        </p>
+        <TamperPanel id="attack" />
+      </section>
+      <section className="wrap mt-10" id="attack-runner">
         <AttackRunner />
       </section>
       <Playground />
+      <GateBudget />
+      <AttackVerify />
       <section className="wrap mt-10">
         <div className="panel p-6">
           <div className="kicker mb-3">Next</div>

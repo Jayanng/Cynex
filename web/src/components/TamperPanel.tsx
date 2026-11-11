@@ -35,6 +35,7 @@ export function TamperPanel({ id }: { id: string }) {
   const [log, setLog] = useState<LogLine[]>([{ kind: "diml", text: "working copy loading…" }]);
   const [src, setSrc] = useState("source: …");
   const [picked, setPicked] = useState<number>(0);
+  const [customAmount, setCustomAmount] = useState("");
   const [busy, setBusy] = useState(false);
   const builtFromLive = useRef(false);
   const rows = live.recTest.rows;
@@ -128,6 +129,27 @@ export function TamperPanel({ id }: { id: string }) {
     setBusy(false);
   };
 
+  /* Free-form tamper: set the picked receipt amount to any value the
+       judge types, then recompute its hash like the fixed button does. */
+  const doTamperCustom = async () => {
+    if (busy) return;
+    const r = chain.find((c) => Number(c.index) === picked);
+    if (!r) return;
+    if (!/^\d+$/.test(customAmount.trim())) {
+      setLog([{ kind: "bad", text: "type a whole number of base units first, then tamper." }]);
+      return;
+    }
+    setBusy(true);
+    const updated: WorkReceipt = { ...r, amount: BigInt(customAmount.trim()).toString() };
+    updated.hash = await receiptHash(updated); // attacker recomputes to cover tracks
+    setChain((prev) => prev.map((c) => (Number(c.index) === picked ? updated : c)));
+    setLog([
+      { kind: "bad", text: `tampered receipt #${picked}, amount ${r.amount} → ${updated.amount} base units · stored hash recomputed by the attacker` },
+      { kind: "diml", text: "now run the verifier replay." },
+    ]);
+    setBusy(false);
+  };
+
   const doVerify = async () => {
     if (busy) return;
     setBusy(true);
@@ -194,6 +216,17 @@ export function TamperPanel({ id }: { id: string }) {
         </select>
         <button className="btn sm" onClick={() => void doTamper()} disabled={busy || chain.length === 0}>
           Tamper, amount +1000000 base units (1 test USDC), recompute hash
+        </button>
+        <input
+          className="input mono"
+          style={{ width: 170 }}
+          aria-label="Tampered amount in base units"
+          placeholder={chain.find((c) => Number(c.index) === picked)?.amount ?? "amount"}
+          value={customAmount}
+          onChange={(e) => setCustomAmount(e.target.value)}
+        />
+        <button className="btn sm" onClick={() => void doTamperCustom()} disabled={busy || chain.length === 0}>
+          Tamper, set amount to the value above, recompute hash
         </button>
         <button className="btn sm btn-primary" onClick={() => void doVerify()} disabled={busy || chain.length === 0}>
           Run verifier replay
