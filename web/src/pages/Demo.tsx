@@ -91,7 +91,7 @@ function Guided({ anchor }: { anchor?: string }) {
             <ReadOnlyBadge />
           </div>
           <p className="dim text-sm leading-relaxed mb-4 max-w-3xl">
-            <span className="mono text-[13px]" style={{ color: "var(--accent-text)" }}>
+            <span className="mono text-[13px]" style={{ color: "var(--accent-text)", overflowWrap: "anywhere" }}>
               node frontend/dist-test/cli/cynex.js verify-live cynex-testvault.cynexmaster.testnet
             </span>{" "}
             paginates <span className="mono text-[13px]">receipts(start, limit)</span> from genesis over the test vault, recomputes every

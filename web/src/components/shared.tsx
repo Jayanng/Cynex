@@ -113,7 +113,7 @@ export function TrustRow() {
   return (
     <section className="wrap mt-8">
       <div className="panel p-6">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
           {cell("393 tests passing", "20 suites passed, 1 failed, 1 skipped \u00b7 393 tests passed, 1 failed, 3 skipped, 397 total \u00b7 Jest")}
           {cell("25 error codes", "defined in the contract, 11 returned by settle")}
           <div data-live-region="trustreceipts">{receiptsCell()}</div>
