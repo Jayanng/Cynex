@@ -348,10 +348,17 @@ export function BreakIt() {
             on-chain verdict, while the simulated fourth attack has no live verdict.
           </p>
           <div className="flex flex-wrap items-center gap-3">
-            <button className="btn btn-primary sm" disabled={liveBusy} onClick={() => void tryLiveAttack(selected)}>
+            <button className="btn btn-primary sm" disabled={liveBusy || !demoKeyConfigured()} onClick={() => void tryLiveAttack(selected)}>
               Try this attack live on chain
             </button>
-            <span className="mono text-xs dim2">signs a real settle call with the demo key · test vault only</span>
+            {demoKeyConfigured() ? (
+              <span className="mono text-xs dim2">signs a real settle call with the demo key · test vault only</span>
+            ) : (
+              <span className="mono text-xs dim2">
+                live mode not configured, the demo key has not been supplied by Johnson; the simulated refusal above is the real on-chain
+                verdict for the first three attacks
+              </span>
+            )}
           </div>
           <div id="live-out" className="mt-4">{liveOut ? liveOut.html : null}</div>
         </div>

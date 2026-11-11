@@ -12,6 +12,7 @@ export function Icon({ name, size = 16 }: { name: string; size?: number }) {
   const d = ICON_PATHS[name] ?? "";
   return (
     <svg
+      aria-hidden="true"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -32,6 +33,7 @@ export function CopyButton({ text, title }: { text: string; title?: string }) {
     <button
       className={"icbtn" + (copied ? " copied" : "")}
       title={title ?? "Copy"}
+      aria-label={title ?? "Copy"}
       onClick={async () => {
         try {
           await navigator.clipboard.writeText(text);
@@ -55,7 +57,7 @@ export function HashChip({ hash, type = "tx" }: { hash: string; type?: "tx" | "a
     <span className="hashchip" title={hash}>
       <span>{trunc(hash)}</span>
       <CopyButton text={hash} title="Copy full hash" />
-      <a className="icbtn" href={href} target="_blank" rel="noopener" title="Open in explorer">
+      <a className="icbtn" href={href} target="_blank" rel="noopener" title="Open in explorer" aria-label="Open in explorer">
         <Icon name="ext" />
       </a>
     </span>
@@ -72,7 +74,7 @@ export function AcctChip({ account }: { account: string }) {
     <span className="hashchip" title={account}>
       <span>{shown}</span>
       <CopyButton text={account} title="Copy full account" />
-      <a className="icbtn" href={EX_ADDR(account)} target="_blank" rel="noopener" title="Open in explorer">
+      <a className="icbtn" href={EX_ADDR(account)} target="_blank" rel="noopener" title="Open in explorer" aria-label="Open in explorer">
         <Icon name="ext" />
       </a>
     </span>
@@ -92,6 +94,7 @@ export function HexHash({ value }: { value: number[] | string | null | undefined
         style={{ color: "var(--secondary)" }}
         onClick={() => setExpanded((e) => !e)}
         title={expanded ? "Show short hash" : "Show full hash"}
+        aria-label={expanded ? "Show short hash" : "Show full hash"}
       >
         {expanded ? hex : shortHex(hex)}
       </button>

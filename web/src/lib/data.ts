@@ -10,6 +10,7 @@ export const AGENT2 = "cynex-agent2.cynexmaster.testnet";
 export const TOKEN = "usdc.fakes.testnet";
 export const REPO = "https://github.com/Jayanng/Cynex";
 export const COMMIT = "a79e426";
+export const MASTER_TIP = "e677e53"; // master tip the Docs badges were verified against; bump on release. COMMIT stays pinned as the playground snapshot provenance.
 export const ACME = "acme-supplies.testnet";
 export const DEMO_POLICY_ID = "p6-001";
 export const DEMO_POLICY_PROD_ID = "p5-prod-001";
@@ -57,7 +58,7 @@ export const CP: Record<string, string> = {
   curlProd:
     'curl -s https://test.rpc.fastnear.com -H "content-type: application/json" -d \'{"jsonrpc":"2.0","id":"1","method":"query","params":{"request_type":"view_code","finality":"final","account_id":"cynex-vault.cynexmaster.testnet"}}\'',
   coldrun:
-    "git clone https://github.com/Jayanng/Cynex.git\ncd Cynex/frontend\nnpm install\nnpm run typecheck\nNODE_PATH=$PWD/node_modules npm run jest  # 19 suites passed, 1 skipped, 369 tests passed, 1 skipped, 370 total\nnpx tsc --outDir dist-test --rootDir .. --module NodeNext --moduleResolution NodeNext --target ES2022 --strict --skipLibCheck --esModuleInterop --lib es2022,dom --typeRoots ./node_modules/@types ../agent/console.ts ../cli/cynex.ts ../services/verifier/verifier.ts ../services/verifier/verify.test.ts ../services/executor/executor.ts ../services/executor/executor.test.ts ../services/console/console.test.ts ../services/reputation/reputation.ts ../services/reputation/snapshot.ts ../services/reputation/live-sources.ts || true  # tsc exits 2 with 5 known near-api-js type errors (README.md:506-509); dist-test/ still works\ncd ..\nnode frontend/dist-test/cli/cynex.js verify-live cynex-testvault.cynexmaster.testnet",
+    "git clone https://github.com/Jayanng/Cynex.git\ncd Cynex/frontend\nnpm install\nnpm run typecheck\nNODE_PATH=$PWD/node_modules npm run jest  # 20 suites passed, 1 failed, 1 skipped, 393 tests passed, 1 failed, 3 skipped, 397 total\nnpx tsc --outDir dist-test --rootDir .. --module NodeNext --moduleResolution NodeNext --target ES2022 --strict --skipLibCheck --esModuleInterop --lib es2022,dom --typeRoots ./node_modules/@types ../agent/console.ts ../cli/cynex.ts ../services/verifier/verifier.ts ../services/verifier/verify.test.ts ../services/executor/executor.ts ../services/executor/executor.test.ts ../services/console/console.test.ts ../services/reputation/reputation.ts ../services/reputation/snapshot.ts ../services/reputation/live-sources.ts || true  # tsc exits 2 with 5 known near-api-js type errors (README.md:506-509); dist-test/ still works\ncd ..\nnode frontend/dist-test/cli/cynex.js verify-live cynex-testvault.cynexmaster.testnet",
   att13324:
     "outlayer-verify bundle docs/attestation-proofs/attestation-proof-prod-tee-001.json --offline",
   att10640:
@@ -108,11 +109,11 @@ export const GUIDED: GuidedStep[] = [
     cls: "",
     title: "Happy path, PREIMAGE evidence",
     ob: "p10-demo-preimage-001",
-    desc: "The agent delivers the delivery note and presents its SHA-256 preimage. The vault hashes the bytes itself, compares them to the digest committed at creation, enforces the fixed terms, and settles 100 base units (0.0001 USDC) to the agent. No human in the loop: the contract checked everything.",
+    desc: "The agent delivers the delivery note and presents its SHA-256 preimage. The vault hashes the bytes itself, compares them to the digest committed at creation, enforces the fixed terms, and settles 100 base units (0.0001 test USDC) to the agent. No human in the loop: the contract checked everything.",
     terms: [
       ["recipient", AGENT],
       ["token", TOKEN],
-      ["amount", "100 base units (0.0001 USDC)"],
+      ["amount", "100 base units (0.0001 test USDC)"],
       ["nonce", "1001"],
       ["evidence", "PREIMAGE, SHA-256(delivery note demo-delivery-note-001:p10-demo-preimage-001:100)"],
     ],
@@ -137,7 +138,7 @@ export const GUIDED: GuidedStep[] = [
     terms: [
       ["recipient", AGENT],
       ["token", TOKEN],
-      ["amount", "100 base units (0.0001 USDC)"],
+      ["amount", "100 base units (0.0001 test USDC)"],
       ["nonce", "1002"],
       ["evidence", "PREIMAGE"],
     ],
@@ -180,7 +181,7 @@ export const GUIDED: GuidedStep[] = [
     terms: [
       ["recipient", AGENT],
       ["token", TOKEN],
-      ["amount", "100 base units (0.0001 USDC)"],
+      ["amount", "100 base units (0.0001 test USDC)"],
       ["nonce", "1003"],
       ["evidence", "TEE, OutLayer request 11912 · 300 TGas console caller gas"],
     ],
@@ -231,18 +232,18 @@ export const PLAYGROUND_INITIAL: PlaygroundRow[] = [
   { id: "p6-prod-004", ev: "delivery-note", amount: "1000", nonce: 4, expect: "ERR_OBLIGATION_EXPIRED", vault: VAULT_PROD, recipient: ACME, role: "expired-only", note: "READY on chain but expired: 90-second expiry, now passed. Proposing the recorded terms fails ERR_OBLIGATION_EXPIRED; not a generic spare." },
   { id: "p6-prod-005", ev: "delivery-note", amount: "1000", nonce: 5, expect: "READY", vault: VAULT_PROD, recipient: ACME, role: "spare READY", note: "READY on chain, acme-supplies.testnet, an account that does not exist on chain. Spare for the demo." },
   { id: "obl-verify-demo", ev: "delivery-note", amount: "1000", nonce: 9, expect: "ERR_NONCE_ALREADY_CONSUMED", vault: VAULT_PROD, recipient: ACME, role: "nonce replay", note: "PAID on chain, acme-supplies.testnet, an account that does not exist on chain. Replay it for ERR_NONCE_ALREADY_CONSUMED; no happy-path settle runs on production." },
-  { id: "p9-prod-preimage-001", ev: "PREIMAGE", amount: "100", nonce: 9101, expect: "CANCELLED", ro: true, vault: VAULT_PROD, recipient: AGENT, role: "preimage proof (read-only)", note: "CANCELLED on chain (live read 2026-11-10), evidence type PREIMAGE, recipient cynex-agent.cynexmaster.testnet. The Phase 9 proof obligation: the correct artifact bytes were submitted on chain. Read-only: this case is never settled from the playground." },
-  { id: "p9-prod-preimage-002", ev: "PREIMAGE", amount: "100", nonce: 9102, expect: "CANCELLED", ro: true, vault: VAULT_PROD, recipient: AGENT, role: "preimage proof (read-only)", note: "CANCELLED on chain (live read 2026-11-10), evidence type PREIMAGE, recipient cynex-agent.cynexmaster.testnet. The Phase 9 proof obligation: was awaiting the artifact bytes. Read-only: this case is never settled from the playground." },
-  { id: "p9-prod-tee-001", ev: "TEE", amount: "100", nonce: 9103, expect: "CANCELLED", ro: true, vault: VAULT_PROD, recipient: AGENT, role: "tee proof (read-only)", note: "CANCELLED on chain (live read 2026-11-10), evidence type TEE, recipient cynex-agent.cynexmaster.testnet. The Phase 9 proof obligation: TEE provenance is verified off chain through the OutLayer guest, with the VRF signature as the on-chain anchor. The VRF signature does not prove TEE execution. Read-only: this case is never settled from the playground." },
+  { id: "p9-prod-preimage-001", ev: "PREIMAGE", amount: "100", nonce: 9101, expect: "CANCELLED", ro: true, vault: VAULT_PROD, recipient: AGENT, role: "preimage proof (read-only)", note: "CANCELLED on chain (live read 2026-11-10), evidence type PREIMAGE, recipient cynex-agent.cynexmaster.testnet. The proof obligation: the correct artifact bytes were submitted on chain. Read-only: this case is never settled from the playground." },
+  { id: "p9-prod-preimage-002", ev: "PREIMAGE", amount: "100", nonce: 9102, expect: "CANCELLED", ro: true, vault: VAULT_PROD, recipient: AGENT, role: "preimage proof (read-only)", note: "CANCELLED on chain (live read 2026-11-10), evidence type PREIMAGE, recipient cynex-agent.cynexmaster.testnet. The proof obligation: was awaiting the artifact bytes. Read-only: this case is never settled from the playground." },
+  { id: "p9-prod-tee-001", ev: "TEE", amount: "100", nonce: 9103, expect: "CANCELLED", ro: true, vault: VAULT_PROD, recipient: AGENT, role: "tee proof (read-only)", note: "CANCELLED on chain (live read 2026-11-10), evidence type TEE, recipient cynex-agent.cynexmaster.testnet. The proof obligation: TEE provenance is verified off chain through the OutLayer guest, with the VRF signature as the on-chain anchor. The VRF signature does not prove TEE execution. Read-only: this case is never settled from the playground." },
   { id: "p6-obl-001", ev: "delivery-note", amount: "1000", nonce: 1, expect: "ERR_RECIPIENT_SUBSTITUTION", vault: VAULT_TEST, recipient: ACME, role: "recipient substitution", note: "READY on chain, acme-supplies.testnet, an account that does not exist on chain. Propose unregistered-xyz.testnet for ERR_RECIPIENT_SUBSTITUTION." },
   { id: "p6-obl-002", ev: "delivery-note", amount: "1000", nonce: 2, expect: "ERR_TERMS_MISMATCH", vault: VAULT_TEST, recipient: ACME, role: "terms mismatch", note: "READY on chain, acme-supplies.testnet, an account that does not exist on chain. Propose 1001 for ERR_TERMS_MISMATCH." },
   { id: "p6-obl-003", ev: "delivery-note", amount: "1000", nonce: 3, expect: "ERR_NONCE_ALREADY_CONSUMED", vault: VAULT_TEST, recipient: ACME, role: "nonce replay", note: "PAID on chain, acme-supplies.testnet, an account that does not exist on chain. Replay it for ERR_NONCE_ALREADY_CONSUMED." },
   { id: "p6-obl-004", ev: "delivery-note", amount: "9001", nonce: 4, expect: "ERR_BUDGET_EXCEEDED", vault: VAULT_TEST, recipient: ACME, role: "budget exceeded", note: "READY on chain, acme-supplies.testnet, an account that does not exist on chain, recorded 9001 against a 9000 headroom. Propose the recorded 9001 for ERR_BUDGET_EXCEEDED." },
   { id: "p6-obl-005", ev: "delivery-note", amount: "1000", nonce: 5, expect: "ERR_OBLIGATION_EXPIRED", vault: VAULT_TEST, recipient: ACME, role: "expired", note: "READY on chain, acme-supplies.testnet, an account that does not exist on chain, expired. Propose the recorded terms for ERR_OBLIGATION_EXPIRED." },
   { id: "p6-obl-006", ev: "delivery-note", amount: "1000", nonce: 6, expect: "ERR_NONCE_ALREADY_CONSUMED", vault: VAULT_TEST, recipient: ACME, role: "nonce replay (already PAID)", receipt: 5, note: "PAID on chain (live read 2026-11-10, test receipt 5), recipient acme-supplies.testnet, an account that does not exist on chain. It settled correctly once (happy path), receipt 5; only a replay is possible now, refused with ERR_NONCE_ALREADY_CONSUMED. Consumed by the first correct settle; a fresh obligation is needed afterwards for another happy path." },
-  { id: "p10-demo-preimage-001", ev: "PREIMAGE", amount: "100", nonce: 1001, expect: "PAID", ro: true, tx: "3Gp3J2zZCKrne1PamDVf6PgXHk4qGc3a58GBvoFcNhrZ", receipt: 11, vault: VAULT_TEST, recipient: AGENT, role: "happy path (Phase 10 demo, read-only)", note: "PAID on the test vault. The Phase 10 demo happy path: create tx CC8gdACowXvBskZS9K4WEzXddunVpxpwCEdsdFdP2xa3, request evidence tx FE5EtKA12h8AwLcngWXuMsaSL1vhg9gzMB4RAWGWCNNx, submit preimage tx MVJrygCRiiZgNv96gkSQC9vzk2saLwj4wdKTULoCJzh, settle tx 3Gp3J2zZCKrne1PamDVf6PgXHk4qGc3a58GBvoFcNhrZ, receipt index 11. Agent 700 to 800 base units, policy spent 3400 to 3500. Read-only: this case is never settled from the playground." },
-  { id: "p10-demo-attack-001", ev: "PREIMAGE", amount: "100", nonce: 1002, expect: "PAID", ro: true, tx: "Ho97UjQEDDfe7Go66uHrVSJvbF8narZJ2YBH3hWarxi", receipt: 12, vault: VAULT_TEST, recipient: AGENT, role: "attack, three tries (Phase 10 demo, read-only)", note: "PAID on the test vault after two failed attacks. Attack 1 recipient substitution tx AFYAq8Sju41NjBFwPmTHbJ1psmsYQWjVdBhmXBZbpa7S (ERR_RECIPIENT_SUBSTITUTION), attack 2 amount 200 base units tx 43YaxJVggxuZ3E25WfjzkgGBsGAqLrj8nwdUU9RLAQRy (ERR_TERMS_MISMATCH), correct settle tx Ho97UjQEDDfe7Go66uHrVSJvbF8narZJ2YBH3hWarxi, receipt index 12, replay tx AwzQS7XsuGSYnPmvd5jFJzPDs3WDc2gRgSbW3smWq1Cs (ERR_NONCE_ALREADY_CONSUMED). Agent 800 to 900 base units, policy spent 3500 to 3600. Read-only: this case is never settled from the playground." },
-  { id: "p10-demo-tee-001", ev: "TEE", amount: "100", nonce: 1003, expect: "PAID", ro: true, tx: "3QV2aCRSiJ8ZYqLECCpK6ZkXpYE4AdxJzmyP3JTaDqWB", receipt: 13, vault: VAULT_TEST, recipient: AGENT, role: "TEE and VRF (Phase 10 demo, read-only)", note: "PAID on the test vault. The Phase 10 demo TEE and VRF: TEE request tx 5Xvu78qxd9NfgJzRBeyvdQXnqK8sLfSmzrfVC5dgDK68 (OutLayer request 11912, guest 8abfe08b), settle tx 3QV2aCRSiJ8ZYqLECCpK6ZkXpYE4AdxJzmyP3JTaDqWB, receipt index 13. Agent 900 to 1000 base units, policy spent 3600 to 3700. Read-only: this case is never settled from the playground." },
+  { id: "p10-demo-preimage-001", ev: "PREIMAGE", amount: "100", nonce: 1001, expect: "PAID", ro: true, tx: "3Gp3J2zZCKrne1PamDVf6PgXHk4qGc3a58GBvoFcNhrZ", receipt: 11, vault: VAULT_TEST, recipient: AGENT, role: "happy path (live demo, read-only)", note: "PAID on the test vault. The live demo happy path: create tx CC8gdACowXvBskZS9K4WEzXddunVpxpwCEdsdFdP2xa3, request evidence tx FE5EtKA12h8AwLcngWXuMsaSL1vhg9gzMB4RAWGWCNNx, submit preimage tx MVJrygCRiiZgNv96gkSQC9vzk2saLwj4wdKTULoCJzh, settle tx 3Gp3J2zZCKrne1PamDVf6PgXHk4qGc3a58GBvoFcNhrZ, receipt index 11. Agent 700 to 800 base units, policy spent 3400 to 3500. Read-only: this case is never settled from the playground." },
+  { id: "p10-demo-attack-001", ev: "PREIMAGE", amount: "100", nonce: 1002, expect: "PAID", ro: true, tx: "Ho97UjQEDDfe7Go66uHrVSJvbF8narZJ2YBH3hWarxi", receipt: 12, vault: VAULT_TEST, recipient: AGENT, role: "attack, three tries (live demo, read-only)", note: "PAID on the test vault after two failed attacks. Attack 1 recipient substitution tx AFYAq8Sju41NjBFwPmTHbJ1psmsYQWjVdBhmXBZbpa7S (ERR_RECIPIENT_SUBSTITUTION), attack 2 amount 200 base units tx 43YaxJVggxuZ3E25WfjzkgGBsGAqLrj8nwdUU9RLAQRy (ERR_TERMS_MISMATCH), correct settle tx Ho97UjQEDDfe7Go66uHrVSJvbF8narZJ2YBH3hWarxi, receipt index 12, replay tx AwzQS7XsuGSYnPmvd5jFJzPDs3WDc2gRgSbW3smWq1Cs (ERR_NONCE_ALREADY_CONSUMED). Agent 800 to 900 base units, policy spent 3500 to 3600. Read-only: this case is never settled from the playground." },
+  { id: "p10-demo-tee-001", ev: "TEE", amount: "100", nonce: 1003, expect: "PAID", ro: true, tx: "3QV2aCRSiJ8ZYqLECCpK6ZkXpYE4AdxJzmyP3JTaDqWB", receipt: 13, vault: VAULT_TEST, recipient: AGENT, role: "TEE and VRF (live demo, read-only)", note: "PAID on the test vault. The live demo TEE and VRF: TEE request tx 5Xvu78qxd9NfgJzRBeyvdQXnqK8sLfSmzrfVC5dgDK68 (OutLayer request 11912, guest 8abfe08b), settle tx 3QV2aCRSiJ8ZYqLECCpK6ZkXpYE4AdxJzmyP3JTaDqWB, receipt index 13. Agent 900 to 1000 base units, policy spent 3600 to 3700. Read-only: this case is never settled from the playground." },
   { id: "pg-preimage-ok-001", ev: "PREIMAGE", amount: "25", nonce: 2001, expect: "PAID", fixture: true, vault: VAULT_TEST, recipient: AGENT, role: "scenario fixture", note: "Scenario fixture, not a file obligation: valid preimage, terms exact." },
   { id: "pg-preimage-ok-002", ev: "PREIMAGE", amount: "10", nonce: 2013, expect: "PAID", fixture: true, vault: VAULT_TEST, recipient: AGENT, role: "scenario fixture", note: "Scenario fixture, not a file obligation: minimum-amount settle." },
   { id: "pg-budget-edge-001", ev: "PREIMAGE", amount: "250", nonce: 2014, expect: "PAID", fixture: true, vault: VAULT_TEST, recipient: AGENT, role: "scenario fixture", note: "Scenario fixture, not a file obligation: settle exactly at remaining policy headroom." },
@@ -385,7 +386,7 @@ export const BREAK_IT: BreakItScenario[] = [
     label: "Change the recipient",
     code: "ERR_RECIPIENT_SUBSTITUTION",
     tx: "AFYAq8Sju41NjBFwPmTHbJ1psmsYQWjVdBhmXBZbpa7S",
-    attempt: "settle p10-demo-attack-001 to a different recipient · 100 base units (0.0001 USDC) · nonce 1002",
+    attempt: "settle p10-demo-attack-001 to a different recipient · 100 base units (0.0001 test USDC) · nonce 1002",
     why: "The obligation fixes the recipient on chain. The settle call asked for a different recipient, so the vault refused before moving anything.",
     live: { obligation: "ready", recipient: DEMO_ATTACKER, amount: "100", expectState: "READY" },
   },
@@ -394,8 +395,8 @@ export const BREAK_IT: BreakItScenario[] = [
     label: "Change the amount",
     code: "ERR_TERMS_MISMATCH",
     tx: "43YaxJVggxuZ3E25WfjzkgGBsGAqLrj8nwdUU9RLAQRy",
-    attempt: "settle p10-demo-attack-001 for 200 base units (0.0002 USDC) instead of the fixed 100 base units (0.0001 USDC) · nonce 1002",
-    why: "The obligation fixes the amount at 100 base units (0.0001 USDC). The settle asked for 200 base units (0.0002 USDC), so the terms did not match and the vault refused.",
+    attempt: "settle p10-demo-attack-001 for 200 base units (0.0002 test USDC) instead of the fixed 100 base units (0.0001 test USDC) · nonce 1002",
+    why: "The obligation fixes the amount at 100 base units (0.0001 test USDC). The settle asked for 200 base units (0.0002 test USDC), so the terms did not match and the vault refused.",
     live: { obligation: "ready", recipient: AGENT, amount: "200", expectState: "READY" },
   },
   {
@@ -429,7 +430,7 @@ export const USECASE = {
   procurementAgent: AGENT,
   researchAgent: AGENT2,
   owner: "cynexmaster.testnet",
-  amount: "100 base units (0.0001 USDC)",
+  amount: "100 base units (0.0001 test USDC)",
   obligations: [
     { id: "usecase-report-001", receipt: 23, note: "First run of the scenario, same artifact and amount, nonce 30001. Agent balance 2000 to 2100 base units, policy spent 4600 to 4700." },
     { id: "usecase-report-002", receipt: 24, note: "Canonical attack proof, nonce 30002. One NEAR account, cynex-agent.cynexmaster.testnet, in both agent roles, so this run proves the vault controls, not payment between two distinct accounts. Agent balance 2100 to 2200 base units, policy spent 4700 to 4800." },

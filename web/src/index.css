@@ -147,3 +147,7 @@ mark{background:var(--accent-soft);color:var(--accent-text);border-radius:4px;pa
 .band-ink{background:var(--txt);border-radius:12px;color:var(--bg)}
 .band-ink .kicker{color:var(--bg)}
 .band-ink .dim{color:var(--bg);opacity:.72}
+
+/* Skip link: visually hidden until keyboard focus. */
+.skip-link{position:absolute;left:16px;top:-48px;z-index:100;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:14px;transition:top .15s}
+.skip-link:focus{top:8px}

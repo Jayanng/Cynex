@@ -55,6 +55,9 @@ function Guided({ anchor }: { anchor?: string }) {
                   <span className="flex flex-wrap items-center gap-2">
                     <Badge value={a.verdict} extra={a.code ?? null} />
                   </span>
+                  <span className="badge b-dim">
+                    <span className="bdot"></span>Historical
+                  </span>
                   <HashChip hash={a.tx} />
                   {a.note ? <span className="mono text-xs dim2">{a.note}</span> : null}
                 </div>
@@ -66,6 +69,9 @@ function Guided({ anchor }: { anchor?: string }) {
               <button className="btn sm" onClick={() => void run(s.receipt)}>
                 Read receipt #{s.receipt} from chain, now
               </button>
+              <span className="badge b-dim">
+                <span className="bdot"></span>Live
+              </span>
             </div>
             <div id={"cr-" + s.receipt}>
               <ChainReadOut state={states[s.receipt] ?? null} />

@@ -147,9 +147,9 @@ function Playground() {
           expired: "ERR_OBLIGATION_EXPIRED",
           "spare READY": "READY",
           "nonce replay": "ERR_NONCE_ALREADY_CONSUMED",
-          "happy path (Phase 10 demo, read-only)": "PAID",
-          "attack, three tries (Phase 10 demo, read-only)": "PAID",
-          "TEE and VRF (Phase 10 demo, read-only)": "PAID",
+          "happy path (live demo, read-only)": "PAID",
+          "attack, three tries (live demo, read-only)": "PAID",
+          "TEE and VRF (live demo, read-only)": "PAID",
         };
         const vaults: { vaultId?: string; obligations?: Record<string, unknown>[] }[] = Array.isArray(j?.vaults) ? j.vaults : [];
         type PgFileRow = Record<string, unknown> & { vaultId?: string };

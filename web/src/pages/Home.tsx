@@ -1,17 +1,17 @@
 /* Cynex web, Home page.
-   Hero first, then the refusal, the live strip, the trust row, one live
-   proof, the three layers, the reputation gate, how a settlement flows,
-   the use case, MCP, one verify command, the trust model, the calls to
-   action, and the Footer. */
+   Hero first, then the live strip, how a settlement flows, the refusal,
+   one live proof, the use case, the three layers, the reputation gate,
+   MCP, the trust model, the trust row, the calls to action, and the Footer.
+   The CLI verify lives in Proof. */
 
 import { useEffect } from "react";
-import { AGENT, AGENT2, MCP_DEMO_RUN, MCP_FACTS, MCP_RUN, MCP_TOOLS, SETTLE_CODES, USECASE, VAULT_TEST } from "../lib/data";
+import { AGENT, AGENT2, MCP_DEMO_RUN, MCP_FACTS, MCP_RUN, MCP_TOOLS, USECASE, VAULT_TEST } from "../lib/data";
 import { useLive } from "../lib/live";
 import { fmtToken, trunc } from "../lib/near";
 import { useChainRead } from "../lib/useChainRead";
 import { Badge, ChainReadOut, HashChip, AcctChip, Icon, LoadTxt, Unavail } from "../components/ui";
 import { StripSection } from "../components/Strip";
-import { RefusalPanel, TrustRow, VerifyHome, Footer } from "../components/shared";
+import { RefusalPanel, TrustRow, Footer } from "../components/shared";
 
 function LatestSettle() {
   const { live: L } = useLive();
@@ -32,7 +32,7 @@ function LatestSettle() {
   const row2 = (k: string, v: React.ReactNode) => (
     <div className="flex justify-between gap-4">
       <span className="dim2">{k}</span>
-      <span className="text-right" style={{ color: "var(--secondary)" }}>
+      <span className="text-right min-w-0" style={{ color: "var(--secondary)", overflowWrap: "anywhere" }}>
         {v}
       </span>
     </div>
@@ -154,6 +154,9 @@ function UseCaseSection() {
             <div className="attempt" key={a.tx}>
               <span className="att-label">{a.label}</span>
               <Badge value={a.code === "PAID" ? "PAID" : "REFUSED"} extra={a.code === "PAID" ? undefined : a.code} />
+              <span className="badge b-dim">
+                <span className="bdot"></span>Historical
+              </span>
               <HashChip hash={a.tx} />
             </div>
           ))}
@@ -262,7 +265,7 @@ function ChecksCard() {
                     <Icon name="check" />
                   </span>
                 )}
-                <span className="text-[15px] leading-relaxed">
+                <span className="text-[15px] leading-relaxed" style={{ overflowWrap: "anywhere" }}>
                   {label}{" "}
                   <b className="font-medium">
                     {live && !pol ? (L.policy.err ? <Unavail /> : <LoadTxt />) : value}
@@ -312,8 +315,8 @@ export function Home() {
         >
           <path d="M 35.6 10.2 A 18 18 0 1 0 35.6 37.8" stroke="#efe9df" strokeWidth="2.4" strokeLinecap="round" />
         </svg>
-        <div className="relative grid lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] gap-12 items-center">
-          <div>
+        <div className="relative grid grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] gap-12 items-center">
+          <div className="min-w-0">
             <div className="kicker mb-5">Purpose-bound settlement · testnet</div>
             <h1 className="hero-h">
               Pay the obligation.
@@ -337,7 +340,7 @@ export function Home() {
             </div>
             <div className="mono text-xs dim2 mt-4">no login · no wallet · every receipt is a real chain receipt</div>
           </div>
-          <div className="flex flex-col gap-4">
+          <div className="flex min-w-0 flex-col gap-4">
             <ChecksCard />
             <div className="panel fadein" data-live-region="latest" style={{ minHeight: 220 }}>
               <LatestSettle />
@@ -346,11 +349,35 @@ export function Home() {
         </div>
       </section>
 
+      <StripSection />
+
+      {/* Flow diagram: how a settlement moves through the layers */}
+      <section className="wrap mt-12">
+        <div className="panel p-6">
+          <div className="mono text-xs dim2 mb-3">How a settlement flows</div>
+          <div className="flow">
+            <span className="flow-step">human authorizes the obligation</span>
+            <span className="flow-arrow">-&gt;</span>
+            <span className="flow-step">agent requests settlement</span>
+            <span className="flow-arrow">-&gt;</span>
+            <span className="flow-step">console reputation gate: BLOCK refuses, WARN escalates</span>
+            <span className="flow-arrow">-&gt;</span>
+            <span className="flow-step">evidence to READY: preimage hash, TEE, or verifier</span>
+            <span className="flow-arrow">-&gt;</span>
+            <span className="flow-step">vault checks the fixed terms, in order</span>
+            <span className="flow-arrow">-&gt;</span>
+            <span className="flow-step">settle writes a hash-chained receipt</span>
+          </div>
+          <p className="dim text-[13px] mt-3">
+            The vault is the last check, not the first: the gate can refuse before anything reaches the chain, and the vault refuses any
+            settle whose terms differ, whatever the gate said.
+          </p>
+        </div>
+      </section>
+
+
       <RefusalPanel />
 
-
-      <StripSection />
-      <TrustRow />
       {/* One live proof */}
       <section className="wrap mt-24">
         <div className="panel p-6">
@@ -365,7 +392,7 @@ export function Home() {
           </div>
           <p className="dim text-sm max-w-3xl leading-relaxed mb-5">
             Step 2: after the vault refused a substituted recipient and an inflated amount, the correct settle of obligation{" "}
-            <span className="mono text-[13px] text-ink">p10-demo-attack-001</span> went through, 100 base units (0.0001 USDC) to{" "}
+            <span className="mono text-[13px] text-ink">p10-demo-attack-001</span> went through, 100 base units (0.0001 test USDC) to{" "}
             <AcctChip account={AGENT} />, and wrote receipt #12 to the hash chain.
           </p>
           <div className="flex flex-wrap items-center gap-3 mb-2">
@@ -390,6 +417,9 @@ export function Home() {
         </div>
       </section>
 
+
+      <UseCaseSection />
+
       {/* Three layers */}
       <section className="wrap mt-24">
         <div className="kicker mb-3">The three layers</div>
@@ -401,12 +431,10 @@ export function Home() {
             t="On-chain integrity"
             body="Settle checks the terms in a fixed order: obligation exists, in-flight and PAID nonce checks, READY state, resolved-ready, recipient, amount, expiry, policy exists and unfrozen, policy version, token lock, budget, native headroom. Eleven settle codes, no discretion."
             extra={
-              <div className="flex flex-wrap gap-1.5 mt-3">
-                {SETTLE_CODES.map(([c]) => (
-                  <span key={c} className="codechip">
-                    {c}
-                  </span>
-                ))}
+              <div className="mono text-xs dim mt-3">
+                <a href="#/docs/security" style={{ color: "var(--accent-text)" }}>
+                  All eleven settle codes, with their meanings
+                </a>
               </div>
             }
             linktxt="Live example: wrong recipient refused"
@@ -416,7 +444,7 @@ export function Home() {
           <Layer
             n="2"
             t="TEE provenance"
-            body="PREIMAGE: the vault hashes the delivery artifact bytes itself and compares them to the digest committed at authorization, capped at 64 KiB (MAX_PREIMAGE_BYTES 65536, ERR_EVIDENCE_TOO_LARGE above it). Oversized evidence falls back to TRUSTED_RELAYER, the allowlisted verifier path for oversized evidence. TEE: verification runs in the OutLayer guest, which fetches the evidence from its claimed source and returns the digest plus the source. The vault does not verify the TDX quote on chain; quote verification is off chain."
+            body="PREIMAGE: the vault hashes the delivery artifact bytes itself and compares them to the digest committed at authorization. TEE: verification runs in the OutLayer guest, which fetches the evidence from its claimed source and returns the digest plus the source. The vault does not verify the TDX quote on chain; quote verification is off chain."
             extra={
               <div className="mono text-xs dim mt-3">
                 OutLayer request <span className="text-ink">11912</span> · 300 TGas console caller gas (contract: 100 TGas request + 50
@@ -440,6 +468,7 @@ export function Home() {
           />
         </div>
       </section>
+
 
       {/* Off-chain reputation gate: separate from the three layers, the vault never sees a BLOCKed attempt */}
       <section className="wrap mt-8">
@@ -465,34 +494,8 @@ export function Home() {
         </div>
       </section>
 
-      {/* Flow diagram: how a settlement moves through the layers */}
-      <section className="wrap mt-12">
-        <div className="panel p-6">
-          <div className="mono text-xs dim2 mb-3">How a settlement flows</div>
-          <div className="flow">
-            <span className="flow-step">human authorizes the obligation</span>
-            <span className="flow-arrow">-&gt;</span>
-            <span className="flow-step">agent requests settlement</span>
-            <span className="flow-arrow">-&gt;</span>
-            <span className="flow-step">console reputation gate: BLOCK refuses, WARN escalates</span>
-            <span className="flow-arrow">-&gt;</span>
-            <span className="flow-step">evidence to READY: preimage hash, TEE, or verifier</span>
-            <span className="flow-arrow">-&gt;</span>
-            <span className="flow-step">vault checks the fixed terms, in order</span>
-            <span className="flow-arrow">-&gt;</span>
-            <span className="flow-step">settle writes a hash-chained receipt</span>
-          </div>
-          <p className="dim text-[13px] mt-3">
-            The vault is the last check, not the first: the gate can refuse before anything reaches the chain, and the vault refuses any
-            settle whose terms differ, whatever the gate said.
-          </p>
-        </div>
-      </section>
-      <UseCaseSection />
 
       <McpSection />
-      <VerifyHome />
-
       {/* Trust model */}
       <section className="wrap mt-24">
         <div className="panel p-6">
@@ -523,6 +526,9 @@ export function Home() {
           <div className="mono text-xs dim2 mt-4">Testnet only. No mainnet funds. No production settles from this site.</div>
         </div>
       </section>
+
+
+      <TrustRow />
 
       {/* CTAs */}
       <section className="wrap mt-24">
@@ -557,6 +563,7 @@ export function Home() {
           </a>
         </div>
       </section>
+
       <Footer />
     </>
   );

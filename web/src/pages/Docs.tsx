@@ -7,7 +7,7 @@
    content column, so the page cannot scroll sideways. */
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { AGENT, CLI_COMMANDS, COMMIT, CONSOLE_FACTS, CONSOLE_RUN, CP, DOC_COMMITS, MCP_FACTS, MCP_RUN, MCP_TOOLS, RPC_URL, SETTLE_CODES, TOKEN, VAULT_PROD, VAULT_TEST } from "../lib/data";
+import { AGENT, CLI_COMMANDS, COMMIT, MASTER_TIP, CONSOLE_FACTS, CONSOLE_RUN, CP, DOC_COMMITS, MCP_FACTS, MCP_RUN, MCP_TOOLS, RPC_URL, SETTLE_CODES, TOKEN, VAULT_PROD, VAULT_TEST } from "../lib/data";
 import { StripSection } from "../components/Strip";
 import { Badge, CmdBlock, CopyButton, HashChip, Icon } from "../components/ui";
 import { Footer } from "../components/shared";
@@ -283,10 +283,10 @@ node frontend/dist-test/cli/cynex.js verify-live cynex-vault.cynexmaster.testnet
           acme-supplies.testnet, which does not exist on chain.
         </p>
         <div className="space-y-3">
-          <P10Step t="1 · Happy path, PREIMAGE" sub="p10-demo-preimage-001 · 100 base units (0.0001 USDC) · nonce 1001 · artifact: delivery note demo-delivery-note-001:p10-demo-preimage-001:100" tx="3Gp3J2zZCKrne1PamDVf6PgXHk4qGc3a58GBvoFcNhrZ" verdict="PAID · receipt #11 · agent 700 → 800" />
+          <P10Step t="1 · Happy path, PREIMAGE" sub="p10-demo-preimage-001 · 100 base units (0.0001 test USDC) · nonce 1001 · artifact: delivery note demo-delivery-note-001:p10-demo-preimage-001:100" tx="3Gp3J2zZCKrne1PamDVf6PgXHk4qGc3a58GBvoFcNhrZ" verdict="PAID · receipt #11 · agent 700 → 800" />
           <P10Step t="2a · Attack, wrong recipient" sub="p10-demo-attack-001 · nonce 1002 · proposed recipient was the owner account, cynexmaster.testnet" tx="AFYAq8Sju41NjBFwPmTHbJ1psmsYQWjVdBhmXBZbpa7S" verdict="REFUSED · ERR_RECIPIENT_SUBSTITUTION" bad />
           <P10Step t="2b · Attack, wrong amount (200 base units)" sub="p10-demo-attack-001 · nonce 1002" tx="43YaxJVggxuZ3E25WfjzkgGBsGAqLrj8nwdUU9RLAQRy" verdict="REFUSED · ERR_TERMS_MISMATCH" bad />
-          <P10Step t="2c · Correct settle" sub="p10-demo-attack-001 · 100 base units (0.0001 USDC) · nonce 1002" tx="Ho97UjQEDDfe7Go66uHrVSJvbF8narZJ2YBH3hWarxi" verdict="PAID · receipt #12 · agent 800 → 900" />
+          <P10Step t="2c · Correct settle" sub="p10-demo-attack-001 · 100 base units (0.0001 test USDC) · nonce 1002" tx="Ho97UjQEDDfe7Go66uHrVSJvbF8narZJ2YBH3hWarxi" verdict="PAID · receipt #12 · agent 800 → 900" />
           <P10Step t="2d · Replay" sub="nonce 1002 reused" tx="AwzQS7XsuGSYnPmvd5jFJzPDs3WDc2gRgSbW3smWq1Cs" verdict="REFUSED · ERR_NONCE_ALREADY_CONSUMED" bad />
           <P10Step t="3a · TEE request" sub="p10-demo-tee-001 · nonce 1003 · OutLayer 11912 · 300 TGas console caller gas" tx="5Xvu78qxd9NfgJzRBeyvdQXnqK8sLfSmzrfVC5dgDK68" verdict="OK" />
           <P10Step t="3b · TEE settle" sub="VRF bound to the pending request" tx="3QV2aCRSiJ8ZYqLECCpK6ZkXpYE4AdxJzmyP3JTaDqWB" verdict="PAID · receipt #13 · agent 900 → 1000" />
@@ -462,7 +462,7 @@ neutral: no contract, or first observation, not a penalty`}
           <div className="flex flex-col">
             {[
               ["Typecheck (web build, tsc -b)", "clean"],
-              ["Jest", "19 suites passed, 1 skipped · 369 tests passed, 1 skipped, 370 total"],
+              ["Jest", "20 suites passed, 1 failed, 1 skipped · 393 tests passed, 1 failed, 3 skipped, 397 total"],
               ["Conformance", "6 / 6"],
             ].map(([k, v], i, arr) => (
               <div
@@ -627,6 +627,7 @@ export function Docs({ active }: { active?: string }) {
             <input
               className="input w-full mb-4"
               id="docsearch"
+              aria-label="Search docs"
               placeholder="Search"
 
               value={query}
@@ -679,7 +680,7 @@ export function Docs({ active }: { active?: string }) {
                     <span>{d.path}</span>
                   </span>
                   <span className="badge b-dim">
-                    <span className="bdot"></span>master {COMMIT}
+                    <span className="bdot"></span>master {MASTER_TIP}
                   </span>
                   <span className="badge b-dim">
                     <span className="bdot"></span>source updated {d.commit}
