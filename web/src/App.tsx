@@ -3,7 +3,7 @@
    #/proof) so existing links keep working. The header and the live
    strip read from the same live store. */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { LiveProvider, useLive } from "./lib/live";
 import { Home } from "./pages/Home";
 import { Demo } from "./pages/Demo";
@@ -18,7 +18,7 @@ function parseRoute(): string[] {
   return parseHash(window.location.hash);
 }
 
-function Header({ page, headerRef, headerHeight }: { page: string; headerRef: React.RefObject<HTMLElement | null>; headerHeight: number }) {
+function Header({ page, headerRef, headerHeight }: { page: string; headerRef: React.RefObject<HTMLElement | null>; headerHeight: number | null }) {
   const { live } = useLive();
   const nettxt = live.blockHeight
     ? "Testnet \u00b7 " + String(live.blockHeight)
@@ -67,7 +67,7 @@ function Header({ page, headerRef, headerHeight }: { page: string; headerRef: Re
           </a>
         </nav>
         <div className="flex items-center gap-2 flex-none">
-          <LiveDemoButton variant="nav" top={headerHeight} />
+          <LiveDemoButton variant="nav" top={headerHeight ?? undefined} />
           <div className="netpill mono flex-none" title="Live RPC: test.rpc.fastnear.com">
             <span className={"livedot" + (live.anyErr ? " err" : "")} id="netdot"></span>
             <span id="nettxt">{nettxt}</span>
@@ -81,16 +81,20 @@ function Header({ page, headerRef, headerHeight }: { page: string; headerRef: Re
 function Shell() {
   const [route, setRoute] = useState<string[]>(() => parseRoute());
   /* The header is fixed, so main needs top padding equal to its real
-     height. Measure it: on narrow screens the header used to wrap taller
-     than 64px, and a hardcoded pt-16 hid content under it. The nav
-     result toast uses the same height, so it never overlaps the header. */
+     height. Measure it before paint: on narrow screens the header used
+     to wrap taller than its fixed height, and a hardcoded offset hid
+     content under it. The height starts unset, so no hardcoded fallback
+     is ever used. The nav result toast uses the same height, so it never
+     overlaps the header. */
   const headerRef = useRef<HTMLElement | null>(null);
-  const [headerH, setHeaderH] = useState(64);
-  useEffect(() => {
+  const [headerH, setHeaderH] = useState<number | null>(null);
+  /* Measure before paint, so the first frame already uses the real height. */
+  useLayoutEffect(() => {
     const el = headerRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
+    if (!el) return;
     const update = () => setHeaderH(el.offsetHeight);
     update();
+    if (typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
@@ -125,7 +129,7 @@ function Shell() {
         Skip to content
       </a>
       <Header page={page} headerRef={headerRef} headerHeight={headerH} />
-      <main id="main" className="min-h-screen" style={{ paddingTop: headerH }}>
+      <main id="main" className="min-h-screen" style={{ paddingTop: headerH ?? undefined }}>
         {page === "demo" ? (
           <Demo anchor={effRoute[2]} />
         ) : page === "attack" ? (

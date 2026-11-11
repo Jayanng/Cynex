@@ -191,7 +191,9 @@ function asNumber(value: unknown): number | null {
 /* Parse whatever the endpoint returned into one of three outcomes.
  * Anything malformed is an error, never a success, and a used-up
  * answer is recognised by its code first and by its message second,
- * so the button shows the fallback instead of a generic error. */
+ * so the button shows the fallback instead of a generic error.
+ * A success needs an obligation id, a transaction hash, and a numeric
+ * receipt index: without the receipt index the settle cannot be shown as proven. */
 export function parseDemoSettleResponse(json: unknown): DemoSettleOutcome {
   if (json === null || typeof json !== "object") {
     return {
@@ -207,18 +209,19 @@ export function parseDemoSettleResponse(json: unknown): DemoSettleOutcome {
   if (body.success === true) {
     const obligationId = asString(body.obligationId);
     const txHash = asString(body.txHash);
-    if (obligationId === null || txHash === null) {
+    const receiptIndex = asNumber(body.receiptIndex);
+    if (obligationId === null || txHash === null || receiptIndex === null) {
       return {
         outcome: "error",
         error:
-          "The demo endpoint answered success without an obligation id or a transaction hash.",
+          "The demo endpoint answered success without an obligation id, a transaction hash, or a receipt index.",
         fallback: null,
       };
     }
     const result: DemoSettleResult = {
       success: true,
       obligationId,
-      receiptIndex: asNumber(body.receiptIndex),
+      receiptIndex,
       txHash,
       recipient: asString(body.recipient),
       amount: asString(body.amount),

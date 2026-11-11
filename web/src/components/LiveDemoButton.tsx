@@ -33,7 +33,7 @@ import { Badge, HashChip } from "./ui";
 export type LiveDemoButtonVariant = "hero" | "section" | "nav";
 
 
-export function LiveDemoButton({ variant = "section", actions, top = 64 }: { variant?: LiveDemoButtonVariant; actions?: React.ReactNode; top?: number }) {
+export function LiveDemoButton({ variant = "section", actions, top }: { variant?: LiveDemoButtonVariant; actions?: React.ReactNode; top?: number }) {
   const [state, dispatch] = useReducer(demoButtonReducer, initialDemoButtonState);
   const { live: L } = useLive();
 
@@ -186,6 +186,24 @@ export function LiveDemoButton({ variant = "section", actions, top = 64 }: { var
 
   const expectedBox = () => {
     const next = L.recTest.v;
+    /* On success the expected sentence is gone: the box shows only the
+       proven result, so a stale expected receipt can never sit next to it. */
+    if (!showUnprovenLine(state.status) && result) {
+      return (
+        <div className="expected">
+          <b>Proven live:</b>{" "}
+          {result.receiptIndex !== null ? <>receipt {result.receiptIndex}, </> : null}
+          {result.obligationId ?? "demo settle"} PAID
+          {result.txHash ? (
+            <>
+              {", tx "}
+              <a href={DEMO_EXPLORER_TX(result.txHash)}>{result.txHash.slice(0, 8) + String.fromCharCode(8230)}</a>
+            </>
+          ) : null}
+          .
+        </div>
+      );
+    }
     return (
       <div className="expected">
         <b>Press Run it live.</b>{" "}
@@ -196,20 +214,7 @@ export function LiveDemoButton({ variant = "section", actions, top = 64 }: { var
         ) : (
           <>You will see the next receipt, PAID, and a transaction hash.</>
         )}
-        {!showUnprovenLine(state.status) && result ? (
-          <span>
-            Proven live: receipt {result.receiptIndex ?? "?"}, {result.obligationId ?? "demo settle"} PAID
-            {result.txHash ? (
-              <>
-                {", tx "}
-                <a href={DEMO_EXPLORER_TX(result.txHash)}>{result.txHash.slice(0, 8)}…</a>
-              </>
-            ) : null}
-            .
-          </span>
-        ) : (
-          <span>{DEMO_BUTTON_UNPROVEN_LINE}</span>
-        )}
+        <span>{DEMO_BUTTON_UNPROVEN_LINE}</span>
       </div>
     );
   };
