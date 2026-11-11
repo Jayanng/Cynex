@@ -114,7 +114,7 @@ const REAL_VS_SIMULATED: [string, string, string][] = [
   [
     "Vault contract",
     "Real, deployed on NEAR testnet",
-    "Testnet only. Both vaults run code hash 65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6. No mainnet deployment, no mainnet spending.",
+    "Testnet only. Both vaults run code hash 65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6 (read live 11 Nov 2026). No mainnet deployment, no mainnet spending.",
   ],
   [
     "Testnet chain",

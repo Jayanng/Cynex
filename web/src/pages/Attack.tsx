@@ -441,7 +441,7 @@ export function Attack() {
             <h1 className="text-3xl md:text-4xl">Attack the vault.</h1>
             <p className="dim text-sm mt-2 max-w-2xl">
               You are the compromised agent. Try to pay the wrong account, inflate the amount, replay a paid order, or drain the budget. The
-              vault refuses, and every refusal is on chain.
+              vault refuses. The refusals recorded on chain are linked below, and the verdicts the on-chain terms require are labelled as such.
             </p>
             <div className="flex flex-wrap gap-2 mt-5">
               {chip("attack-breakit", "BreakIt")}

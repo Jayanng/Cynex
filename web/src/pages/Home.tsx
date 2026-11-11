@@ -37,7 +37,8 @@ function JudgesSteps() {
           "10 sec",
           "Run it live",
           <>
-            <b className="text-ink">Do:</b> Press Run it live on Home. <b className="text-ink">See:</b> Receipt{" "}
+            <b className="text-ink">Do:</b> Press Run it live on Home (not yet proven live in this deployment).{" "}
+            <b className="text-ink">See, once the live proof has run:</b> Receipt{" "}
             {next != null ? next : "the next"}, PAID, and a transaction hash.
           </>,
         )}
@@ -62,7 +63,7 @@ function JudgesSteps() {
             ) : L.recTest.err ? (
               <>Receipt count unavailable, retrying.</>
             ) : (
-              <>Every row verified_ok = true, receipts loading.</>
+              <>Receipt count loading, verification pending.</>
             )}
           </>,
         )}
@@ -253,7 +254,7 @@ export function Home() {
         </div>
         <div className="mono text-xs dim2 mb-2 mt-5">Verify the live testnet record</div>
         <VerifyHome />
-        <p className="mono text-xs dim2 mt-5">Everything above runs on testnet. Nothing here spends real funds, and nothing here needs your keys.</p>
+        <p className="mono text-xs dim2 mt-5">The verify command reads the NEAR testnet record. The MCP demo runs locally in a sandbox. Nothing here spends real funds, and nothing here needs your keys.</p>
       </section>
 
       <section className="wrap mt-24">

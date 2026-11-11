@@ -178,7 +178,7 @@ export function Demo({ anchor }: { anchor?: string }) {
       <Guided anchor={anchor} />
       <section className="wrap mt-10">
         <p className="dim text-sm max-w-3xl">
-          All steps are live data from the NEAR testnet. Read receipt 12 from the chain now, with the same command as step 4.
+          Steps 1, 2, 3, and 5 show recorded testnet transactions and recorded terms-based verdicts from the demo run. The chain-read buttons and the step 4 command read the testnet live. Read receipt 12 from the chain now, with the same command as step 4.
         </p>
         <div className="flex flex-wrap gap-3 mt-5 items-start">
           <LiveDemoButton variant="hero" />
