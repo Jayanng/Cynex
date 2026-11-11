@@ -56,7 +56,13 @@ async function main(): Promise<number> {
 // absolutizes argv[1] for the entry script, but a plain string
 // comparison would silently skip the suite if it ever did not, and
 // a skipped suite must never exit 0 looking like a pass.
-if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+// The entry must also be named sandbox.js, so the suite cannot
+// start if this file is ever bundled or imported under another name.
+if (
+  process.argv[1] !== undefined &&
+  import.meta.url === pathToFileURL(resolve(process.argv[1])).href &&
+  process.argv[1].endsWith("sandbox.js")
+) {
   main()
     .then((code) => {
       process.exitCode = code;

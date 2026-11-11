@@ -251,7 +251,15 @@ vault wasm it deploys hashes to
 `65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6`, the same hash as the
 deployed vaults, and the test token wasm hashes to
 `DVzJjN5Q4niR5vW4iqE2j5z1a3zBgrEb2huiVcFkBu3f`; the demo refuses to
-run on any other hash for either one.
+run on any other hash for either one. If a local contract build exists
+but is stale, so its hash no longer matches the pinned
+EXPECTED_VAULT_CODE_HASH or EXPECTED_FT_CODE_HASH, the demo fails fast
+at the hash pin instead of falling back to the bundled wasm. Fix it by
+deleting the local build so the bundled wasm is used, or by rebuilding
+the contract from the same source so the local build matches the pin.
+Copying rebuilt bytes into services/mcp/wasms/ alone does not help when
+the bytes differ from the pins; changing the pinned hashes is an
+intentional code change, not a file copy.
 
 ## Publishing the package
 

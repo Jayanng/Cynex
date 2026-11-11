@@ -23,6 +23,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import type { JsonRpcProvider } from "near-api-js";
+import type { CynexClient } from "../../frontend/src/cynex/client.js";
 import { parseCliArgs } from "./cli.js";
 import {
   DEMO_BOOTSTRAP_001,
@@ -30,10 +32,12 @@ import {
   DEMO_CREATED_001,
   DEMO_READY_001,
   DEMO_READY_002,
+  applyDemoEnv,
   buildDemoEnv,
   buildReadySummary,
   claudeCodeConfig,
   demoSeedSpecs,
+  restoreDemoEnv,
   type DemoSummaryInfo,
   type ProvisionedSandbox,
 } from "./demo.js";
@@ -59,17 +63,49 @@ const AGENT_ID = "agent.test.near";
 const POLICY_ID = "sandbox-policy-001";
 
 function fakeProvisioned(): ProvisionedSandbox {
+  // Every field is supplied, so a future read of a field the demo
+  // does not use today returns a defined stub instead of undefined.
+  // The two class instances (provider, vault) cannot be constructed
+  // cheaply in a unit test, so they are empty objects with a narrow
+  // cast each; a call on one yields a generic TypeError, not a named
+  // error, while readObligation and readPolicy below throw named
+  // custom errors if a test ever reaches them. The whole-object cast
+  // is gone, so the compiler now checks every other field.
   return {
-    vaultId: "vault.test.near",
-    agentId: "agent.test.near",
-    keyFile: "/tmp/cynex-demo-test/agent-key.txt",
     sandbox: {
       rpcUrl: "http://127.0.0.1:34567",
       chainId: "test-chain-abc",
+      homeDir: "/tmp/cynex-demo-test/sandbox",
+      stop: async () => {},
     },
-    vaultCodeHash: "65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6",
+    provider: {} as unknown as JsonRpcProvider,
+    vault: {} as unknown as CynexClient,
+    ownerId: "owner.test.near",
+    vaultId: "vault.test.near",
+    tokenId: "token.test.near",
+    agentId: "agent.test.near",
+    recipientId: "recipient.test.near",
+    secondRecipientId: "recipient2.test.near",
     policyId: "sandbox-policy-001",
-  } as unknown as ProvisionedSandbox;
+    policyLimit: 10000n,
+    vaultCodeHash: "65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6",
+    vaultWasmPath: "/tmp/cynex-demo-test/cynex_vault.wasm",
+    ftWasmPath: "/tmp/cynex-demo-test/ft_test_token.wasm",
+    agentPublicKey: "ed25519:7ugyx6cRP5SmtvYtdngmdq8vomA7mq1Gz49NBphpB1kP",
+    keyFile: "/tmp/cynex-demo-test/agent-key.txt",
+    evidenceHashHex:
+      "0000000000000000000000000000000000000000000000000000000000000000",
+    expiresAtNs: 1893456000000000000,
+    checks: [],
+    txHashes: {},
+    stop: async () => {},
+    readObligation: async () => {
+      throw new Error("fakeProvisioned: readObligation is not stubbed");
+    },
+    readPolicy: async () => {
+      throw new Error("fakeProvisioned: readPolicy is not stubbed");
+    },
+  };
 }
 
 function fakeSummaryInfo(): DemoSummaryInfo {
@@ -357,6 +393,71 @@ describe("buildDemoEnv", () => {
   });
 });
 
+describe("applyDemoEnv", () => {
+  test("restores the prior environment, including variables that were absent", () => {
+    // Every variable applyDemoEnv touches, with a prior value for
+    // some and absence for the rest, so the restore is checked for
+    // both a prior value and a prior absence across the set.
+    const priors: Record<string, string | undefined> = {
+      CYNEX_VAULT: "prior-vault.test.near",
+      CYNEX_AGENT: undefined,
+      CYNEX_AGENT_KEY_FILE: "prior-key.txt",
+      CYNEX_SANDBOX_RPC_URL: undefined,
+      CYNEX_SANDBOX_VAULT_CODE_HASH: "prior-hash",
+      CYNEX_SANDBOX_CHAIN_ID: undefined,
+      CYNEX_POLICY: "prior-policy",
+      CYNEX_SNAPSHOT_DIR: "prior-snapshots",
+      CYNEX_BLOCKLIST_URL: undefined,
+      CYNEX_NEARBLOCKS_URL: "https://prior-nearblocks.example",
+      CYNEX_RPC_URL: "https://prior-rpc.example",
+    };
+    const originals: Record<string, string | undefined> = {};
+    for (const name of Object.keys(priors)) {
+      originals[name] = process.env[name];
+      if (priors[name] === undefined) {
+        delete process.env[name];
+      } else {
+        process.env[name] = priors[name] as string;
+      }
+    }
+    try {
+      const saved = applyDemoEnv(fakeProvisioned());
+      expect(process.env.CYNEX_VAULT).toBe("vault.test.near");
+      expect(process.env.CYNEX_AGENT).toBe("agent.test.near");
+      expect(process.env.CYNEX_AGENT_KEY_FILE).toBe(
+        "/tmp/cynex-demo-test/agent-key.txt",
+      );
+      expect(process.env.CYNEX_SANDBOX_RPC_URL).toBe("http://127.0.0.1:34567");
+      expect(process.env.CYNEX_SANDBOX_VAULT_CODE_HASH).toBe(
+        "65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6",
+      );
+      expect(process.env.CYNEX_SANDBOX_CHAIN_ID).toBe("test-chain-abc");
+      expect(process.env.CYNEX_POLICY).toBe("sandbox-policy-001");
+      expect(process.env.CYNEX_SNAPSHOT_DIR).toBe("");
+      expect(process.env.CYNEX_BLOCKLIST_URL).toBe("");
+      expect(process.env.CYNEX_NEARBLOCKS_URL).toBe("http://127.0.0.1:1");
+      expect(process.env.CYNEX_RPC_URL).toBeUndefined();
+      restoreDemoEnv(saved);
+      for (const [name, prior] of Object.entries(priors)) {
+        expect(process.env[name]).toBe(prior);
+      }
+      // A repeated restore is a no-op: the same prior values stay put.
+      restoreDemoEnv(saved);
+      for (const [name, prior] of Object.entries(priors)) {
+        expect(process.env[name]).toBe(prior);
+      }
+    } finally {
+      for (const [name, value] of Object.entries(originals)) {
+        if (value === undefined) {
+          delete process.env[name];
+        } else {
+          process.env[name] = value;
+        }
+      }
+    }
+  });
+});
+
 describe("parseCliArgs", () => {
   test("no arguments runs the normal server", () => {
     expect(parseCliArgs([])).toBe("server");
@@ -412,12 +513,17 @@ describe("demo over stdio", () => {
         { name: "cynex-demo-test", version: "0.1.0" },
         { capabilities: {} },
       );
-      // The transport clears its child handle before calling
-      // onclose, so the exit code is captured from the child
-      // process directly, right after connect. _process is a
-      // private field of @modelcontextprotocol/sdk, verified
-      // against 1.32.2: a future SDK bump that renames it breaks
-      // this capture, not the demo.
+      // Only the exit code below still reaches into the transport:
+      // the SIGTERM later in this test goes through the public
+      // transport.pid. @modelcontextprotocol/sdk 1.32.2 exposes no
+      // public exit code: its StdioClientTransport discards the
+      // code in its own close handler (dist/esm/client/stdio.js
+      // lines 83-85: the child close listener clears _process and
+      // then calls onclose, which takes no argument), and pid reads
+      // null once the child is gone (lines 126-127). So the code is
+      // captured from the child process directly, right after
+      // connect. _process is a private field of the SDK: a future
+      // SDK bump that renames it breaks this capture, not the demo.
       let resolveClosed: (code: number | null) => void = () => {};
       const closed = new Promise<number | null>((resolve) => {
         resolveClosed = resolve;
@@ -434,12 +540,21 @@ describe("demo over stdio", () => {
       }
       try {
         await client.connect(transport);
+        // The only private-field access in this file: the exit-code
+        // tap described above. Nothing else here touches _process.
         const child = (
           transport as unknown as {
             _process?: { once: (event: string, fn: (code: number | null) => void) => void };
           }
         )._process;
-        child?.once("close", (code: number | null) => resolveClosed(code));
+        if (child === undefined) {
+          // A future SDK without _process resolves the close
+          // promise with null at once instead of waiting for the 30s
+          // timeout below, and the later exit-code assertion then fails.
+          resolveClosed(null);
+        } else {
+          child.once("close", (code: number | null) => resolveClosed(code));
+        }
         const tools = await client.listTools();
         expect(tools.tools.map((tool) => tool.name).sort()).toEqual([...SIX_TOOLS].sort());
         for (const [id, state, recipient] of [

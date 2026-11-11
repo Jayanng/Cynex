@@ -320,8 +320,6 @@ export interface RunningSandbox {
   rpcUrl: string;
   chainId: string;
   homeDir: string;
-  /** FullAccess secret key for test.near, read from the node's own validator_key.json. */
-  masterSecretKey: string;
   stop(): Promise<void>;
 }
 
@@ -384,10 +382,8 @@ export async function startSandbox(opts: {
   const netPort = await freePort();
   // Init runs before the stop closure exists, so a failure here
   // would leak the temporary home. Remove it and rethrow.
-  let masterSecretKey: string;
   try {
     await execFileAsync(bin, ["--home", homeDir, "init", "--fast"], { timeout: 120_000 });
-    masterSecretKey = readMasterSecretKey(homeDir);
   } catch (error) {
     rmSync(homeDir, { recursive: true, force: true });
     throw error;
@@ -452,7 +448,7 @@ export async function startSandbox(opts: {
       "near-sandbox did not answer /status within the timeout, log tail:\n" + tail,
     );
   }
-  return { rpcUrl, chainId, homeDir, masterSecretKey, stop };
+  return { rpcUrl, chainId, homeDir, stop };
 }
 
 // ---------------------------------------------------------------------------
@@ -512,8 +508,10 @@ function wasmTargetDir(envName: string, existing: string, fresh: string): string
  * A wasm bundled with the MCP package (services/mcp/wasms/) or next to
  * the bundled server (dist/../wasms/), or in the source tree when the
  * demo runs from the tsc build under frontend/dist-test/. Checked
- * before the build directories, so a packaged demo runs with no Rust
- * and no cargo-near.
+ * after the local build directories, so a packaged demo with no local
+ * build still runs with no Rust and no cargo-near, while a local
+ * build wins over the bundled copy when one exists, fresh or stale;
+ * the hash pin is what guards the chain.
  */
 function bundledWasmPath(name: string): string | null {
   const here = dirname(fileURLToPath(import.meta.url));
@@ -529,7 +527,7 @@ function bundledWasmPath(name: string): string | null {
   return null;
 }
 
-/** Vault wasm, built on demand when it is missing. */
+/** Vault wasm, preferring a local build over the bundle when one exists, built on demand when it is missing. */
 export async function ensureVaultWasm(): Promise<string> {
   const fromEnv = (process.env.CYNEX_WASM_PATH ?? "").trim();
   const targetDir = wasmTargetDir(
@@ -538,13 +536,19 @@ export async function ensureVaultWasm(): Promise<string> {
     "cynex_vault-build",
   );
   const bundled = bundledWasmPath("cynex_vault.wasm");
+  // A local build wins over the bundle when one exists, fresh or
+  // stale: a developer who rebuilds the contract and does not refresh
+  // services/mcp/wasms/ gets the rebuilt wasm, not the bundled copy. The bundle
+  // is the fallback for the packaged demo, where there are no local
+  // build directories. Whatever path is returned is still checked
+  // against EXPECTED_VAULT_CODE_HASH before deploy.
   const candidates =
     fromEnv !== ""
       ? [fromEnv]
       : [
-          ...(bundled === null ? [] : [bundled]),
           join(repoRoot(), "contract", "target", "near", "cynex_vault.wasm"),
           join(targetDir, "near", "cynex_vault.wasm"),
+          ...(bundled === null ? [] : [bundled]),
         ];
   for (const candidate of candidates) {
     if (existsSync(candidate)) {
@@ -554,7 +558,7 @@ export async function ensureVaultWasm(): Promise<string> {
   return buildWasm(join(repoRoot(), "contract"), "cynex_vault", targetDir);
 }
 
-/** Test token wasm, built on demand when it is missing. */
+/** Test token wasm, preferring a local build over the bundle when one exists, built on demand when it is missing. */
 export async function ensureFtWasm(): Promise<string> {
   const fromEnv = (process.env.CYNEX_FT_WASM_PATH ?? "").trim();
   const targetDir = wasmTargetDir(
@@ -563,13 +567,17 @@ export async function ensureFtWasm(): Promise<string> {
     "ft_test_token-build",
   );
   const bundled = bundledWasmPath("ft_test_token.wasm");
+  // A local build wins over the bundle when one exists, fresh or
+  // stale, for the same reason as the vault wasm above. Whatever path
+  // is returned is still
+  // checked against EXPECTED_FT_CODE_HASH before deploy.
   const candidates =
     fromEnv !== ""
       ? [fromEnv]
       : [
-          ...(bundled === null ? [] : [bundled]),
           join(repoRoot(), "contract", "ft-test-token", "target", "near", "ft_test_token.wasm"),
           join(targetDir, "near", "ft_test_token.wasm"),
+          ...(bundled === null ? [] : [bundled]),
         ];
   for (const candidate of candidates) {
     if (existsSync(candidate)) {
@@ -822,19 +830,15 @@ export interface ProvisionedSandbox {
   vaultCodeHash: string;
   vaultWasmPath: string;
   ftWasmPath: string;
-  agentKeyPair: KeyPair;
+  agentPublicKey: string;
   keyFile: string;
   evidenceHashHex: string;
   expiresAtNs: number;
   checks: SandboxCheck[];
   txHashes: Record<string, string>;
   stop(): Promise<void>;
-  createReadyObligation(obligationId: string, recipient: string): Promise<void>;
-  createCreatedObligation(obligationId: string, recipient: string): Promise<void>;
-  settleDirectly(obligationId: string, recipient: string): Promise<string>;
   readObligation(obligationId: string): Promise<Record<string, unknown>>;
   readPolicy(): Promise<Record<string, unknown>>;
-  tokenBalance(accountId: string): Promise<bigint>;
 }
 
 /**
@@ -909,7 +913,9 @@ export async function provisionSandbox(
     }
 
     const provider = new JsonRpcProvider({ url: sandbox.rpcUrl });
-    const masterKey = KeyPair.fromString(sandbox.masterSecretKey as never);
+    // Read the genesis key at the point of use, from the sandbox home,
+    // instead of carrying the secret on the sandbox handle.
+    const masterKey = KeyPair.fromString(readMasterSecretKey(sandbox.homeDir) as never);
     const master = accountFor(provider, GENESIS_ACCOUNT, masterKey);
 
     const ownerId = "owner.test.near";
@@ -1287,38 +1293,18 @@ export async function provisionSandbox(
       vaultCodeHash,
       vaultWasmPath,
       ftWasmPath,
-      agentKeyPair,
+      agentPublicKey: agentKeyPair.getPublicKey().toString(),
       keyFile,
       evidenceHashHex,
       expiresAtNs,
       checks,
       txHashes,
       stop: () => sandbox.stop(),
-      createReadyObligation: async (
-        obligationId: string,
-        recipient: string,
-      ): Promise<void> => {
-        await makeReadyObligation(obligationId, recipient, String(obligationNonce));
-        obligationNonce += 1;
-      },
-      createCreatedObligation: async (
-        obligationId: string,
-        recipient: string,
-      ): Promise<void> => {
-        await makeCreatedObligation(obligationId, recipient, String(obligationNonce));
-        obligationNonce += 1;
-      },
-      settleDirectly: async (obligationId: string, recipient: string): Promise<string> => {
-        return directSettle(obligationId, recipient);
-      },
       readObligation: async (obligationId: string): Promise<Record<string, unknown>> => {
         return readObligation(vault, obligationId);
       },
       readPolicy: async (): Promise<Record<string, unknown>> => {
         return readPolicy(vault, POLICY_ID);
-      },
-      tokenBalance: async (accountId: string): Promise<bigint> => {
-        return tokenBalance(provider, tokenId, accountId);
       },
     };
     return provisioned;
@@ -1351,7 +1337,7 @@ export async function runSandboxMcpSuite(): Promise<SandboxSuiteResult> {
   const sandbox = provisioned.sandbox;
   const provider = provisioned.provider;
   const vault = provisioned.vault;
-  const agentKeyPair = provisioned.agentKeyPair;
+  const agentPublicKey = provisioned.agentPublicKey;
   const keyFile = provisioned.keyFile;
   const vaultCodeHash = provisioned.vaultCodeHash;
   const evidenceHashHex = provisioned.evidenceHashHex;
@@ -1639,7 +1625,7 @@ export async function runSandboxMcpSuite(): Promise<SandboxSuiteResult> {
         async function agentNonce(): Promise<bigint> {
           const key = (await provider.viewAccessKey({
             accountId: agentId,
-            publicKey: agentKeyPair.getPublicKey().toString(),
+            publicKey: agentPublicKey,
             finalityQuery: { finality: "final" },
           })) as unknown as { nonce?: unknown };
           return nonceAsBigInt(key.nonce);

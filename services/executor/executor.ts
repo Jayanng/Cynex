@@ -495,7 +495,13 @@ export function createExecutorServer(config: ExecutorConfig): ReturnType<typeof 
   return server;
 }
 
-if (import.meta.url === "file://" + process.argv[1]) {
+// Run the server only when this file is the entry point, as
+// executor.js. The name check keeps this quiet if the file is
+// ever bundled or imported under another entry name.
+if (
+  fileURLToPath(import.meta.url) === process.argv[1] &&
+  process.argv[1].endsWith("executor.js")
+) {
   const config = configFromEnv();
   const server = createExecutorServer(config);
   server.listen(config.port, config.host, function () {

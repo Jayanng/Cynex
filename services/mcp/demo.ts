@@ -123,13 +123,50 @@ export function buildDemoEnv(provisioned: ProvisionedSandbox): DemoEnv {
   };
 }
 
-export function applyDemoEnv(provisioned: ProvisionedSandbox): void {
+/**
+ * The values applyDemoEnv replaced, so a caller can put the process
+ * environment back: every variable it set or deleted, with its prior
+ * value, or undefined when it was absent before.
+ */
+export interface SavedDemoEnv {
+  prior: Record<string, string | undefined>;
+}
+
+/**
+ * Apply the demo environment and return what was there before, so
+ * the caller can restore it with restoreDemoEnv. Callers that
+ * ignore the return value behave exactly as before.
+ */
+export function applyDemoEnv(provisioned: ProvisionedSandbox): SavedDemoEnv {
   const env = buildDemoEnv(provisioned);
+  const prior: Record<string, string | undefined> = {};
+  for (const name of Object.keys(env.set)) {
+    prior[name] = process.env[name];
+  }
+  for (const name of env.unset) {
+    prior[name] = process.env[name];
+  }
   for (const [name, value] of Object.entries(env.set)) {
     process.env[name] = value;
   }
   for (const name of env.unset) {
     delete process.env[name];
+  }
+  return { prior };
+}
+
+/**
+ * Put the environment back the way applyDemoEnv found it: variables
+ * it overwrote get their prior value, variables that were absent
+ * are deleted again.
+ */
+export function restoreDemoEnv(saved: SavedDemoEnv): void {
+  for (const [name, value] of Object.entries(saved.prior)) {
+    if (value === undefined) {
+      delete process.env[name];
+    } else {
+      process.env[name] = value;
+    }
   }
 }
 
@@ -285,12 +322,32 @@ export async function runDemo(): Promise<number> {
     }
     resolveStopped();
   };
-  process.on("SIGINT", () => {
+  // Named once, so runDemo can remove exactly the listeners it
+  // registered when it returns: anonymous closures could never be
+  // removed, and a second runDemo in the same process would
+  // otherwise stack a second shutdown onto every signal.
+  const onSignal = (): void => {
     void shutdown();
-  });
-  process.on("SIGTERM", () => {
-    void shutdown();
-  });
+  };
+  process.on("SIGINT", onSignal);
+  process.on("SIGTERM", onSignal);
+  // Undo what this run changed in the shared process: remove the
+  // signal listeners above and restore the environment applyDemoEnv
+  // changed. Called on every exit path below, and in the serve
+  // finally for the paths that leave through it. Safe to call when
+  // the environment was never applied (savedEnv is undefined) and
+  // safe to call twice: removeListener is a no-op for a listener
+  // that is not registered, and restoring twice restores the same
+  // prior values.
+  let savedEnv: SavedDemoEnv | undefined;
+  const cleanupDemoRun = (): void => {
+    process.removeListener("SIGINT", onSignal);
+    process.removeListener("SIGTERM", onSignal);
+    if (savedEnv !== undefined) {
+      restoreDemoEnv(savedEnv);
+      savedEnv = undefined;
+    }
+  };
 
   // Provisioning logs to stderr, never stdout: stdout is the MCP
   // transport. The redirect covers the sandbox binary download and
@@ -313,13 +370,16 @@ export async function runDemo(): Promise<number> {
     });
   } catch (error) {
     if (shuttingDown) {
+      cleanupDemoRun();
       return 0;
     }
+    cleanupDemoRun();
     throw error;
   } finally {
     console.log = originalLog;
   }
   if (provisioned === undefined) {
+    cleanupDemoRun();
     return 0;
   }
   if (shuttingDown) {
@@ -328,20 +388,23 @@ export async function runDemo(): Promise<number> {
     // produced before returning, or the sandbox node, its home
     // directory, and the agent key file leak behind a clean exit.
     await stopSandboxOnce();
+    cleanupDemoRun();
     return 0;
   }
 
-  applyDemoEnv(provisioned);
   let ctx: Awaited<ReturnType<typeof buildContext>>;
   try {
+    savedEnv = applyDemoEnv(provisioned);
     ctx = await buildContext();
   } catch (error) {
     if (shuttingDown) {
       await stopSandboxOnce();
+      cleanupDemoRun();
       return 0;
     }
     log("refusing to start: " + (error instanceof Error ? error.message : String(error)));
     await stopSandboxOnce();
+    cleanupDemoRun();
     return 1;
   }
   try {
@@ -401,6 +464,7 @@ export async function runDemo(): Promise<number> {
     // leak the sandbox: the error reached main() and returned 1
     // with the node still running. Stop it on every way out.
     await stopSandboxOnce();
+    cleanupDemoRun();
   }
 }
 
