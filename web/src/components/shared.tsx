@@ -2,7 +2,7 @@
    Refusal band, refusal card, refusal breakdown, verify section,
    reputation gate, footer, and the live counts line. */
 
-import { AGENT, CP, EX_TX, REPO, USECASE } from "../lib/data";
+import { REPO, USECASE } from "../lib/data";
 import { useLive } from "../lib/live";
 import { Icon, Badge, HashChip, Unavail, LoadTxt, CmdBlock } from "./ui";
 import { Logo } from "./Logo";
@@ -117,7 +117,7 @@ export function RefusalCard() {
     <div className="panel overflow-hidden fadein">
       <div className="flex items-center justify-between gap-3 px-5 py-4 border-b" style={{ borderColor: "var(--line2)" }}>
         <span className="mono text-xs dim2" style={{ letterSpacing: ".08em", textTransform: "uppercase" }}>
-          Latest refusal, read live
+          Latest refusal, recorded on chain
         </span>
         <Badge value="REFUSED" />
       </div>
@@ -161,7 +161,7 @@ export function RefusalPanel() {
           <div>
             <span
               className="mono text-[13px] inline-block rounded-lg border px-4 py-3"
-              style={{ letterSpacing: ".12em", color: "#ff8f8f", borderColor: "#5a2b2b", background: "#2b1d1a" }}
+              style={{ letterSpacing: ".12em", color: "var(--band-red)", borderColor: "var(--band-red-border)", background: "var(--band-red-bg)" }}
             >
               REFUSED · ERR_RECIPIENT_SUBSTITUTION
             </span>
@@ -176,7 +176,7 @@ export function RefusalPanel() {
               </div>
               <div className="flex justify-between gap-4">
                 <span className="dim">Moved</span>
-                <span style={{ color: "#4ade80", fontWeight: 600 }}>0 tokens</span>
+                <span style={{ color: "var(--band-green)", fontWeight: 600 }}>0 tokens</span>
               </div>
               <div className="flex justify-between gap-4">
                 <span className="dim">Vault</span>
@@ -188,7 +188,7 @@ export function RefusalPanel() {
             <p className="dim leading-relaxed mb-5">
               The vault does not trust the caller, the prompt, or the agent. It reads the order it was given at authorization, compares the request to it, and answers with a code. A refusal is the product working, and every refusal is a receipt you can open.
             </p>
-            <a className="btn" href="#/attack" style={{ borderColor: "#4a4238", color: "#f7f4ee", background: "transparent" }}>
+            <a className="btn" href="#/attack" style={{ borderColor: "var(--band-border)", color: "var(--bg)", background: "transparent" }}>
               Break it yourself →
             </a>
           </div>
@@ -241,38 +241,3 @@ export function VerifyHome() {
   );
 }
 
-/* ---------- reputation gate (guided demo) ---------- */
-export function Gate() {
-  return (
-    <div className="step" id="guided-gate">
-      <div className="rail">
-        <div className="node gate">4</div>
-        <div className="line"></div>
-      </div>
-      <div className="panel p-6">
-        <div className="flex flex-wrap items-center gap-3 mb-3">
-          <h3 className="text-lg">Reputation gate, the moment it says no</h3>
-          <Badge value="BLOCK" extra="code_change_recency" />
-        </div>
-        <p className="dim text-sm leading-relaxed mb-4">
-          Before any settle, the counterparty is scored on five signals by the off-chain console gate. Here the gate refuses to submit a
-          settle with a counterparty whose contract code changed within the last 24 hours and which has no interaction history. A reputation
-          refusal is not a vault refusal: the vault never sees the attempt, and settle never consults reputation. The refusal{" "}
-          <b className="text-ink">names the signal and its source</b>. Signals show as unavailable when they cannot be sourced: the
-          blocklist is unavailable unless a URL is configured, and account age needs snapshots. ALLOW needs at least one prior receipt, and
-          no contract or a first observation is neutral, not a penalty.
-        </p>
-        <pre className="codeblock dimc">
-          {`gate.evaluate(counterparty)\n  signal : code_change_recency\n  source : on-chain code hash vs latest snapshot\n  seen   : code changed 6h ago · no prior vault interactions\n  rule   : no change or > 7 days → ALLOW\n           change < 24h, or change with no history → BLOCK\n           otherwise → WARN (escalates unless CYNEX_APPROVE_WARN=1)\n  verdict: `}
-          <span style={{ color: "var(--neg-text)" }}>BLOCK</span>
-        </pre>
-        <div className="mono text-xs dim2 mt-3">
-          all five signals: account_existence · account_age · prior_vault_interactions · blocklist · code_change_recency,{" "}
-          <a href="#/docs/reputation">docs</a>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export { AGENT, CP, EX_TX };

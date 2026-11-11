@@ -18,6 +18,7 @@ import { useReducer } from "react";
 import { fmtToken } from "../lib/near";
 import { useLive } from "../lib/live";
 import {
+  DEMO_BUTTON_UNPROVEN_LINE,
   DEMO_EXPLORER_TX,
   DEMO_SETTLE_ENDPOINT,
   DEMO_SETTLE_FALLBACK,
@@ -25,15 +26,14 @@ import {
   demoButtonReducer,
   initialDemoButtonState,
   parseDemoSettleResponse,
+  showUnprovenLine,
 } from "../lib/demoSettle";
 import { Badge, HashChip } from "./ui";
 
 export type LiveDemoButtonVariant = "hero" | "section" | "nav";
 
-const UNPROVEN_LINE =
-  "Not yet proven live: the button is built, but no live settle has been run from it yet, because the preview deployment cannot see the demo key. The first live settle will be recorded here with its transaction hash.";
 
-export function LiveDemoButton({ variant = "section", actions }: { variant?: LiveDemoButtonVariant; actions?: React.ReactNode }) {
+export function LiveDemoButton({ variant = "section", actions, top = 64 }: { variant?: LiveDemoButtonVariant; actions?: React.ReactNode; top?: number }) {
   const [state, dispatch] = useReducer(demoButtonReducer, initialDemoButtonState);
   const { live: L } = useLive();
 
@@ -81,6 +81,8 @@ export function LiveDemoButton({ variant = "section", actions }: { variant?: Liv
 
   const result = state.result;
   const remaining = result?.remaining ?? null;
+  /* Policy limit comes from the live policy read, never a hardcoded 10000. */
+  const policyLimit = L.policy.v ? String(L.policy.v.limit) : null;
   const canRunAgain = state.status === "success" && (remaining === null || remaining > 0);
 
   const buttonLabel =
@@ -119,7 +121,7 @@ export function LiveDemoButton({ variant = "section", actions }: { variant?: Liv
               ),
             )}
             {row("recipient", result.recipient ?? "-")}
-            {row("policy spent", result.policySpent !== null ? result.policySpent + " of 10000 base units" : "-")}
+            {row("policy spent", result.policySpent !== null ? result.policySpent + (policyLimit !== null ? " of " + policyLimit + " base units" : " base units") : "-")}
           </div>
           {result.txHash ? (
             <div className="pt-1">
@@ -194,7 +196,20 @@ export function LiveDemoButton({ variant = "section", actions }: { variant?: Liv
         ) : (
           <>You will see the next receipt, PAID, and a transaction hash.</>
         )}
-        <span>{UNPROVEN_LINE}</span>
+        {!showUnprovenLine(state.status) && result ? (
+          <span>
+            Proven live: receipt {result.receiptIndex ?? "?"}, {result.obligationId ?? "demo settle"} PAID
+            {result.txHash ? (
+              <>
+                {", tx "}
+                <a href={DEMO_EXPLORER_TX(result.txHash)}>{result.txHash.slice(0, 8)}…</a>
+              </>
+            ) : null}
+            .
+          </span>
+        ) : (
+          <span>{DEMO_BUTTON_UNPROVEN_LINE}</span>
+        )}
       </div>
     );
   };
@@ -208,7 +223,7 @@ export function LiveDemoButton({ variant = "section", actions }: { variant?: Liv
         {state.status !== "idle" && state.status !== "loading" ? (
           <div
             className="fixed left-0 right-0 z-40 border-b"
-            style={{ top: 64, background: "var(--bg)", borderColor: "var(--line)" }}
+            style={{ top, background: "var(--bg)", borderColor: "var(--line)" }}
           >
             <div className="wrap py-3 flex flex-wrap items-center gap-3">
               {state.status === "success" && result ? (

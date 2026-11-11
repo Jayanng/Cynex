@@ -13,6 +13,7 @@ import { Badge, ChainReadOut, CmdBlock, HashChip, TermsGrid } from "../component
 import { Footer } from "../components/shared";
 import { CMark } from "../components/Logo";
 import { BreakIt } from "../components/BreakIt";
+import { policySpentPct } from "../lib/policyPct";
 import { TamperPanel } from "../components/TamperPanel";
 
 /* ---------- attack runner: six cards, verdict shown immediately ---------- */
@@ -339,13 +340,7 @@ function GateBudget() {
   if (p) {
     spent = String(p.spent);
     limit = String(p.limit);
-    try {
-      const s = Number(BigInt(p.spent));
-      const l = Number(BigInt(p.limit));
-      pct = l > 0 ? Math.round((s / l) * 100) : null;
-    } catch {
-      pct = null;
-    }
+    pct = policySpentPct(p.spent, p.limit);
   }
   const card = (no: string, t: string, body: ReactNode) => (
     <div className="panel p-5">

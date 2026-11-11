@@ -232,6 +232,7 @@ const DOCS: DocSection[] = [
         </p>
         <h3 className="text-ink text-[15px] mt-6 mb-3">Also in the threat model</h3>
         <p className="dim leading-relaxed">
+          The contract is the decision-maker: the agent proposes, the vault disposes. Terms are fixed at obligation creation, and settle only checks them.
           Callback failure and reconciliation: a failed transfer is retried up to 3 times, then goes to RECONCILIATION_REQUIRED for a human.
           Funding only by ft_transfer_call. Receipt tampering: genesis prev_hash is 32 zero bytes, and each receipt commits to its
           predecessor. Key theft: a stolen agent key can only call settle, and the vault still enforces the fixed terms. Out of scope:

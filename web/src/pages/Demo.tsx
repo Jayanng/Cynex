@@ -58,7 +58,8 @@ function Guided({ anchor }: { anchor?: string }) {
                 {s.kv.map(([k, v]) => (
                   <div className="flex flex-wrap justify-between gap-4" key={k}>
                     <span className="dim2">{k}</span>
-                    {k === "Tx" ? <HashChip hash={v} /> : <span className="text-right">{v}</span>}
+                    {/* Any key naming a transaction hash links it; other rows render as plain text. */}
+                    {["Tx", "Transaction", "Tx hash", "tx"].includes(k) ? <HashChip hash={v} /> : <span className="text-right">{v}</span>}
                   </div>
                 ))}
               </div>

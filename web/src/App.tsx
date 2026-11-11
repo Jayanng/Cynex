@@ -3,7 +3,7 @@
    #/proof) so existing links keep working. The header and the live
    strip read from the same live store. */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { LiveProvider, useLive } from "./lib/live";
 import { Home } from "./pages/Home";
 import { Demo } from "./pages/Demo";
@@ -18,7 +18,7 @@ function parseRoute(): string[] {
   return parseHash(window.location.hash);
 }
 
-function Header({ page }: { page: string }) {
+function Header({ page, headerRef, headerHeight }: { page: string; headerRef: React.RefObject<HTMLElement | null>; headerHeight: number }) {
   const { live } = useLive();
   const nettxt = live.blockHeight
     ? "Testnet \u00b7 " + String(live.blockHeight)
@@ -27,10 +27,11 @@ function Header({ page }: { page: string }) {
       : "Testnet";
   return (
     <header
+      ref={headerRef}
       className="fixed top-0 left-0 right-0 z-50 border-b"
       style={{ background: "var(--bg)", borderColor: "var(--line)" }}
     >
-      <div className="wrap flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-2 md:flex-nowrap md:h-16 md:py-0">
+      <div className="wrap flex flex-nowrap items-center justify-between gap-x-4 h-16 overflow-x-auto">
         <a href="#/" className="flex items-center gap-3 flex-none">
           <Logo markSize={28} />
           <span className="hidden lg:block text-xs dim2 leading-tight">
@@ -40,7 +41,7 @@ function Header({ page }: { page: string }) {
             <span className="livedot"></span>Testnet live
           </span>
         </a>
-        <nav className="flex flex-wrap items-center gap-1" id="mainnav">
+        <nav className="flex flex-nowrap items-center gap-1 flex-none" id="mainnav">
           <a className={"navlink" + (page === "home" ? " active" : "")} href="#/">
             Home
           </a>
@@ -66,7 +67,7 @@ function Header({ page }: { page: string }) {
           </a>
         </nav>
         <div className="flex items-center gap-2 flex-none">
-          <LiveDemoButton variant="nav" />
+          <LiveDemoButton variant="nav" top={headerHeight} />
           <div className="netpill mono flex-none" title="Live RPC: test.rpc.fastnear.com">
             <span className={"livedot" + (live.anyErr ? " err" : "")} id="netdot"></span>
             <span id="nettxt">{nettxt}</span>
@@ -79,6 +80,21 @@ function Header({ page }: { page: string }) {
 
 function Shell() {
   const [route, setRoute] = useState<string[]>(() => parseRoute());
+  /* The header is fixed, so main needs top padding equal to its real
+     height. Measure it: on narrow screens the header used to wrap taller
+     than 64px, and a hardcoded pt-16 hid content under it. The nav
+     result toast uses the same height, so it never overlaps the header. */
+  const headerRef = useRef<HTMLElement | null>(null);
+  const [headerH, setHeaderH] = useState(64);
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const update = () => setHeaderH(el.offsetHeight);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   useEffect(() => {
     const onHash = () => {
       const p = parseRoute();
@@ -108,8 +124,8 @@ function Shell() {
       <a href="#main" className="skip-link">
         Skip to content
       </a>
-      <Header page={page} />
-      <main id="main" className="pt-16 min-h-screen">
+      <Header page={page} headerRef={headerRef} headerHeight={headerH} />
+      <main id="main" className="min-h-screen" style={{ paddingTop: headerH }}>
         {page === "demo" ? (
           <Demo anchor={effRoute[2]} />
         ) : page === "attack" ? (

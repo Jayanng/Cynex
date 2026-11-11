@@ -56,7 +56,14 @@ function JudgesSteps() {
           "Verify on chain",
           <>
             <b className="text-ink">Do:</b> Run <span className="mono text-[12px]">node frontend/dist-test/cli/cynex.js verify-live cynex-testvault.cynexmaster.testnet</span> on the test vault.{" "}
-            <b className="text-ink">See:</b> Every row verified_ok = true, {count != null ? count : "all"} receipts, all ok.
+            <b className="text-ink">See:</b>{" "}
+            {count != null ? (
+              <>Every row verified_ok = true, {count} receipts, all ok.</>
+            ) : L.recTest.err ? (
+              <>Receipt count unavailable, retrying.</>
+            ) : (
+              <>Every row verified_ok = true, receipts loading.</>
+            )}
           </>,
         )}
       </div>

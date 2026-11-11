@@ -13,7 +13,8 @@
 
 import { useState } from "react";
 import { JsonRpcProvider, KeyPairSigner, Account } from "near-api-js";
-import { AGENT, BREAK_IT, DEMO_ATTACKER, DEMO_LIVE_LABEL, DEMO_TOKEN, RPC_URL, VAULT_TEST } from "../lib/data";
+import { AGENT, AUTHORIZED_TERMS, BREAK_IT, DEMO_ATTACKER, DEMO_LIVE_LABEL, DEMO_TOKEN, RPC_URL, VAULT_TEST } from "../lib/data";
+import { evaluateBreakItForm, type BreakItFormMode, type BreakItFormOut } from "../lib/breakItForm";
 import { useLive } from "../lib/live";
 import { getObligation, type Obligation } from "../lib/near";
 import { Badge, HashChip, TermsGrid } from "./ui";
@@ -82,8 +83,9 @@ export function BreakIt() {
   const { live, refreshLive } = useLive();
   const [selected, setSelected] = useState(0);
   const [formRecipient, setFormRecipient] = useState(DEMO_ATTACKER);
-  const [formAmount, setFormAmount] = useState("100");
-  const [formOut, setFormOut] = useState<{ kind: "refused" | "none"; code?: string; tx?: string; text: string } | null>(null);
+  const [formAmount, setFormAmount] = useState<string>(AUTHORIZED_TERMS.amount); // string, not the as-const literal type
+  const [formMode, setFormMode] = useState<BreakItFormMode>("terms");
+  const [formOut, setFormOut] = useState<BreakItFormOut | null>(null);
   const [liveStatus, setLiveStatus] = useState<{ text: string; cls: string }>({ text: "not configured", cls: "b-dim" });
   const [liveOut, setLiveOut] = useState<LiveOut | null>(null);
   const [liveBusy, setLiveBusy] = useState(false);
@@ -95,40 +97,22 @@ export function BreakIt() {
     setLiveOut(null);
     setFormOut(null);
     /* The buttons are the fast path to each named attack; they set the
-       form values so the two controls never disagree. */
+       form to that attack's tampered values, so Run attack shows the
+       matching refusal. Recipient and amount attacks change a field;
+       replay resubmits the consumed nonce and remove-evidence submits
+       with no evidence, both keeping the authorized recipient and amount. */
     const sc = BREAK_IT[i];
+    setFormMode(sc.key === "replay" ? "replay" : sc.key === "evidence" ? "evidence" : "terms");
     setFormRecipient(sc.key === "recipient" ? DEMO_ATTACKER : AGENT);
     setFormAmount(sc.key === "amount" ? "200" : "100");
   };
 
   /* Free-form path: evaluate the proposed terms in the browser against
-     the fixed on-chain terms. The refusal shown is the recorded one
-     from the test vault, not a fresh live attempt from this click. */
+     the fixed on-chain terms. The logic lives in lib/breakItForm so Jest
+     can cover it; the refusal shown is the recorded one from the test
+     vault, not a fresh live attempt from this click. */
   const runFormAttack = () => {
-    const r = formRecipient.trim();
-    const a = formAmount.trim();
-    if (r && r !== AGENT) {
-      setFormOut({
-        kind: "refused",
-        code: "ERR_RECIPIENT_SUBSTITUTION",
-        tx: "AFYAq8Sju41NjBFwPmTHbJ1psmsYQWjVdBhmXBZbpa7S",
-        text: "The proposed recipient does not match the recipient fixed at authorization. The vault refused before any transfer.",
-      });
-      return;
-    }
-    if (a && a !== "100") {
-      setFormOut({
-        kind: "refused",
-        code: "ERR_TERMS_MISMATCH",
-        tx: "43YaxJVggxuZ3E25WfjzkgGBsGAqLrj8nwdUU9RLAQRy",
-        text: "The proposed amount does not match the amount fixed at authorization, 100 base units. The vault refused before any transfer.",
-      });
-      return;
-    }
-    setFormOut({
-      kind: "none",
-      text: "No attack detected. The recipient and amount match the authorized terms. Change the recipient or the amount to see the vault refuse.",
-    });
+    setFormOut(evaluateBreakItForm(formRecipient, formAmount, formMode));
   };
 
   const tryLiveAttack = async (i: number) => {
@@ -341,7 +325,10 @@ export function BreakIt() {
                 id="bi-recipient"
                 className="input w-full mono"
                 value={formRecipient}
-                onChange={(e) => setFormRecipient(e.target.value)}
+                onChange={(e) => {
+                  setFormRecipient(e.target.value);
+                  setFormMode("terms");
+                }}
               />
             </div>
             <div>
@@ -352,7 +339,10 @@ export function BreakIt() {
                 id="bi-amount"
                 className="input w-full mono"
                 value={formAmount}
-                onChange={(e) => setFormAmount(e.target.value)}
+                onChange={(e) => {
+                  setFormAmount(e.target.value);
+                  setFormMode("terms");
+                }}
               />
             </div>
           </div>
@@ -361,9 +351,14 @@ export function BreakIt() {
               Run attack
             </button>
             <span className="mono text-xs dim2">
-              Authorized: <span className="text-ink">cynex-agent.cynexmaster.testnet</span>, 100 base units, nonce 1002.
+              Authorized: <span className="text-ink">{AUTHORIZED_TERMS.recipient}</span>, {AUTHORIZED_TERMS.amount} base units, nonce {AUTHORIZED_TERMS.nonce}.
             </span>
           </div>
+          {formMode === "replay" ? (
+            <p className="mono text-xs dim2 mt-3">Replay selected: resubmits nonce {AUTHORIZED_TERMS.nonce}, already consumed by receipt 12.</p>
+          ) : formMode === "evidence" ? (
+            <p className="mono text-xs dim2 mt-3">Remove the evidence selected: submits with no evidence presented.</p>
+          ) : null}
           {formOut ? (
             <div className="mt-4 border-t pt-4 fadein" style={{ borderColor: "var(--line2)" }}>
               {formOut.kind === "refused" ? (
@@ -380,8 +375,15 @@ export function BreakIt() {
                     </div>
                   ) : null}
                   <p className="mono text-xs dim2 mt-3">
-                    Recorded refusal from the test vault. A live attempt from this panel needs the demo key, which the live site supplies
-                    through the Run it live button.
+                    {formOut.note ??
+                      "Recorded refusal from the test vault. A live attempt from this panel needs the demo key, which the live site supplies through the Run it live button."}
+                  </p>
+                </>
+              ) : formOut.kind === "invalid" ? (
+                <>
+                  <p className="dim text-sm leading-relaxed">{formOut.text}</p>
+                  <p className="mono text-xs dim2 mt-3">
+                    Nothing was submitted, and no live attempt was made from this panel.
                   </p>
                 </>
               ) : (
@@ -389,6 +391,9 @@ export function BreakIt() {
                   <p className="dim text-sm leading-relaxed">{formOut.text}</p>
                   <p className="mono text-xs dim2 mt-3">
                     Nothing was refused, because the proposed terms match the authorized terms.
+                  </p>
+                  <p className="mono text-xs dim2 mt-3">
+                    No live attempt was made from this panel. A live attempt needs the demo key, which the live site supplies through the Run it live button.
                   </p>
                 </>
               )}
@@ -407,10 +412,10 @@ export function BreakIt() {
             <div className="terms-grid mb-4">
               <TermsGrid
                 terms={[
-                  ["obligation", "p10-demo-attack-001"],
-                  ["recipient (fixed)", AGENT],
-                  ["amount (fixed)", "100 base units (0.0001 USDC)"],
-                  ["nonce", "1002"],
+                  ["obligation", AUTHORIZED_TERMS.obligation],
+                  ["recipient (fixed)", AUTHORIZED_TERMS.recipient],
+                  ["amount (fixed)", AUTHORIZED_TERMS.amount + " base units (0.0001 USDC)"],
+                  ["nonce", String(AUTHORIZED_TERMS.nonce)],
                   ["evidence", "PREIMAGE"],
                 ]}
               />

@@ -383,6 +383,17 @@ export interface BreakItScenario {
   why: string;
   live: { obligation: string; recipient: string; amount: string; expectState: string };
 }
+/* The authorized terms the BreakIt form is judged against, one source so
+   the form logic, the authorized line, and the terms grid cannot drift.
+   Obligation p10-demo-attack-001 on the test vault: recipient
+   cynex-agent, 100 base units, nonce 1002. */
+export const AUTHORIZED_TERMS = {
+  obligation: "p10-demo-attack-001",
+  recipient: AGENT,
+  amount: "100",
+  nonce: 1002,
+} as const;
+
 export const BREAK_IT: BreakItScenario[] = [
   {
     key: "recipient",

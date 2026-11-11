@@ -9,6 +9,7 @@
 import { VAULT_PROD, VAULT_TEST, TOKEN, RPC_URL } from "../lib/data";
 import { useLive, type LiveState } from "../lib/live";
 import { fmtToken, trunc } from "../lib/near";
+import { policySpentPct } from "../lib/policyPct";
 import { CopyButton, Unavail, LoadTxt } from "./ui";
 
 /* Spendable headroom is min(limit, funded) minus spent minus reserved:
@@ -59,14 +60,7 @@ export function Strip() {
     if (L.policy.err) return <Unavail />;
     if (L.policy.v == null) return <LoadTxt />;
     const p = L.policy.v;
-    let pct: number | null = null;
-    try {
-      const spent = Number(BigInt(p.spent));
-      const limit = Number(BigInt(p.limit));
-      pct = limit > 0 ? Math.round((spent / limit) * 100) : null;
-    } catch {
-      pct = null;
-    }
+    const pct = policySpentPct(p.spent, p.limit);
     return (
       <span className="block w-full" title={policyTitle(p)}>
         <span className="mono" style={{ fontSize: 15, fontWeight: 700 }}>

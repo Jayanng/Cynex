@@ -159,6 +159,16 @@ export function demoButtonCanRun(state: DemoButtonState): boolean {
   return false;
 }
 
+/* The honest status line under the expected-result box. It is shown in
+   every state except success: once a settle succeeds and the PAID result
+   with its tx hash is shown, the line would contradict it. */
+export const DEMO_BUTTON_UNPROVEN_LINE =
+  "Not yet proven live: the button is built, but no live settle has been run from it yet, because the preview deployment cannot see the demo key. The first live settle will be recorded here with its transaction hash.";
+
+export function showUnprovenLine(status: DemoButtonStatus): boolean {
+  return status !== "success";
+}
+
 export type DemoSettleOutcome =
   | { outcome: "success"; result: DemoSettleResult }
   | { outcome: "usedUp"; error: string; fallback: string }

@@ -10,6 +10,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AGENT, TOKEN } from "../lib/data";
 import { useLive } from "../lib/live";
 import { receiptHash, bytesToHex, fmtToken, type Receipt } from "../lib/near";
+import { normalizeTamperAmount } from "../lib/tamperAmount";
 
 interface WorkReceipt {
   index: number;
@@ -119,14 +120,17 @@ export function TamperPanel({ id }: { id: string }) {
     const r = chain.find((c) => Number(c.index) === picked);
     if (!r) return;
     setBusy(true);
-    const updated: WorkReceipt = { ...r, amount: (BigInt(r.amount) + 1000000n).toString() };
-    updated.hash = await receiptHash(updated); // attacker recomputes to cover tracks
-    setChain((prev) => prev.map((c) => (Number(c.index) === picked ? updated : c)));
-    setLog([
-      { kind: "bad", text: `tampered receipt #${picked}, amount ${r.amount} → ${updated.amount} base units · stored hash recomputed by the attacker` },
-      { kind: "diml", text: "now run the verifier replay." },
-    ]);
-    setBusy(false);
+    try {
+      const updated: WorkReceipt = { ...r, amount: (BigInt(r.amount) + 1000000n).toString() };
+      updated.hash = await receiptHash(updated); // attacker recomputes to cover tracks
+      setChain((prev) => prev.map((c) => (Number(c.index) === picked ? updated : c)));
+      setLog([
+        { kind: "bad", text: `tampered receipt #${picked}, amount ${r.amount} → ${updated.amount} base units · stored hash recomputed by the attacker` },
+        { kind: "diml", text: "now run the verifier replay." },
+      ]);
+    } finally {
+      setBusy(false);
+    }
   };
 
   /* Free-form tamper: set the picked receipt amount to any value the
@@ -135,19 +139,23 @@ export function TamperPanel({ id }: { id: string }) {
     if (busy) return;
     const r = chain.find((c) => Number(c.index) === picked);
     if (!r) return;
-    if (!/^\d+$/.test(customAmount.trim())) {
+    const normalized = normalizeTamperAmount(customAmount);
+    if (normalized == null) {
       setLog([{ kind: "bad", text: "type a whole number of base units first, then tamper." }]);
       return;
     }
     setBusy(true);
-    const updated: WorkReceipt = { ...r, amount: BigInt(customAmount.trim()).toString() };
-    updated.hash = await receiptHash(updated); // attacker recomputes to cover tracks
-    setChain((prev) => prev.map((c) => (Number(c.index) === picked ? updated : c)));
-    setLog([
-      { kind: "bad", text: `tampered receipt #${picked}, amount ${r.amount} → ${updated.amount} base units · stored hash recomputed by the attacker` },
-      { kind: "diml", text: "now run the verifier replay." },
-    ]);
-    setBusy(false);
+    try {
+      const updated: WorkReceipt = { ...r, amount: normalized };
+      updated.hash = await receiptHash(updated); // attacker recomputes to cover tracks
+      setChain((prev) => prev.map((c) => (Number(c.index) === picked ? updated : c)));
+      setLog([
+        { kind: "bad", text: `tampered receipt #${picked}, amount ${r.amount} → ${updated.amount} base units · stored hash recomputed by the attacker` },
+        { kind: "diml", text: "now run the verifier replay." },
+      ]);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const doVerify = async () => {

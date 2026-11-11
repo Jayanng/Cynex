@@ -19,6 +19,7 @@
   --neg:#dc2626; --neg-text:#b91c1c; --neg-bg:#fdeaea;
   --warn-text:#92400e;
   --green:#15803d; --red:#b91c1c; --amber:#92400e;
+  --band-red:#ff8f8f; --band-red-border:#5a2b2b; --band-red-bg:#2b1d1a; --band-green:#4ade80; --band-border:#4a4238;
 }
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
@@ -72,7 +73,6 @@ h1,h2,h3{font-weight:500;letter-spacing:0}
    800, 860, 900, 926, 1000, 1100 and 1200px, so no media-query ceiling
    (767 or 860) closes the gap. */
 @media(max-width:640px){.wrap{padding:0 24px}.hero-h{font-size:clamp(36px,11vw,44px)}.attempt{max-width:100%}.badge{text-align:left;line-height:1.6}.btn{text-align:left}}
-.strip{display:grid;grid-template-columns:repeat(7,1fr);border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card)}
 /* 5-stat ledger strip: the same live cells on every page, one set of
    live reads, no drift. Cells reuse .strip-cell, .strip-label and
    .strip-val. */
@@ -90,8 +90,6 @@ h1,h2,h3{font-weight:500;letter-spacing:0}
 .strip-cell:last-child{border-right:0}
 .strip-label{font-size:12px;color:var(--muted);margin-bottom:8px;font-weight:500}
 .strip-val{font-family:'JetBrains Mono',monospace;font-size:12px;display:flex;align-items:center;gap:8px;min-height:24px;color:var(--txt);flex-wrap:wrap}
-@media(max-width:1150px){.strip{grid-template-columns:repeat(3,1fr)}.strip-cell{border-bottom:1px solid var(--line2)}}
-@media(max-width:640px){.strip{grid-template-columns:repeat(2,1fr)}}
 .livedot{width:8px;height:8px;border-radius:50%;background:var(--pos);flex:none}
 .livedot.err{background:#b45309}
 .spin{width:12px;height:12px;border:2px solid rgba(31,27,22,.15);border-top-color:var(--muted);border-radius:50%;animation:rot .9s linear infinite;display:inline-block;flex:none}

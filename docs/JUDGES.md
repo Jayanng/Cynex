@@ -15,11 +15,11 @@ Three steps, each with the exact expected output.
 
 Read the conflict line and the numbers strip.
 
-Expected: 31 receipts on the test vault, 13 on production, demo policy 5,400 of 10,000 spent.
+Expected (counts read live 11 Nov 2026): 31 receipts on the test vault, 13 on production, demo policy 5,400 of 10,000 spent.
 
 ### Step 2 (30 seconds): click Run it live
 
-Expected, once the live settle proof has run: demo-live-001 PAID, receipt 31, policy spent 5,400 to 5,500, agent2 100 to 200.
+Expected, once the live settle proof has run: demo-live-001 PAID, receipt 31, policy spent 5,400 to 5,500, agent2 100 to 200. Starting counts read live 11 Nov 2026.
 
 Not yet proven live: the button is built, but no live settle has been run from it yet, because the preview deployment cannot see the demo key. The first live settle will be recorded here with its transaction hash.
 
@@ -33,7 +33,7 @@ Expected: REFUSED, ERR_RECIPIENT_SUBSTITUTION, tx AFYAq8Sju41NjBFwPmTHbJ1psmsYQW
 
 The same three steps, plus:
 
-- **Verify the chain yourself.** Run `node frontend/dist-test/cli/cynex.js verify-live cynex-testvault.cynexmaster.testnet`. Expected: every row verified_ok = true, 31 receipts, all ok.
+- **Verify the chain yourself.** Run `node frontend/dist-test/cli/cynex.js verify-live cynex-testvault.cynexmaster.testnet`. Expected: every row verified_ok = true, 31 receipts (read live 11 Nov 2026), all ok.
 - **Tamper with a receipt.** On Break it or Proof, edit the amount on receipt 2 and recompute. The link to receipt 3 breaks, and the verifier replay flags it.
 - **Run the MCP sandbox demo.** Run `cd frontend && npm run mcp:build && npm run mcp:demo`. Expected: demo-ready-001 PAID, receipt 2 in the local sandbox. Nothing is mocked, nothing touches testnet.
 
