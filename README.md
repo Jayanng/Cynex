@@ -480,7 +480,7 @@ RUSTUP_TOOLCHAIN=1.93.0 cargo near build non-reproducible-wasm
 
 3. Frontend, from `frontend/`. Install dependencies first; a fresh
 checkout has no `node_modules`. See a clean install, a clean
-typecheck, and 24 suites passed, 1 skipped, 467 tests passed, 3 skipped, 470 total, the gated
+typecheck, and 24 suites passed, 1 skipped, 473 tests passed, 3 skipped, 476 total, the gated
 near-sandbox suite skipped:
 
 ```sh
