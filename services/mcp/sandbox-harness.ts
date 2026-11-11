@@ -117,21 +117,22 @@ function sleepMs(ms: number): Promise<void> {
 
 function repoRoot(): string {
   // Walk up from this file until a directory looks like the repo
-  // root (it holds both services/ and contract/), so the lookup
-  // works from the source tree, from the tsc-built demo under
-  // frontend/dist-test/, and from anywhere else in the checkout.
-  // The old two-levels-up form only worked from the source layout:
-  // from the built demo it resolved to frontend/dist-test, and the
-  // contract/target candidate and the buildWasm crate directory
-  // pointed at a directory that does not exist. In the published
-  // npm package there is no repo root, so fall back to the old form
-  // and let the bundled wasm lookup carry the demo instead.
+  // root (it holds contract/), so the lookup works from the source
+  // tree, from the tsc-built demo under frontend/dist-test/, and
+  // from anywhere else in the checkout. The root is detected on
+  // contract/ alone, not on the wasms directory: if the wasms are
+  // ever absent, the fallback that builds from source still needs
+  // the real crate directory, and that is exactly the case where
+  // the old both-directories check failed. The old two-levels-up
+  // form only worked from the source layout: from the built demo
+  // it resolved to frontend/dist-test, and the contract/target
+  // candidate and the buildWasm crate directory pointed at a
+  // directory that does not exist. In the published npm package
+  // there is no repo root, so fall back to the old form and let
+  // the bundled wasm lookup carry the demo instead.
   let dir = dirname(fileURLToPath(import.meta.url));
   for (let depth = 0; depth < 8; depth++) {
-    if (
-      existsSync(join(dir, "services", "mcp", "wasms")) &&
-      existsSync(join(dir, "contract"))
-    ) {
+    if (existsSync(join(dir, "contract"))) {
       return dir;
     }
     const parent = dirname(dir);

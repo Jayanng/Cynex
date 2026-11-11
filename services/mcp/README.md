@@ -79,7 +79,7 @@ npm install
 npm run mcp:build
 ```
 
-`npm run mcp:build` compiles the MCP entry points (`services/mcp/server.ts`, `test-client.ts`, `demo.ts`, `cli.ts`, plus everything they import, and the standalone sandbox runner) with the frontend `tsc` using `frontend/tsconfig.mcp.json`. The config exists for two reasons: the frontend `tsconfig.json` includes only `src` and `scripts`, and the MCP files live outside `frontend/`, so their bare imports (`near-api-js`, `@modelcontextprotocol/sdk`, `zod`) do not resolve from `frontend/node_modules` by file location. The config maps those imports there with `paths`. The build exits 0. The output is `dist-test/services/mcp/server.js`, `test-client.js`, `demo.js`, and `cli.js`.
+`npm run mcp:build` compiles the MCP entry points (`services/mcp/server.ts`, `test-client.ts`, `demo.ts`, `cli.ts`, plus everything they import, and the standalone sandbox runner) with the frontend `tsc` using `frontend/tsconfig.mcp.json`. It is also the typecheck for the MCP files: the main `npm run typecheck` covers only `frontend/src` and `frontend/scripts`, so it never sees them. The config exists for two reasons: the frontend `tsconfig.json` includes only `src` and `scripts`, and the MCP files live outside `frontend/`, so their bare imports (`near-api-js`, `@modelcontextprotocol/sdk`, `zod`) do not resolve from `frontend/node_modules` by file location. The config maps those imports there with `paths`. The build exits 0. The output is `dist-test/services/mcp/server.js`, `test-client.js`, `demo.js`, and `cli.js`.
 
 Run the server as a plain node command over stdio:
 
@@ -242,7 +242,11 @@ Limits: sandbox only, not testnet, not production. No live funds
 move, the agent key is ephemeral and local-only (written to a temp
 directory inside the sandbox home and removed on exit), and the
 sandbox is removed when the demo stops. The demo keeps running until
-it is killed (SIGINT, SIGTERM, or the client disconnecting). The
+it is killed (SIGINT, SIGTERM, or the client disconnecting).
+Pressing Ctrl-C while the demo is still starting up waits for
+provisioning to finish, then exits cleanly with the sandbox
+removed: the interrupt does not cut provisioning short, so the
+exit takes the rest of the roughly 24 second startup. The
 vault wasm it deploys hashes to
 `65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6`, the same hash as the
 deployed vaults, and the test token wasm hashes to

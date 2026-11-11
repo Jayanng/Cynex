@@ -636,6 +636,13 @@ describe("demo over stdio", () => {
           timeoutRace<string>("timeout", 120_000),
         ]);
         expect(code).toBe(0);
+        // The ready summary never printed: a kill that landed
+        // after provisioning would have printed it, so its absence
+        // is what proves the kill landed mid-provisioning. The
+        // "Seeded obligations:" line and the Claude Code config
+        // snippet both come only from the ready summary.
+        expect(stderr).not.toContain("Seeded obligations:");
+        expect(stderr).not.toContain("mcpServers");
         // The "sandbox up" check prints the RPC URL during
         // provisioning, so it is in stderr even though the ready
         // summary never printed.

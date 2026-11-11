@@ -255,8 +255,14 @@ export async function runDemo(): Promise<number> {
       if (provisioned !== undefined) {
         try {
           await provisioned.stop();
-        } catch {
-          // stopping must not hide the shutdown
+        } catch (error) {
+          // Stopping must not hide the shutdown, but a failed stop
+          // must not pass silently either: log it, so a sandbox
+          // that did not stop is visible instead of invisible.
+          console.error(
+            "failed to stop the sandbox: " +
+              (error instanceof Error ? error.message : String(error)),
+          );
         }
       }
     })();
@@ -338,17 +344,21 @@ export async function runDemo(): Promise<number> {
     await stopSandboxOnce();
     return 1;
   }
-  server = buildServer(ctx);
-  const transport = new StdioServerTransport();
-  transport.onclose = () => {
-    void shutdown();
-  };
-
   try {
+    // Build the server and the transport inside the try, so a throw
+    // here stops the sandbox through the finally below instead of
+    // leaking it behind a failed start.
+    server = buildServer(ctx);
+    const transport = new StdioServerTransport();
+    transport.onclose = () => {
+      void shutdown();
+    };
+
     // Read the seeded obligations live, so the summary states what
     // the chain actually holds, not what provisioning intended:
-    // state, recipient, and amount all come from the row, with the
-    // seed spec only as a fallback when the row lacks a field.
+    // state, recipient, amount, and the policy limit all come from
+    // the row, with the seed spec only as a fallback when the row
+    // lacks a field.
     const summaries: DemoObligationSummary[] = [];
     for (const spec of [...seeds.bootstrap, ...seeds.ready, ...seeds.created]) {
       const row = await provisioned.readObligation(spec.id);
@@ -366,7 +376,7 @@ export async function runDemo(): Promise<number> {
         rpcUrl: provisioned.sandbox.rpcUrl,
         chainId: provisioned.sandbox.chainId,
         policyId: provisioned.policyId,
-        policyLimit: String(provisioned.policyLimit),
+        policyLimit: String(policy.limit ?? provisioned.policyLimit),
         policyFunded: String(policy.funded ?? "unknown"),
         policySpent: String(policy.spent ?? "unknown"),
         agentPublicKey: ctx.agentPublicKey,
