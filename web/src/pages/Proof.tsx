@@ -96,7 +96,7 @@ export function Proof() {
                 <th>token_id</th>
                 <th>timestamp</th>
                 <th>tx_ref</th>
-                <th>verified_ok</th>
+                <th>link_ok</th>
               </tr>
             </thead>
             <tbody>
@@ -115,7 +115,7 @@ export function Proof() {
                         {trunc(r.recipient, 12, 8)}
                       </a>
                     </td>
-                    <td title={"raw: " + String(r.amount) + " · " + fmtToken(r.amount) + " USDC"}>{String(r.amount)}</td>
+                    <td title={"raw: " + String(r.amount) + " · " + fmtToken(r.amount) + " USDC · usdc.fakes.testnet, 6 decimals"}>{String(r.amount)}</td>
                     <td className="dim" title={r.token_id}>
                       {trunc(r.token_id, 10, 8)}
                     </td>
@@ -163,7 +163,7 @@ export function Proof() {
           style={{ borderColor: "var(--line2)" }}
         >
           <span>source: {VAULT_TEST} · receipts(start, limit) · live</span>
-          <span>verified_ok = index contiguity (in-browser); the Receipt struct has no hash field, so the browser cannot compare hash links</span>
+          <span>link_ok = index contiguity (in-browser); hash links are recomputed by the CLI verify-live</span>
           <span>canonical recompute: node frontend/dist-test/cli/cynex.js verify-live cynex-testvault.cynexmaster.testnet</span>
         </div>
         {replay.done ? (

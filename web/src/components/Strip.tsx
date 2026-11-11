@@ -84,7 +84,7 @@ export function Strip() {
       <>
         {icon} prod {L.recProd.v} · test {L.recTest.v}{" "}
         <span className="dim2 text-xs">
-          link-check
+          index contiguity only
         </span>
       </>
     );
@@ -160,7 +160,7 @@ export function Strip() {
           </>
         ))
       )}
-      {cell("Receipts verified", recCell())}
+      {cell("Receipts, link-check", recCell())}
       {cell(
         "Agent balance",
         f(L.agent, (v) => (

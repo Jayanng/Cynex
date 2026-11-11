@@ -4,7 +4,7 @@
 
 import { AGENT, CP, EX_TX, REPO } from "../lib/data";
 import { useLive } from "../lib/live";
-import { Icon, Badge, CmdBlock, HashChip, Unavail, LoadTxt } from "./ui";
+import { Icon, Badge, HashChip, Unavail, LoadTxt } from "./ui";
 import { Logo } from "./Logo";
 
 /* ---------- footer ---------- */
@@ -71,7 +71,7 @@ export function RefusalPanel() {
           The submitted settle tried to pay a different recipient instead of the authorized recipient. The vault refused.
         </p>
         <p className="dim text-sm mt-2 max-w-3xl">
-          Obligation <span className="mono text-[13px] text-ink">p10-demo-attack-001</span> · 100 base units (0.0001 USDC) · nonce 1002 ·
+          Obligation <span className="mono text-[13px] text-ink">p10-demo-attack-001</span> · 100 base units (0.0001 test USDC) · nonce 1002 ·
           the terms are fixed on chain, so the injected instruction was worthless. In the executed tx the proposed recipient was the owner
           account, cynexmaster.testnet. <b className="text-ink">0 tokens moved.</b>
         </p>
@@ -114,42 +114,10 @@ export function TrustRow() {
     <section className="wrap mt-8">
       <div className="panel p-6">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-          {cell("369 tests passing", "19 suites passed, 1 skipped \u00b7 369 tests passed, 1 skipped, 370 total \u00b7 Jest")}
+          {cell("393 tests passing", "20 suites passed, 1 failed, 1 skipped \u00b7 393 tests passed, 1 failed, 3 skipped, 397 total \u00b7 Jest")}
           {cell("25 error codes", "defined in the contract, 11 returned by settle")}
           <div data-live-region="trustreceipts">{receiptsCell()}</div>
           {cell("4 attestation bundles", "in the repo, verify offline")}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ---------- one verify command on the home page ---------- */
-export function VerifyHome() {
-  return (
-    <section className="wrap mt-24">
-      <div className="panel p-6">
-        <div className="kicker mb-2">Replay the whole chain</div>
-        <h2 className="text-xl md:text-2xl mb-2">One command replays the whole chain</h2>
-        <p className="dim text-sm mb-4">
-          Read-only. The CLI replays every receipt from genesis over the test vault and recomputes each hash link. The in-browser table on the
-          Proof page checks index contiguity only; only the CLI recomputes the hash links.
-        </p>
-        <CmdBlock cmdKey="verify" />
-        <div className="flex flex-wrap items-center gap-3 mt-4">
-          <span className="mono text-xs dim2">expected output</span>
-          <span>every row verified_ok = true · </span>
-          <span data-live-region="counts">
-            <CountsLine />
-          </span>
-        </div>
-        <div className="mt-3">
-          <a className="mono text-xs inline-flex items-center gap-2" style={{ color: "var(--accent-text)" }} href="#/proof">
-            full proof page{" "}
-            <span style={{ width: 16, height: 16, display: "inline-grid", placeItems: "center" }}>
-              <Icon name="arrow" />
-            </span>
-          </a>
         </div>
       </div>
     </section>

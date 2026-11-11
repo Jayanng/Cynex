@@ -32,11 +32,11 @@ function Header({ page }: { page: string }) {
       <div className="wrap flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-2 md:flex-nowrap md:h-16 md:py-0">
         <a href="#/" className="flex items-center gap-3 flex-none">
           <Logo markSize={28} />
-          <span className="hidden md:block text-xs dim2 leading-tight">
+          <span className="hidden lg:block text-xs dim2 leading-tight">
             purpose-bound settlement vault
           </span>
         </a>
-        <nav className="flex items-center gap-1" id="mainnav">
+        <nav className="flex flex-wrap items-center gap-1" id="mainnav">
           <a className={"navlink" + (page === "home" ? " active" : "")} href="#/">
             Home
           </a>
@@ -98,8 +98,11 @@ function Shell() {
 
   return (
     <>
+      <a href="#main" className="skip-link">
+        Skip to content
+      </a>
       <Header page={page} />
-      <main className="md:pt-16 min-h-screen">
+      <main id="main" className="md:pt-16 min-h-screen">
         {page === "demo" ? (
           <Demo anchor={effRoute[2]} />
         ) : page === "attack" ? (

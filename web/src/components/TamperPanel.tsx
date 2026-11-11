@@ -181,18 +181,19 @@ export function TamperPanel({ id }: { id: string }) {
       <div className="flex flex-wrap items-center gap-3 mt-5">
         <select
           className="input"
+          aria-label="Choose a receipt to tamper with"
           style={{ minWidth: 220 }}
           value={picked}
           onChange={(e) => setPicked(Number(e.target.value))}
         >
           {chain.map((c) => (
             <option key={c.index} value={c.index}>
-              receipt #{c.index} · {c.obligation_id} · {c.amount} base units ({fmtToken(c.amount)} USDC)
+              receipt #{c.index} · {c.obligation_id} · {c.amount} base units ({fmtToken(c.amount)} test USDC)
             </option>
           ))}
         </select>
         <button className="btn sm" onClick={() => void doTamper()} disabled={busy || chain.length === 0}>
-          Tamper, amount +1000000 base units (1 USDC), recompute hash
+          Tamper, amount +1000000 base units (1 test USDC), recompute hash
         </button>
         <button className="btn sm btn-primary" onClick={() => void doVerify()} disabled={busy || chain.length === 0}>
           Run verifier replay
