@@ -85,6 +85,8 @@ What the hosted demo can do:
   from genesis and recomputes each hash link, with the live receipt
   table and the four TEE attestation bundles on the Proof page.
 
+Not yet proven live: the hosted Run it live button is built and unit-tested, but no live settle has been run from it yet. The preview deployment cannot see CYNEX_DEMO_KEY, so it returns 503 DEMO_NOT_CONFIGURED with the sandbox fallback until the key is targeted at preview in the Vercel dashboard. A live end-to-end click on the hosted deployment is still to run.
+
 Every number on the site is either live from the chain or labelled
 as a historical fact. Nothing is canned.
 
@@ -131,7 +133,7 @@ authorization time.
 Testnet throughout. The vault is deployed at
 `cynex-vault.cynexmaster.testnet`. The scorecard fifth reputation signal
 (code-change recency) is merged, and the live demo runs the full story
-end to end.
+end to end, except the hosted Run it live settle, which is built but not yet proven live (see Hosted demo).
 
 Live state, last verified 2026-11-11: both vaults run code hash
 65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6. Test vault policy
@@ -626,7 +628,7 @@ weaker than the on-chain check, not stronger.
 ## Docs
 
 - `docs/contract-api.md`, the frozen API, digest, timeouts, reason codes
-- `docs/ledger.md`, the signed phase ledger
+- `docs/ledger.md`, the signed project ledger
 - `docs/threat-model.md`, what the vault assumes and what it does not
 - `docs/spike-outlayer.md`, the OutLayer spike report and verdict
 - the attack demo log (attack transcript)
