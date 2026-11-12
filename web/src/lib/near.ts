@@ -9,30 +9,241 @@
    numbers before parsing, keeping them exact as BigInt end to end. */
 
 /* ---------- receipts: raw fetch, exact u64 values ---------- */
-async function fetchReceiptPage(vault: string, start: number, limit: number): Promise<{ rows: Receipt[]; block: number | null }> {
-  const argsBase64 = btoa(JSON.stringify({ start, limit }));
-  const response = await fetch(RPC_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: "cynex-receipts",
-      method: "query",
-      params: {
-        request_type: "call_function",
-        account_id: vault,
-        method_name: "receipts",
-        args_base64: argsBase64,
-        finality: "final",
-      },
-    }),
+/* Bounded reads for the receipts view. This raw fetch used to have no
+   timeout and no abort signal, so a stalled RPC connection never
+   resolved or rejected. That hung fetchReceipts, and with it the whole
+   live refresh in live.tsx: Promise.allSettled never settled, the
+   refreshing guard stayed set, the 5s interval ticks were no-ops, and
+   the 8s retry timer (which is only armed after allSettled) never
+   fired, so every live stat sat on "Unavailable, retrying" even
+   though the near-api-js reads in the same refresh had succeeded.
+   Every receipts read is now bounded. One attempt shares a single
+   RECEIPT_FETCH_TIMEOUT_MS (4s, shorter than both the 5s refresh
+   interval and the 8s retry window, and far above the usual 0.5s
+   FastNear response) across the headers and the body read, so one
+   attempt can never take more than 4s, and a transient failure is
+   retried at most twice with 500ms then 1000ms backoff. Worst case
+   for one page is 3 x 4s plus 1.5s backoff, about 13.5s. The whole
+   fetchReceipts call is bounded too: pagination stops and the call
+   rejects once RECEIPT_FETCH_TOTAL_TIMEOUT_MS (20s) has passed, so
+   ten pages can never stack up to about 135s in one refresh. Every
+   attempt is clamped to the time left in the budget, backoff sleeps
+   are clamped the same way, and a page that returns after the
+   deadline has its rows rejected, so the worst case for the whole
+   call is about 20s, after which the read rejects, the live store
+   marks the field failed, and the retry timer fires. The 38 receipts
+   on chain fit in one page of 50, so the total budget never bites
+   the real case. The four near-api-js reads in the same refresh
+   (viewCode twice, fetchPolicy, agentBalance) are raced against the
+   same 4s timeout with withTimeout below, so no job in a refresh is
+   unbounded. A read can be slow and it can fail, but it can no
+   longer hang forever. The exact-integer quoting below is unchanged. */
+export const RECEIPT_FETCH_TIMEOUT_MS = 4000;
+export const RECEIPT_FETCH_MAX_ATTEMPTS = 3;
+export const RECEIPT_FETCH_RETRY_BASE_DELAY_MS = 500;
+export const RECEIPT_FETCH_TOTAL_TIMEOUT_MS = 20000;
+
+/* A fetch that always settles: the AbortController cancels the real
+   request on timeout, and the racing timeout promise rejects even if
+   the fetch implementation ignores the signal, so a hung read can
+   never block the caller past timeoutMs. */
+export async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error("fetch timed out after " + timeoutMs + "ms"));
+    }, timeoutMs);
   });
-  const data = (await response.json()) as { error?: unknown; result?: { result?: number[]; block_height?: number } };
+  try {
+    return await Promise.race([fetch(url, { ...init, signal: controller.signal }), timeout]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+/* Race any promise against a timeout rejection, for reads that do not
+   go through fetch and so cannot take an AbortSignal: the near-api-js
+   JsonRpcProvider calls and the receipts response body read. The
+   underlying promise keeps running if it loses the race, but the
+   caller is never blocked past timeoutMs. The error message matches
+   the "timed out after Nms" shape isTransientReceiptError treats
+   as transient. */
+export function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(label + " timed out after " + timeoutMs + "ms"));
+    }, timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer !== undefined) clearTimeout(timer);
+  });
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/* Transient receipts failures are worth one more try: a timeout, an
+   abort, a network failure, a body that is not JSON (an HTML error
+   page, a truncated body), or an HTTP 5xx from the RPC. A
+   deterministic failure is not: the RPC answered with an error, or
+   an HTTP 4xx, so retrying would just fail the same way. An HTTP
+   status in the message decides: 5xx is transient, 4xx is not. */
+export function isTransientReceiptError(error: unknown): boolean {
+  if (typeof error === "object" && error !== null && "name" in error) {
+    if ((error as { name: unknown }).name === "AbortError") return true;
+  }
+  if (error instanceof Error) {
+    if (/timed out after \d+ms/.test(error.message)) return true;
+    if (error instanceof SyntaxError) return true;
+    const httpStatus = /HTTP (\d{3})/.exec(error.message);
+    if (httpStatus) return Number(httpStatus[1]) >= 500;
+    if (error.message.startsWith("receipts view failed")) return false;
+    if (error instanceof TypeError) return true;
+  }
+  return false;
+}
+
+/* Run fn up to maxAttempts times, retrying only transient failures
+   with exponential backoff from baseDelayMs. The last error is
+   rethrown, so a failed read is always an error, never a null
+   dressed up as a result. An optional deadlineMs (absolute epoch
+   ms) clamps each backoff sleep to the time left in the budget, so
+   a retry never sleeps past the deadline: the next attempt then
+   throws the budget error instead of starting another fetch. */
+export async function withReceiptRetries<T>(
+  fn: () => Promise<T>,
+  maxAttempts: number = RECEIPT_FETCH_MAX_ATTEMPTS,
+  baseDelayMs: number = RECEIPT_FETCH_RETRY_BASE_DELAY_MS,
+  deadlineMs?: number,
+): Promise<T> {
+  /* A maxAttempts of 0 used to fall through the loop and throw
+     undefined. Callers pass 3, but a bad value must fail loudly
+     with a real Error, never with an undefined throw. */
+  if (maxAttempts < 1) throw new Error("withReceiptRetries needs maxAttempts of at least 1, got " + maxAttempts);
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (attempt === maxAttempts || !isTransientReceiptError(error)) throw error;
+      const delay = baseDelayMs * 2 ** (attempt - 1);
+      await sleep(deadlineMs === undefined ? delay : Math.max(0, Math.min(delay, deadlineMs - Date.now())));
+    }
+  }
+  throw lastError;
+}
+
+export interface ReceiptReadOptions {
+  timeoutMs?: number;
+  maxAttempts?: number;
+  retryBaseDelayMs?: number;
+  totalTimeoutMs?: number;
+}
+
+function receiptReadSettings(opts?: ReceiptReadOptions): Required<ReceiptReadOptions> {
+  return {
+    timeoutMs: opts?.timeoutMs ?? RECEIPT_FETCH_TIMEOUT_MS,
+    maxAttempts: opts?.maxAttempts ?? RECEIPT_FETCH_MAX_ATTEMPTS,
+    retryBaseDelayMs: opts?.retryBaseDelayMs ?? RECEIPT_FETCH_RETRY_BASE_DELAY_MS,
+    totalTimeoutMs: opts?.totalTimeoutMs ?? RECEIPT_FETCH_TOTAL_TIMEOUT_MS,
+  };
+}
+
+/* A decoded receipt entry must carry every receipt field, with the
+   exact-integer fields as numbers or numeric strings: the quoting
+   below turns large raw numbers into strings, small ones stay
+   numbers. prev_hash arrives as a 32-byte array or a hex string,
+   and tx_ref is a string that may be empty on chain. */
+function isValidReceipt(value: unknown): value is Receipt {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const r = value as Record<string, unknown>;
+  const isExactInt = (v: unknown): boolean =>
+    (typeof v === "number" && Number.isFinite(v)) || (typeof v === "string" && /^-?\d+$/.test(v));
+  if (!isExactInt(r.index) || !isExactInt(r.amount) || !isExactInt(r.timestamp)) return false;
+  if (typeof r.obligation_id !== "string" || r.obligation_id.length === 0) return false;
+  if (typeof r.recipient !== "string" || r.recipient.length === 0) return false;
+  if (typeof r.token_id !== "string" || r.token_id.length === 0) return false;
+  if (!(Array.isArray(r.prev_hash) || typeof r.prev_hash === "string")) return false;
+  if (typeof r.tx_ref !== "string") return false;
+  return true;
+}
+
+async function fetchReceiptPage(vault: string, start: number, limit: number, timeoutMs: number = RECEIPT_FETCH_TIMEOUT_MS): Promise<{ rows: Receipt[]; block: number | null }> {
+  /* One deadline for the whole attempt: the headers and the body
+     share timeoutMs, so slow headers leave only the remainder for
+     the body instead of a second full timeout. */
+  const startedAt = Date.now();
+  const argsBase64 = btoa(JSON.stringify({ start, limit }));
+  const response = await fetchWithTimeout(
+    RPC_URL,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "cynex-receipts",
+        method: "query",
+        params: {
+          request_type: "call_function",
+          account_id: vault,
+          method_name: "receipts",
+          args_base64: argsBase64,
+          finality: "final",
+        },
+      }),
+    },
+    timeoutMs,
+  );
+  /* A 5xx is a transient server failure, so it must throw an error
+     the retry can fire on. Without this check a 5xx with a JSON body
+     became a deterministic "receipts view failed" and a 5xx with an
+     HTML body threw a SyntaxError out of response.json(). The ok
+     check is === false so a mocked Response without an ok flag
+     still reads as ok. */
+  if (response.ok === false) {
+    throw new Error("receipts view failed: HTTP " + (response.status ?? "unknown"));
+  }
+  /* The body read is raced too, against only the time left in the
+     attempt budget: fetchWithTimeout bounds the headers, and a
+     stalled body must not get a second full timeoutMs on top of
+     slow headers. A SyntaxError here means the body was not JSON
+     (an HTML error page, a truncated body), which
+     isTransientReceiptError treats as transient. */
+  const bodyMs = timeoutMs - (Date.now() - startedAt);
+  if (bodyMs <= 0) throw new Error("receipts response body timed out after " + timeoutMs + "ms");
+  const data = (await withTimeout(
+    response.json(),
+    bodyMs,
+    "receipts response body",
+  )) as { error?: unknown; result?: { result?: number[]; block_height?: number } };
+  if (data == null || typeof data !== "object") throw new Error("receipts view failed: unexpected response shape");
   if (data.error) throw new Error("receipts view failed: " + JSON.stringify(data.error));
+  /* A 200 with neither error nor result is an error, not an empty
+     success: returning zero rows would present an unexpected shape
+     as chain truth. */
+  if (data.result == null) throw new Error("receipts view failed: missing result");
   const raw = new TextDecoder().decode(new Uint8Array(data.result?.result ?? []));
   const quoted = raw.replace(/"(index|amount|timestamp)":\s*(-?\d+)/g, '"$1":"$2"');
-  const rows = JSON.parse(quoted) as Receipt[];
-  return { rows: Array.isArray(rows) ? rows : [], block: data.result?.block_height ?? null };
+  const parsed: unknown = JSON.parse(quoted);
+  /* The decoded payload must be an array of receipts: a 200 whose
+     result bytes decode to {} or null used to return zero rows as a
+     success, and [{}] passed as a receipt with every field
+     undefined. Both are deterministic failures, never retried. */
+  if (!Array.isArray(parsed)) throw new Error("receipts view failed: unexpected receipt payload, not an array");
+  const rows = parsed as Receipt[];
+  for (const row of rows) {
+    if (!isValidReceipt(row)) throw new Error("receipts view failed: invalid receipt entry");
+  }
+  return { rows, block: data.result?.block_height ?? null };
 }
 
 import { JsonRpcProvider } from "near-api-js";
@@ -95,30 +306,57 @@ function providerFor(vaultId: string): JsonRpcProvider {
 const tokenProvider = new JsonRpcProvider({ url: RPC_URL });
 
 async function viewCall<T>(vaultId: string, method: string, args: Record<string, unknown>): Promise<{ data: T; block: number | null }> {
-  const result = (await providerFor(vaultId).callFunction({
-    contractId: vaultId,
-    method,
-    args,
-    blockQuery: { finality: "final" },
-  })) as T;
+  const result = (await withTimeout(
+    providerFor(vaultId).callFunction({
+      contractId: vaultId,
+      method,
+      args,
+      blockQuery: { finality: "final" },
+    }),
+    RECEIPT_FETCH_TIMEOUT_MS,
+    "view call " + method,
+  )) as T;
   return { data: result, block: null };
 }
 
 export async function viewCode(accountId: string): Promise<{ hash: string; block: number | null }> {
-  const r = await providerFor(accountId).viewContractCode({
-    contractId: accountId,
-    blockQuery: { finality: "final" },
-  });
+  const r = await withTimeout(
+    providerFor(accountId).viewContractCode({
+      contractId: accountId,
+      blockQuery: { finality: "final" },
+    }),
+    RECEIPT_FETCH_TIMEOUT_MS,
+    "view code " + accountId,
+  );
   return { hash: r.hash, block: (r as { block_height?: number }).block_height ?? null };
 }
 
-export async function fetchReceipts(vault: string): Promise<{ rows: Receipt[]; block: number | null }> {
+export async function fetchReceipts(vault: string, opts?: ReceiptReadOptions): Promise<{ rows: Receipt[]; block: number | null }> {
+  const settings = receiptReadSettings(opts);
+  /* Total deadline across pages: one page can take 13.5s worst case,
+     so ten pages would be about 135s without this. The deadline is
+     checked before every attempt and each attempt is clamped to the
+     time left, so the call rejects once the budget is spent. */
+  const deadline = Date.now() + settings.totalTimeoutMs;
   const out: Receipt[] = [];
   let start = 0;
   const limit = 50;
   let block: number | null = null;
   for (let i = 0; i < 10; i++) {
-    const page = await fetchReceiptPage(vault, start, limit);
+    const page = await withReceiptRetries(
+      () => {
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) throw new Error("receipts read exceeded total budget of " + settings.totalTimeoutMs + "ms");
+        return fetchReceiptPage(vault, start, limit, Math.min(settings.timeoutMs, remaining));
+      },
+      settings.maxAttempts,
+      settings.retryBaseDelayMs,
+      deadline,
+    );
+    /* A page that returns after the deadline has its rows rejected,
+       not accepted: without this check an over-budget page still
+       counted as a success. */
+    if (Date.now() > deadline) throw new Error("receipts read exceeded total budget of " + settings.totalTimeoutMs + "ms");
     if (page.rows.length === 0) break;
     if (block === null) block = page.block;
     out.push(...page.rows);
@@ -143,19 +381,31 @@ export async function getObligation(vault: string, obligationId: string): Promis
 }
 
 export async function agentBalance(): Promise<string> {
-  const v = (await tokenProvider.callFunction({
-    contractId: TOKEN,
-    method: "ft_balance_of",
-    args: { account_id: AGENT },
-    blockQuery: { finality: "final" },
-  })) as string;
+  const v = (await withTimeout(
+    tokenProvider.callFunction({
+      contractId: TOKEN,
+      method: "ft_balance_of",
+      args: { account_id: AGENT },
+      blockQuery: { finality: "final" },
+    }),
+    RECEIPT_FETCH_TIMEOUT_MS,
+    "agent balance",
+  )) as string;
   return String(v);
 }
 
 /* Fetch a single receipt by index, for the per-step chain reads.
    Same raw fetch as fetchReceipts, so the timestamp stays exact. */
-export async function readReceipt(index: number): Promise<{ rec: Receipt | null; block: number | null }> {
-  const page = await fetchReceiptPage(VAULT_TEST, index, 1);
+/* A null rec here means the vault returned no row for that index, not a
+   failed read. A failed read throws, so the caller can never mistake a
+   timeout for an empty receipt. */
+export async function readReceipt(index: number, opts?: ReceiptReadOptions): Promise<{ rec: Receipt | null; block: number | null }> {
+  const settings = receiptReadSettings(opts);
+  const page = await withReceiptRetries(
+    () => fetchReceiptPage(VAULT_TEST, index, 1, settings.timeoutMs),
+    settings.maxAttempts,
+    settings.retryBaseDelayMs,
+  );
   return { rec: page.rows[0] ?? null, block: page.block };
 }
 

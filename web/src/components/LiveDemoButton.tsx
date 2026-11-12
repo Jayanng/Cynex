@@ -14,10 +14,10 @@
 
 import { useReducer, useRef } from "react";
 import { fmtToken } from "../lib/near";
+import { VAULT_TEST } from "../lib/data";
 import { useLive } from "../lib/live";
 import {
   DEMO_BUTTON_PROVEN_LINE,
-  DEMO_EXPLORER_TX,
   createInFlightGuard,
   DEMO_SETTLE_ENDPOINT,
   DEMO_SETTLE_FALLBACK,
@@ -27,6 +27,7 @@ import {
   parseDemoSettleResponse,
 } from "../lib/demoSettle";
 import { Badge, HashChip } from "./ui";
+import { TxLink, AccountLink, shortHash } from "../lib/links";
 
 export function LiveDemoButton({ actions }: { actions?: React.ReactNode }) {
   const [state, dispatch] = useReducer(demoButtonReducer, initialDemoButtonState);
@@ -87,12 +88,13 @@ export function LiveDemoButton({ actions }: { actions?: React.ReactNode }) {
 
   const result = state.result;
   const remaining = result?.remaining ?? null;
-  /* Policy limit comes from the live policy read, never a hardcoded 10000. */
-  const policyLimit = L.policy.v ? String(L.policy.v.limit) : null;
+  /* Policy limit comes from the live policy read, never a hardcoded 10000,
+     and never a stale one: on a failed read the limit is dropped. */
+  const policyLimit = !L.policy.err && L.policy.v ? String(L.policy.v.limit) : null;
   const canRunAgain = state.status === "success" && (remaining === null || remaining > 0);
 
-  /* Live state 12 Nov 2026: demo-live-001 to 005 are PAID, demo-live-006
-     to 010 are READY, so 5 are left. After a success the remaining count
+  /* Live state 12 Nov 2026: demo-live-001 to 007 are PAID, demo-live-008
+     to 010 are READY, so 3 are left. After a success the remaining count
      comes from the API. */
   const buttonLabel =
     state.status === "loading"
@@ -123,8 +125,23 @@ export function LiveDemoButton({ actions }: { actions?: React.ReactNode }) {
       {state.status === "success" && result ? (
         <div className="mt-5 space-y-3">
           <div className="mono text-[13px] space-y-1.5">
-            {row("receipt", result.receiptIndex !== null ? "#" + result.receiptIndex : "pending, see the tx")}
-            {row("obligation", result.obligationId ?? "-")}
+            {row(
+              "receipt",
+              result.receiptIndex !== null ? (
+                result.txHash ? (
+                  <TxLink hash={result.txHash} title={"vault receipt number " + result.receiptIndex + ", settle transaction"}>
+                    {"#" + result.receiptIndex}
+                  </TxLink>
+                ) : (
+                  <AccountLink account={VAULT_TEST} title={"vault receipt number " + result.receiptIndex + ", vault account page"}>
+                    {"#" + result.receiptIndex}
+                  </AccountLink>
+                )
+              ) : (
+                "pending, see the tx"
+              ),
+            )}
+            {row("obligation", result.obligationId ? <AccountLink account={VAULT_TEST} title="view the vault account on NearBlocks">{result.obligationId}</AccountLink> : "-")}
             {row(
               "amount",
               result.amount !== null ? (
@@ -133,7 +150,7 @@ export function LiveDemoButton({ actions }: { actions?: React.ReactNode }) {
                 "-"
               ),
             )}
-            {row("recipient", result.recipient ?? "-")}
+            {row("recipient", result.recipient ? <AccountLink account={result.recipient} /> : "-")}
             {row("policy spent", result.policySpent !== null ? result.policySpent + (policyLimit !== null ? " of " + policyLimit + " base units" : " base units") : "-")}
           </div>
           {result.txHash ? (
@@ -143,9 +160,9 @@ export function LiveDemoButton({ actions }: { actions?: React.ReactNode }) {
           ) : null}
           <div className="text-xs dim2 mono">
             {result.txHash ? (
-              <a href={DEMO_EXPLORER_TX(result.txHash)} target="_blank" rel="noopener">
+              <TxLink hash={result.txHash}>
                 Open the settle transaction in the explorer
-              </a>
+              </TxLink>
             ) : (
               "No tx hash was returned: check the receipt list on the test vault."
             )}
@@ -171,16 +188,21 @@ export function LiveDemoButton({ actions }: { actions?: React.ReactNode }) {
           ) : null}
           <div className="text-xs dim2 mono">
             {state.txHash ? (
-              <a href={DEMO_EXPLORER_TX(state.txHash)} target="_blank" rel="noopener">
+              <TxLink hash={state.txHash}>
                 Open the settle transaction in the explorer
-              </a>
+              </TxLink>
             ) : (
               "No tx hash was returned: check the receipt list on the test vault."
             )}
           </div>
           <p className="dim text-sm leading-relaxed">
             Do not run it again until the explorer shows the outcome for{" "}
-            {state.obligationId ?? "the obligation"}.
+            {state.obligationId ? (
+              <AccountLink account={VAULT_TEST} title="view the vault account on NearBlocks">{state.obligationId}</AccountLink>
+            ) : (
+              "the obligation"
+            )}
+            .
           </p>
         </div>
       ) : null}
@@ -207,12 +229,26 @@ export function LiveDemoButton({ actions }: { actions?: React.ReactNode }) {
       return (
         <div className="expected">
           <b>Proven live:</b>{" "}
-          {result.receiptIndex !== null ? <>receipt {result.receiptIndex}, </> : null}
+          {result.receiptIndex !== null ? (
+            <>
+              vault receipt{" "}
+              {result.txHash ? (
+                <TxLink hash={result.txHash} title={"vault receipt number " + result.receiptIndex + ", settle transaction"}>
+                  {result.receiptIndex}
+                </TxLink>
+              ) : (
+                <AccountLink account={VAULT_TEST} title={"vault receipt number " + result.receiptIndex + ", vault account page"}>
+                  {result.receiptIndex}
+                </AccountLink>
+              )}
+              ,{" "}
+            </>
+          ) : null}
           {result.obligationId ?? "demo settle"} PAID
           {result.txHash ? (
             <>
               {", tx "}
-              <a href={DEMO_EXPLORER_TX(result.txHash)}>{result.txHash.slice(0, 8) + String.fromCharCode(8230)}</a>
+              <TxLink hash={result.txHash}>{shortHash(result.txHash)}</TxLink>
             </>
           ) : null}
           .

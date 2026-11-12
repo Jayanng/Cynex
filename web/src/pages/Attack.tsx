@@ -9,9 +9,10 @@ import { LiveDemoButton } from "../components/LiveDemoButton";
 import { TamperPanel } from "../components/TamperPanel";
 import { Footer } from "../components/shared";
 import { CopyButton } from "../components/ui";
+import { VAULT_TEST } from "../lib/data";
+import { AccountLink, TxLink } from "../lib/links";
 
-const TX_URL = "https://testnet.nearblocks.io/txns/";
-const PROVEN_TX = "G4t39dyNEXPWE5EWgyrKALewvVU5hMhwCRBhC6AC7qx8";
+const PROVEN_TX = "3dKKqs7KNZvTCn1VQTckjkXLWM5KUuw8g5tVWVqAhTDz";
 
 const RECORDED = [
   {
@@ -68,6 +69,9 @@ export function Attack({ anchor }: { anchor?: string }) {
           <h2 className="sec-title" style={{ fontSize: "clamp(1.9rem,4vw,3rem)" }}>
             These four already happened
           </h2>
+          <p className="sec-lede">
+            All four are on the same obligation, <AccountLink account={VAULT_TEST} title="view the vault account on NearBlocks">usecase-report-002</AccountLink>.
+          </p>
           <div className="attack-list">
             {RECORDED.map((a) => (
               <div className="attack-card" key={a.tx}>
@@ -78,9 +82,7 @@ export function Attack({ anchor }: { anchor?: string }) {
                 </p>
                 <div className="txline">
                   <span className="k">TX</span>
-                  <a href={TX_URL + a.tx} target="_blank" rel="noopener">
-                    {a.tx}
-                  </a>
+                  <TxLink hash={a.tx}>{a.tx}</TxLink>
                   <CopyButton text={a.tx} />
                 </div>
               </div>
@@ -112,28 +114,26 @@ export function Attack({ anchor }: { anchor?: string }) {
             <div className="proven">
               <div className="ph">
                 <span className="paid">PAID</span>
-                <span className="oid">Already proven live · receipt 36</span>
+                <span className="oid">Already proven live · <TxLink hash={PROVEN_TX} title="vault receipt number 37, settle transaction">receipt 37</TxLink></span>
               </div>
               <dl>
                 <div className="row">
                   <dt>OBLIGATION</dt>
-                  <dd>demo-live-006 · settled</dd>
+                  <dd><AccountLink account={VAULT_TEST} title="view the vault account on NearBlocks">demo-live-007</AccountLink> · settled</dd>
                 </div>
                 <div className="row">
                   <dt>RECEIPT</dt>
-                  <dd>36 · PAID</dd>
+                  <dd><TxLink hash={PROVEN_TX} title="vault receipt number 37, settle transaction">37</TxLink> · PAID</dd>
                 </div>
                 <div className="row">
                   <dt>TRANSACTION</dt>
                   <dd>
-                    <a href={TX_URL + PROVEN_TX} target="_blank" rel="noopener">
-                      {PROVEN_TX}
-                    </a>
+                    <TxLink hash={PROVEN_TX}>{PROVEN_TX}</TxLink>
                   </dd>
                 </div>
                 <div className="row">
                   <dt>BLOCK</dt>
-                  <dd>277375354</dd>
+                  <dd>277387665</dd>
                 </div>
               </dl>
             </div>

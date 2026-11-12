@@ -11,13 +11,17 @@ export const TOKEN = "usdc.fakes.testnet";
 export const REPO = "https://github.com/Jayanng/Cynex";
 export const COMMIT = "a79e426";
 export const MASTER_TIP = "e677e53"; // master tip the Docs badges were verified against; bump on release. COMMIT stays pinned as the playground snapshot provenance.
-export const TEST_COUNTS = "463 tests passed, 3 skipped, 466 total"; // single source for the Jest counts shown on the site; update README.md by hand to match. Update from a fresh run of: NODE_OPTIONS=--experimental-vm-modules npx jest --roots src ../services --runInBand (from frontend/).
+export const TEST_COUNTS = "640 tests passed, 3 skipped, 643 total"; // single source for the Jest counts shown on the site; update README.md by hand to match. Update from a fresh run of: NODE_OPTIONS=--experimental-vm-modules npx jest --roots src ../services --runInBand (from frontend/).
 export const ACME = "acme-supplies.testnet";
 export const DEMO_POLICY_ID = "p6-001";
 export const DEMO_POLICY_PROD_ID = "p5-prod-001";
 
-export const EX_TX = (h: string) => "https://testnet.nearblocks.io/txns/" + h;
-export const EX_ADDR = (a: string) => "https://testnet.nearblocks.io/address/" + a;
+/* Single source of truth for explorer URLs: lib/links.tsx reuses
+   these builders, so the two cannot drift apart again. EX_TX stays
+   /txns/; EX_ADDR is /address/, the NearBlocks account path. */
+export const EXPLORER_BASE = "https://testnet.nearblocks.io";
+export const EX_TX = (h: string) => EXPLORER_BASE + "/txns/" + h;
+export const EX_ADDR = (a: string) => EXPLORER_BASE + "/address/" + a;
 
 /* Demo token (live mode), KEY NOT YET SUPPLIED.
    Johnson creates this key (via Muse) on the TEST vault only and sends

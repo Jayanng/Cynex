@@ -8,6 +8,7 @@ import { TEST_COUNTS, VAULT_TEST } from "../lib/data";
 import { useLive } from "../lib/live";
 import { Footer } from "../components/shared";
 import { CopyButton } from "../components/ui";
+import { AccountLink } from "../lib/links";
 
 const CODE_HASH_SNAPSHOT = "65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6";
 const VERIFY_CMD = "node frontend/dist-test/cli/cynex.js verify-live " + VAULT_TEST;
@@ -15,14 +16,15 @@ const VERIFY_CMD = "node frontend/dist-test/cli/cynex.js verify-live " + VAULT_T
 function jestCounts(): [string, string, string] {
   const m = TEST_COUNTS.match(/(\d+) tests passed, (\d+) skipped, (\d+) total/);
   if (m) return [m[1], m[2], m[3]];
-  return ["463", "3", "466"];
+  return ["640", "3", "643"];
 }
 
 export function Docs({ active }: { active?: string }) {
   void active;
   const { live: L } = useLive();
   const [passed, skipped, total] = jestCounts();
-  const codeHash = L.codeTest.v ?? CODE_HASH_SNAPSHOT;
+  const codeHash = !L.codeTest.err && L.codeTest.v ? L.codeTest.v : CODE_HASH_SNAPSHOT;
+  const codeHashIsSnapshot = L.codeTest.err || !L.codeTest.v;
 
   return (
     <>
@@ -95,7 +97,7 @@ export function Docs({ active }: { active?: string }) {
                 <span className="fn">Scoped settle key</span>
                 <span className="tag">SERVER ONLY</span>
                 <p style={{ color: "var(--ink-dim)", lineHeight: 1.6, fontWeight: 500 }}>
-                  The agent holds only a settle-only function-call key on the test vault, allowance 0.25 NEAR. The
+                  The agent holds only a settle-only function-call key on the test vault, allowance 1 NEAR. The
                   browser never sees it.
                 </p>
               </li>
@@ -178,13 +180,15 @@ export function Docs({ active }: { active?: string }) {
             <p className="sec-label">VAULT CODE HASH</p>
             <h3>Check the deployed code</h3>
             <div className="live-hash" style={{ borderTop: 0, padding: 0 }}>
-              <a href={"https://testnet.nearblocks.io/address/" + VAULT_TEST} target="_blank" rel="noopener">
-                {codeHash}
-              </a>
+              <AccountLink account={VAULT_TEST} title="view the vault account on NearBlocks">{codeHash}</AccountLink>
               <CopyButton text={codeHash} />
             </div>
             <p style={{ color: "var(--ink-dim)", lineHeight: 1.6, fontWeight: 500 }}>
-              The hash of the vault code deployed on NEAR testnet, read live. Both vaults run this code.
+              {codeHashIsSnapshot
+                ? L.codeTest.err
+                  ? "The hash of the vault code deployed on NEAR testnet, pinned snapshot from 12 Nov 2026, the live read is unavailable. Both vaults run this code."
+                  : "The hash of the vault code deployed on NEAR testnet, pinned snapshot from 12 Nov 2026, while the live read loads. Both vaults run this code."
+                : "The hash of the vault code deployed on NEAR testnet, read live. Both vaults run this code."}
             </p>
           </div>
         </div>

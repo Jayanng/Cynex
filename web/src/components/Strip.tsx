@@ -13,6 +13,7 @@ import { VAULT_TEST, TOKEN } from "../lib/data";
 import { useLive, type LiveState } from "../lib/live";
 import { fmtToken, type Receipt } from "../lib/near";
 import { CopyButton, Unavail, LoadTxt } from "./ui";
+import { AccountLink } from "../lib/links";
 
 function demoSettled(rows: Receipt[] | null | undefined): number | null {
   if (!rows) return null;
@@ -55,11 +56,15 @@ export function Strip() {
   const f = <T,>(st: { err: boolean; v: T | null }, fn: (v: T) => React.ReactNode) =>
     st.err ? <Unavail /> : st.v == null ? <LoadTxt /> : fn(st.v);
 
-  const checked = L.checkedAt ? L.checkedAt.toLocaleTimeString() : null;
-  const settled = demoSettled(L.recTest.rows);
+  // checkedAt moves only when at least one job in a refresh succeeded,
+  // so CHECKED is shown only when at least one read succeeded.
+  const allFailed =
+    L.codeProd.err && L.codeTest.err && L.recProd.err && L.recTest.err && L.agent.err && L.policy.err;
+  const checked = !allFailed && L.checkedAt ? L.checkedAt.toLocaleTimeString() : null;
+  const settled = !L.recTest.err ? demoSettled(L.recTest.rows) : null;
   const left = settled == null ? null : Math.max(0, 10 - settled);
   const nextId = settled == null ? null : "demo-live-" + String(settled + 1).padStart(3, "0");
-  const pct = L.policy.v ? policyPct(L.policy.v) : null;
+  const pct = !L.policy.err && L.policy.v ? policyPct(L.policy.v) : null;
 
   return (
     <div className="livestrip">
@@ -107,7 +112,7 @@ export function Strip() {
             <div className="l">
               DEMO SETTLES LEFT
               <br />
-              {left == null ? "READING THE CHAIN" : left === 0 ? "ALL TEN SETTLED" : nextId!.toUpperCase() + " TO 010"}
+              {L.recTest.err ? "UNAVAILABLE" : left == null ? "READING THE CHAIN" : left === 0 ? "ALL TEN SETTLED" : (<><AccountLink account={VAULT_TEST} title="view the vault account on NearBlocks">{nextId!.toUpperCase()}</AccountLink> TO 010</>)}
             </div>
           </div>
         </div>
@@ -115,9 +120,9 @@ export function Strip() {
           <span className="k">VAULT CODE HASH</span>
           {f(L.codeTest, (v) => (
             <>
-              <a href={"https://testnet.nearblocks.io/address/" + VAULT_TEST} target="_blank" rel="noopener" title={v}>
+              <AccountLink account={VAULT_TEST} title="view the vault account on NearBlocks">
                 {v}
-              </a>
+              </AccountLink>
               <CopyButton text={v} />
             </>
           ))}

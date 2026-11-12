@@ -3,8 +3,9 @@
    hashes render as short hex with copy and expand (never decimal byte
    lists), and account chips keep the distinguishing middle visible. */
 
-import { useState, type ReactNode } from "react";
-import { ICON_PATHS, CP, EX_TX, EX_ADDR } from "../lib/data";
+import { useEffect, useState, type ReactNode } from "react";
+import { ICON_PATHS, CP, EX_TX, EX_ADDR, VAULT_TEST } from "../lib/data";
+import { AccountLink } from "../lib/links";
 import { bytesToHex, shortHex, trunc } from "../lib/near";
 
 /* ---------- icons ---------- */
@@ -225,7 +226,18 @@ export function ChainReadOut({
 }: {
   state: { status: "idle" | "loading" | "ok" | "error"; rec: unknown; block: number | null; error?: string } | null;
 }) {
-  if (!state || state.status === "idle") return null;
+  /* The read time is captured in state when a read succeeds, so a
+     later re-render cannot move it without a new read. On the first
+     paint after a success the captured time is not set yet, and the
+     render time is the read time, so it is used as the fallback. */
+  const [readAt, setReadAt] = useState<string | null>(null);
+  const status = state?.status;
+  const rec = state?.rec;
+  const block = state?.block;
+  useEffect(() => {
+    if (status === "ok") setReadAt(new Date().toLocaleTimeString());
+  }, [status, rec, block]);
+  if (!state || status === "idle") return null;
   if (state.status === "loading") {
     return (
       <div className="mt-3">
@@ -247,9 +259,9 @@ export function ChainReadOut({
       style={{ borderColor: "var(--line)", background: "var(--raised)" }}
     >
       <div className="mono text-xs mb-2 flex flex-wrap gap-x-4 gap-y-1" style={{ color: "var(--pos-text)" }}>
-        <span>chain read · cynex-testvault.cynexmaster.testnet · receipts</span>
+        <span>chain read · <AccountLink account={VAULT_TEST} /> · receipts</span>
         <span className="dim2">
-          {new Date().toLocaleTimeString()}
+          {readAt ?? new Date().toLocaleTimeString()}
           {state.block ? " · block " + String(state.block) : ""}
         </span>
       </div>

@@ -1,26 +1,27 @@
 /* Cynex web, guided demo page.
-   The five-step walkthrough of usecase-report-002, in order, with the
+   The six-step walkthrough of usecase-report-002, in order, with the
    real on-chain transactions. The refusal transactions below are the
    ones recorded for this obligation, verified from the chain: the
-   recipient refusal, the amount refusal, the correct settle that wrote
-   receipt 24, and the replay refusal. */
+   settle-before-evidence refusal, the recipient refusal, the amount
+   refusal, the correct settle that wrote receipt 24, and the replay
+   refusal. All four refusals are on this one obligation. */
 
 import { Footer } from "../components/shared";
 import { CopyButton } from "../components/ui";
+import { TxLink, AccountLink } from "../lib/links";
+import { VAULT_TEST } from "../lib/data";
 
-const TX_URL = "https://testnet.nearblocks.io/txns/";
 const RECIPIENT_REFUSAL_TX = "EiBHjMBqZfBLZB33H4odbBfskGbVCX1Jor422t5S1cpX";
 const AMOUNT_REFUSAL_TX = "2NaWqCYiUnh9DMhRCR6JVSDQ3R7yD26U8Auf3qEer91f";
 const SETTLE_TX = "2VLL134m83x5fWZLr2qBbPkjJ7gL9YR7V7U9eur7qoVC";
 const REPLAY_TX = "hG6uhpePR9ZcvCZXZprpXa8rvbAGGQPxD4ZyMpP91F6";
+const BEFORE_EVIDENCE_TX = "BRXXhezVxYvze3imNHkrShnS8ujUvsShy4f3GtgwpCgQ";
 
 function TxLine({ k, tx }: { k: string; tx: string }) {
   return (
     <div className="txline">
       <span className="k">{k}</span>
-      <a href={TX_URL + tx} target="_blank" rel="noopener">
-        {tx}
-      </a>
+      <TxLink hash={tx}>{tx}</TxLink>
       <CopyButton text={tx} />
     </div>
   );
@@ -32,11 +33,11 @@ export function Demo({ anchor }: { anchor?: string }) {
     <>
       <div className="page-hero">
         <div className="wrap">
-          <p className="hero-tag">GUIDED DEMO · USECASE-REPORT-002 · NEAR TESTNET</p>
+          <p className="hero-tag">GUIDED DEMO · <AccountLink account={VAULT_TEST} title="view the vault account on NearBlocks">USECASE-REPORT-002</AccountLink> · NEAR TESTNET</p>
           <h1 className="page-line">
             One obligation.
             <br />
-            Three refusals.
+            Four refusals.
             <br />
             <span className="green">One payment.</span>
           </h1>
@@ -48,11 +49,11 @@ export function Demo({ anchor }: { anchor?: string }) {
             <div className="ticket-rows">
               <div className="trow">
                 <div className="k">OBLIGATION</div>
-                <div className="v">usecase-report-002</div>
+                <div className="v"><AccountLink account={VAULT_TEST} title="view the vault account on NearBlocks">usecase-report-002</AccountLink></div>
               </div>
               <div className="trow">
                 <div className="k">OUTCOME</div>
-                <div className="v">Receipt 24 · PAID, after two refusals. A third refusal stops the replay.</div>
+                <div className="v">Receipt 24 · PAID, after three refusals. A fourth refusal stops the replay.</div>
               </div>
             </div>
           </div>
@@ -76,6 +77,22 @@ export function Demo({ anchor }: { anchor?: string }) {
             <div className="big">02</div>
             <div>
               <span className="pill refused">REFUSED · 0 TOKENS MOVED</span>
+              <h3>The agent tries to settle before evidence</h3>
+              <p>
+                Evidence has not been submitted yet, so the obligation is not READY. The vault refuses
+                before any terms are compared. Nothing moves.
+              </p>
+              <div className="txline">
+                <span className="k">ERROR</span>
+                <span>ERR_INVALID_STATE</span>
+              </div>
+              <TxLine k="TX" tx={BEFORE_EVIDENCE_TX} />
+            </div>
+          </div>
+          <div className="tstep">
+            <div className="big">03</div>
+            <div>
+              <span className="pill refused">REFUSED · 0 TOKENS MOVED</span>
               <h3>The agent tries to change the recipient</h3>
               <p>
                 The settle request names a different recipient than the locked obligation. The vault compares the
@@ -89,7 +106,7 @@ export function Demo({ anchor }: { anchor?: string }) {
             </div>
           </div>
           <div className="tstep">
-            <div className="big">03</div>
+            <div className="big">04</div>
             <div>
               <span className="pill refused">REFUSED · 0 TOKENS MOVED</span>
               <h3>The agent tries to change the amount to 200</h3>
@@ -105,23 +122,23 @@ export function Demo({ anchor }: { anchor?: string }) {
             </div>
           </div>
           <div className="tstep">
-            <div className="big">04</div>
+            <div className="big">05</div>
             <div>
               <span className="pill paid">PAID · RECEIPT 24</span>
-              <h3>The agent submits the correct evidence and settles</h3>
+              <h3>The report is submitted as evidence and the agent settles</h3>
               <p>
                 With the exact evidence and every field matching the locked obligation, the vault settles. This is the
                 only step where money moves, and it writes receipt 24.
               </p>
               <div className="txline">
                 <span className="k">RECEIPT</span>
-                <span>24 · usecase-report-002 · PAID</span>
+                <span>24 · <AccountLink account={VAULT_TEST} title="view the vault account on NearBlocks">usecase-report-002</AccountLink> · PAID</span>
               </div>
               <TxLine k="TX" tx={SETTLE_TX} />
             </div>
           </div>
           <div className="tstep">
-            <div className="big">05</div>
+            <div className="big">06</div>
             <div>
               <span className="pill refused">REFUSED · 0 TOKENS MOVED</span>
               <h3>The agent tries to settle again: replay</h3>

@@ -324,7 +324,7 @@ h1.page-line .green{color:var(--green)}
 .txline{margin-top:1rem;font-family:var(--mono);font-size:.82rem;color:var(--ink-dim);display:flex;flex-wrap:wrap;gap:.6rem 1rem;align-items:flex-start;line-height:1.6;word-break:break-all}
 .txline .k{color:var(--ink-faint);letter-spacing:.16em;font-size:.68rem;padding-top:.15rem;flex:none}
 @media(max-width:640px){.tstep{grid-template-columns:1fr;gap:.7rem}}
-.lab-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.4rem;margin-top:2.4rem}
+.lab-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.4rem;margin-top:2.4rem;align-items:start}
 @media(max-width:900px){.lab-grid{grid-template-columns:1fr}}
 .lab{border:1px solid var(--line);background:var(--panel);border-radius:4px;padding:1.6rem;min-width:0}
 .lab h3{margin:0 0 .5rem;font-size:1.35rem;font-weight:800}

@@ -7,7 +7,8 @@
    tracks, the chain still breaks one link later. */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AGENT, TOKEN } from "../lib/data";
+import { AGENT, TOKEN, VAULT_TEST } from "../lib/data";
+import { AccountLink } from "../lib/links";
 import { useLive } from "../lib/live";
 import { receiptHash, bytesToHex, fmtToken, type Receipt } from "../lib/near";
 
@@ -37,7 +38,7 @@ export function TamperPanel({ id }: { id: string }) {
   const [picked, setPicked] = useState<number>(0);
   const [busy, setBusy] = useState(false);
   const builtFromLive = useRef(false);
-  const rows = live.recTest.rows;
+  const rows = !live.recTest.err ? live.recTest.rows : null;
 
   const reset = useCallback((b: WorkReceipt[]) => {
     setChain(b.map((c) => ({ ...c })));
@@ -176,7 +177,16 @@ export function TamperPanel({ id }: { id: string }) {
             later.
           </p>
         </div>
-        <div className="mono text-xs dim2">{src}</div>
+        <div className="mono text-xs dim2">
+          {builtFromLive.current ? (
+            <>
+              source: live receipts · <AccountLink account={VAULT_TEST} /> ({chain.length} rows, browser-recomputed
+              hashes)
+            </>
+          ) : (
+            src
+          )}
+        </div>
       </div>
       <div className="flex flex-wrap items-center gap-3 mt-5">
         <select

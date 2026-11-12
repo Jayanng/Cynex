@@ -30,11 +30,15 @@
  * The live attempts list holds only attempts that reached the chain:
  * paid, refused, or unconfirmed. Pre-chain failures (validation,
  * rate limit, config, used up) never appear under the on-chain
- * heading; they show only as an inline form result.
+ * heading; they show only as an inline form result. The list is
+ * persisted to localStorage (see lib/liveAttempts), so it survives
+ * leaving the page and reloading, and it lives in the right column
+ * under WHY IT HOLDS, next to the locked terms it was judged against.
  */
 
-import { useRef, useState } from "react";
-import { DEMO_ATTACKER, DEMO_LIVE_TERMS } from "../lib/data";
+import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
+import { DEMO_ATTACKER, DEMO_LIVE_TERMS, VAULT_TEST } from "../lib/data";
 import { extractAttackTerms, validateBreakItInput } from "../lib/breakItForm";
 import { useLive } from "../lib/live";
 import {
@@ -49,24 +53,18 @@ import {
   type DemoAttackOutcome,
 } from "../lib/demoAttack";
 import { createInFlightGuard } from "../lib/demoSettle";
+import {
+  addLiveAttempt,
+  clearLiveAttempts,
+  loadLiveAttempts,
+  nextAttemptId,
+  saveLiveAttempts,
+  type LiveAttempt,
+} from "../lib/liveAttempts";
 import { CopyButton } from "./ui";
+import { AccountLink, TxLink } from "../lib/links";
 
-const TX_URL = "https://testnet.nearblocks.io/txns/";
 const U128_MAX = "340282366920938463463374607431768211455";
-
-type LiveAttempt = {
-  id: number;
-  kind: AttackKind;
-  obligationId: string;
-  recipient: string;
-  amount: string;
-  outcome: "refused" | "paid" | "unconfirmed";
-  code: string | null;
-  txHash: string | null;
-  receiptIndex: number | null;
-  error: string | null;
-  at: string;
-};
 
 const KIND_META: Record<AttackKind, { label: string; blurb: string }> = {
   change_recipient: {
@@ -110,7 +108,7 @@ const KIND_ORDER: AttackKind[] = [
   "freeform",
 ];
 
-function KvRow({ k, v }: { k: string; v: string }) {
+function KvRow({ k, v }: { k: string; v: ReactNode }) {
   return (
     <div className="kvbox">
       <div className="ofield">
@@ -133,13 +131,51 @@ export function BreakIt() {
   const [formOut, setFormOut] = useState<DemoAttackOutcome | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
-  const [attempts, setAttempts] = useState<LiveAttempt[]>([]);
+  const [attempts, setAttempts] = useState<LiveAttempt[]>(() => loadLiveAttempts());
   const guardRef = useRef(createInFlightGuard());
-  const attemptIdRef = useRef(0);
+  // Lazy initializer: the next free id is computed once, from the
+  // attempts restored on mount, not re-evaluated on every render.
+  const attemptIdRef = useRef<number | null>(null);
+  if (attemptIdRef.current === null) {
+    attemptIdRef.current = nextAttemptId(attempts) - 1;
+  }
+  // Ids restored from this browser on mount, so a restored entry can
+  // be tagged "saved in this browser": it passed structural checks
+  // only, its tx hash was never verified against the chain, so it
+  // must not look identical to an attempt made in this session.
+  const restoredIdsRef = useRef<ReadonlySet<number> | null>(null);
+  if (restoredIdsRef.current === null) {
+    restoredIdsRef.current = new Set(attempts.map((a) => a.id));
+  }
 
-  const receiptRows = L.recTest.rows;
-  const receiptsLoading = receiptRows === null;
+  useEffect(() => {
+    // An empty list removes the key instead of writing "[]", so a
+    // cleared list leaves no stale value behind.
+    if (attempts.length === 0) {
+      clearLiveAttempts();
+      return;
+    }
+    saveLiveAttempts(attempts);
+  }, [attempts]);
+
+  const clearAttempts = () => {
+    setAttempts([]);
+    clearLiveAttempts();
+  };
+
+  // A failed receipts read keeps the last good rows in the store,
+  // so never treat them as live: on error the rows are unavailable.
+  const receiptsFailed = L.recTest.err;
+  const receiptRows = receiptsFailed ? null : L.recTest.rows;
+  const receiptsLoading = receiptRows === null && !receiptsFailed;
   const target = nextReadyDemoObligation(receiptRows);
+  const targetNode = receiptsFailed
+    ? "live receipts unavailable"
+    : receiptsLoading
+      ? "loading live receipts..."
+      : target
+        ? <AccountLink account={VAULT_TEST} title="view the vault account on NearBlocks">{target}</AccountLink>
+        : "none left";
   const choices = replayChoices(receiptRows);
   const replayTarget =
     choices !== null && choices.includes(replayPick)
@@ -180,7 +216,7 @@ export function BreakIt() {
     if (parsed.outcome !== "paid" && parsed.outcome !== "refused" && parsed.outcome !== "unconfirmed") {
       return;
     }
-    attemptIdRef.current += 1;
+    attemptIdRef.current = (attemptIdRef.current ?? 0) + 1;
     const base = {
       id: attemptIdRef.current,
       kind: attackKind,
@@ -218,7 +254,7 @@ export function BreakIt() {
         error: parsed.error,
       };
     }
-    setAttempts((prev) => [attempt, ...prev].slice(0, 10));
+    setAttempts((prev) => addLiveAttempt(prev, attempt));
   };
 
   const submitAttack = async (
@@ -278,6 +314,12 @@ export function BreakIt() {
   };
 
   const needReadyTarget = () => {
+    if (receiptsFailed) {
+      setFormError(
+        "The live receipts are unavailable right now, so the ready target is not known. Wait a moment and try again.",
+      );
+      return null;
+    }
     if (receiptsLoading) {
       setFormError(
         "The live receipts are still loading, so the ready target is not known yet. Wait a moment and try again.",
@@ -311,7 +353,9 @@ export function BreakIt() {
   const runReplay = () => {
     if (choices === null) {
       setFormError(
-        "The live receipts are still loading, so the paid obligations are not known yet. Wait a moment and try again.",
+        receiptsFailed
+          ? "The live receipts are unavailable right now, so the paid obligations are not known. Wait a moment and try again."
+          : "The live receipts are still loading, so the paid obligations are not known yet. Wait a moment and try again.",
       );
       return;
     }
@@ -409,11 +453,11 @@ export function BreakIt() {
             <p className="sub">
               Live target:{" "}
               <span className="mono" style={{ color: "var(--ink)" }}>
-                {receiptsLoading ? "loading live receipts..." : (target ?? "none left")}
+                {targetNode}
               </span>{" "}
               · recipient:{" "}
               <span className="mono" style={{ color: "var(--ink)" }}>
-                {DEMO_LIVE_TERMS.recipient}
+                {<AccountLink account={DEMO_LIVE_TERMS.recipient} />}
               </span>{" "}
               · amount:{" "}
               <span className="mono" style={{ color: "var(--ink)" }}>
@@ -463,7 +507,7 @@ export function BreakIt() {
             {kind === "change_amount" ? (
               <>
                 <p className="sub">
-                  Recipient stays locked at {DEMO_LIVE_TERMS.recipient}, so
+                  Recipient stays locked at {<AccountLink account={DEMO_LIVE_TERMS.recipient} />}, so
                   only the amount is being tested.
                 </p>
                 <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
@@ -528,7 +572,7 @@ export function BreakIt() {
               disabled={running || choices === null}
             >
               {choices === null ? (
-                <option value="">Loading live receipts...</option>
+                <option value="">{receiptsFailed ? "Live receipts unavailable" : "Loading live receipts..."}</option>
               ) : choices.length === 0 ? (
                 <option value="">Nothing PAID yet</option>
               ) : (
@@ -541,9 +585,9 @@ export function BreakIt() {
             </select>
             {replayTerms !== null && replayTarget !== null ? (
               <p className="sub">
-                Locked terms for {replayTarget}: recipient{" "}
+                Locked terms for <AccountLink account={VAULT_TEST} title="view the vault account on NearBlocks">{replayTarget}</AccountLink>: recipient{" "}
                 <span className="mono" style={{ color: "var(--ink)" }}>
-                  {replayTerms.recipient}
+                  {<AccountLink account={replayTerms.recipient} />}
                 </span>{" "}
                 · amount{" "}
                 <span className="mono" style={{ color: "var(--ink)" }}>
@@ -566,7 +610,9 @@ export function BreakIt() {
             <p className="sub">
               Obligation:{" "}
               <span className="mono" style={{ color: "var(--ink)" }}>
-                {DEMO_NOEVIDENCE_ID}
+                <AccountLink account={VAULT_TEST} title="view the vault account on NearBlocks">
+                  {DEMO_NOEVIDENCE_ID}
+                </AccountLink>
               </span>{" "}
               · state:{" "}
               <span className="mono" style={{ color: "var(--ink)" }}>
@@ -574,7 +620,13 @@ export function BreakIt() {
               </span>{" "}
               · recipient:{" "}
               <span className="mono" style={{ color: "var(--ink)" }}>
-                {noEvidenceTerms?.recipient ?? ""}
+                {noEvidenceTerms?.recipient ? (
+                  <AccountLink account={noEvidenceTerms.recipient}>
+                    {noEvidenceTerms.recipient}
+                  </AccountLink>
+                ) : (
+                  ""
+                )}
               </span>{" "}
               · amount:{" "}
               <span className="mono" style={{ color: "var(--ink)" }}>
@@ -657,7 +709,7 @@ export function BreakIt() {
             <p className="sub">
               Live target:{" "}
               <span className="mono" style={{ color: "var(--ink)" }}>
-                {receiptsLoading ? "loading live receipts..." : (target ?? "none left")}
+                {targetNode}
               </span>
               . The extracted terms are submitted against the next READY
               demo obligation.
@@ -704,9 +756,7 @@ export function BreakIt() {
                 {formOut.txHash ? (
                   <div className="txline">
                     <span className="k">TX</span>
-                    <a href={TX_URL + formOut.txHash} target="_blank" rel="noopener">
-                      {formOut.txHash}
-                    </a>
+                    <TxLink hash={formOut.txHash}>{formOut.txHash}</TxLink>
                     <CopyButton text={formOut.txHash} />
                   </div>
                 ) : null}
@@ -728,13 +778,7 @@ export function BreakIt() {
                 {formOut.result.txHash ? (
                   <div className="txline">
                     <span className="k">TX</span>
-                    <a
-                      href={TX_URL + formOut.result.txHash}
-                      target="_blank"
-                      rel="noopener"
-                    >
-                      {formOut.result.txHash}
-                    </a>
+                    <TxLink hash={formOut.result.txHash}>{formOut.result.txHash}</TxLink>
                     <CopyButton text={formOut.result.txHash} />
                   </div>
                 ) : null}
@@ -746,9 +790,7 @@ export function BreakIt() {
                 {formOut.txHash ? (
                   <div className="txline">
                     <span className="k">TX</span>
-                    <a href={TX_URL + formOut.txHash} target="_blank" rel="noopener">
-                      {formOut.txHash}
-                    </a>
+                    <TxLink hash={formOut.txHash}>{formOut.txHash}</TxLink>
                     <CopyButton text={formOut.txHash} />
                   </div>
                 ) : null}
@@ -762,57 +804,6 @@ export function BreakIt() {
                 <p className="rn">Nothing was sent to the chain for this one.</p>
               </>
             )}
-          </div>
-        ) : null}
-        {attempts.length > 0 ? (
-          <div style={{ marginTop: "1.6rem" }}>
-            <p className="sec-label">YOUR LIVE ATTEMPTS · ON CHAIN</p>
-            {attempts.map((a) => (
-              <div
-                key={a.id}
-                className="attack-card"
-                style={{ marginBottom: "0.8rem" }}
-              >
-                <span
-                  className={
-                    "pill " + (a.outcome === "paid" ? "paid" : a.outcome === "refused" ? "refused" : "")
-                  }
-                >
-                  {a.outcome === "refused"
-                    ? a.txHash
-                      ? "REFUSED · LIVE"
-                      : "REFUSED · NO TX HASH"
-                    : a.outcome === "paid"
-                      ? "PAID · LIVE"
-                      : a.outcome.toUpperCase()}
-                </span>
-                <h4 style={{ marginTop: "0.5rem" }}>
-                  {a.obligationId} · {a.recipient} · {a.amount}
-                </h4>
-                <p className="mono" style={{ fontSize: ".85rem" }}>
-                  {KIND_META[a.kind].label} ·{" "}
-                  {a.code ? a.code + " · " : ""}
-                  {a.receiptIndex !== null ? "receipt " + a.receiptIndex + " · " : ""}
-                  {a.outcome === "paid"
-                    ? a.amount + " base units moved"
-                    : a.outcome === "refused"
-                      ? "0 tokens moved"
-                      : "not confirmed whether tokens moved"}
-                </p>
-                {a.txHash ? (
-                  <div className="txline">
-                    <span className="k">TX</span>
-                    <a href={TX_URL + a.txHash} target="_blank" rel="noopener">
-                      {a.txHash}
-                    </a>
-                    <CopyButton text={a.txHash} />
-                  </div>
-                ) : null}
-                <p className="mono" style={{ fontSize: ".8rem", opacity: 0.7 }}>
-                  {a.at}
-                </p>
-              </div>
-            ))}
           </div>
         ) : null}
       </div>
@@ -833,6 +824,109 @@ export function BreakIt() {
           Leave both fields exactly as locked and there is nothing to refuse: that request is the one that settles.
           Change one field and the vault refuses it on chain, in a new transaction you can open.
         </p>
+        <div style={{ marginTop: "1.6rem" }}>
+          <p className="sec-label">LOCKED TERMS · LIVE TARGET</p>
+          <KvRow
+            k="TARGET"
+            v={targetNode}
+          />
+          <KvRow k="RECIPIENT" v={<AccountLink account={DEMO_LIVE_TERMS.recipient} />} />
+          <KvRow k="AMOUNT" v={DEMO_LIVE_TERMS.amount + " base units"} />
+          <p className="sub" style={{ marginTop: "0.8rem" }}>
+            These are the exact terms attacks against the READY target above are judged against. Change
+            one field and the vault refuses it on chain. Replay uses the locked terms of the paid
+            obligation you pick, and settle before evidence uses demo-live-noevidence-001, where the
+            vault refuses on state before it ever compares terms.
+          </p>
+        </div>
+        <div style={{ marginTop: "1.6rem" }}>
+          <p className="sec-label">YOUR LIVE ATTEMPTS · ON CHAIN</p>
+          {attempts.length === 0 ? (
+            <p className="sub">
+              No live attempts yet in this browser. Attack once and the verdict, error code and
+              transaction hash stay here, saved in this browser, even if you leave this page and
+              come back.
+            </p>
+          ) : (
+            <>
+              {attempts.map((a) => (
+                <div
+                  key={a.id}
+                  className="attack-card"
+                  style={{ marginBottom: "0.8rem" }}
+                >
+                  <span
+                    className={
+                      "pill " + (a.outcome === "paid" ? "paid" : a.outcome === "refused" ? "refused" : "")
+                    }
+                  >
+                    {a.outcome === "refused"
+                      ? a.txHash
+                        ? "REFUSED · LIVE"
+                        : "REFUSED · NO TX HASH"
+                      : a.outcome === "paid"
+                        ? "PAID · LIVE"
+                        : a.outcome.toUpperCase()}
+                  </span>
+                  {restoredIdsRef.current?.has(a.id) ? (
+                    <span className="mono" style={{ fontSize: ".8rem", opacity: 0.7, marginLeft: ".5rem" }}>
+                      saved in this browser
+                    </span>
+                  ) : null}
+                  <h4 style={{ marginTop: "0.5rem" }}>
+                    <AccountLink account={VAULT_TEST} title="view the vault account on NearBlocks">{a.obligationId}</AccountLink>{" · "}
+                    <AccountLink account={a.recipient}>{a.recipient}</AccountLink>{" · "}
+                    {a.amount}
+                  </h4>
+                  <p className="mono" style={{ fontSize: ".85rem" }}>
+                    {KIND_META[a.kind].label} ·{" "}
+                    {a.code ? a.code + " · " : ""}
+                    {a.receiptIndex !== null ? (
+                      <>
+                        vault receipt{" "}
+                        {a.txHash ? (
+                          <TxLink hash={a.txHash} title={"vault receipt number " + a.receiptIndex + ", settle transaction"}>
+                            {a.receiptIndex}
+                          </TxLink>
+                        ) : (
+                          <AccountLink account={VAULT_TEST} title={"vault receipt number " + a.receiptIndex + ", vault account page"}>
+                            {a.receiptIndex}
+                          </AccountLink>
+                        )}
+                        {" · "}
+                      </>
+                    ) : (
+                      ""
+                    )}
+                    {a.outcome === "paid"
+                      ? a.amount + " base units moved"
+                      : a.outcome === "refused"
+                        ? "0 tokens moved"
+                        : "not confirmed whether tokens moved"}
+                  </p>
+                  {a.txHash ? (
+                    <div className="txline">
+                      <span className="k">TX</span>
+                      <TxLink hash={a.txHash}>{a.txHash}</TxLink>
+                      <CopyButton text={a.txHash} />
+                    </div>
+                  ) : null}
+                  <p className="mono" style={{ fontSize: ".8rem", opacity: 0.7 }}>
+                    {a.at}
+                  </p>
+                </div>
+              ))}
+              <button
+                className="btn ghost"
+                type="button"
+                onClick={clearAttempts}
+                style={{ marginTop: "0.4rem" }}
+              >
+                Clear saved attempts
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

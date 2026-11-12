@@ -9,12 +9,13 @@
 import { StripSection } from "../components/Strip";
 import { Footer } from "../components/shared";
 import { CopyButton } from "../components/ui";
+import { TxLink, AccountLink } from "../lib/links";
+import { VAULT_TEST, TOKEN } from "../lib/data";
 
 const REFUSAL_TX = "EiBHjMBqZfBLZB33H4odbBfskGbVCX1Jor422t5S1cpX";
-const PROVEN_TX = "D7aRDckcLkt4FghZUGpAkrCLx677NAVjPYrWUvTM2EJe";
+const PROVEN_TX = "3dKKqs7KNZvTCn1VQTckjkXLWM5KUuw8g5tVWVqAhTDz";
 const DIGEST = "2a8bddcb3b001fd9051ec68757b8a113fa355cfe619f07882ac622721431ebc9";
 const RECIPIENT = "cynex-agent.cynexmaster.testnet";
-const TX_URL = "https://testnet.nearblocks.io/txns/";
 
 function CheckIcon() {
   return (
@@ -79,14 +80,12 @@ export function Home() {
             <div className="ticket-rows">
               <div className="trow">
                 <div className="k">OBLIGATION</div>
-                <div className="v">usecase-report-002</div>
+                <div className="v"><AccountLink account={VAULT_TEST} title="view the vault account on NearBlocks">usecase-report-002</AccountLink></div>
               </div>
               <div className="trow">
                 <div className="k">TRANSACTION</div>
                 <div className="v">
-                  <a href={TX_URL + REFUSAL_TX} target="_blank" rel="noopener">
-                    {REFUSAL_TX}
-                  </a>
+                  <TxLink hash={REFUSAL_TX}>{REFUSAL_TX}</TxLink>
                   <CopyButton text={REFUSAL_TX} />
                 </div>
               </div>
@@ -111,11 +110,11 @@ export function Home() {
             <div className="ocard">
               <div className="ocard-head">
                 <span className="obadge lock">LOCKED BY HUMAN</span>
-                <span className="id">usecase-report-002</span>
+                <span className="id"><AccountLink account={VAULT_TEST} title="view the vault account on NearBlocks">usecase-report-002</AccountLink></span>
               </div>
-              <OField k="RECIPIENT" v={RECIPIENT} sub="The named payee, fixed at authorization" />
+              <OField k="RECIPIENT" v={<AccountLink account={RECIPIENT} />} sub="The named payee, fixed at authorization" />
               <OField k="AMOUNT" v="100" sub="Exact amount, not a range" />
-              <OField k="TOKEN" v="usdc.fakes.testnet" sub="The one token, substitutes do not settle" />
+              <OField k="TOKEN" v={<AccountLink account={TOKEN} />} sub="The one token, substitutes do not settle" />
               <OField k="EVIDENCE" v={DIGEST} sub="Committed digest of the report artifact" />
               <OField k="BUDGET" v="10000" sub="Policy p6-001 cap, never exceeded" />
             </div>
@@ -141,13 +140,16 @@ export function Home() {
                 k="RECIPIENT"
                 v={
                   <>
-                    cynexmaster.testnet<span className="was">was: {RECIPIENT}</span>
+                    <AccountLink account="cynexmaster.testnet" />
+                    <span className="was">
+                      was: <AccountLink account={RECIPIENT} />
+                    </span>
                   </>
                 }
                 bad
               />
               <OField k="AMOUNT" v="100" sub="Unchanged" />
-              <OField k="TOKEN" v="usdc.fakes.testnet" sub="Unchanged" />
+              <OField k="TOKEN" v={<AccountLink account={TOKEN} />} sub="Unchanged" />
               <OField k="EVIDENCE" v={DIGEST} sub="Unchanged" />
               <OField k="BUDGET" v="10000" sub="Unchanged" />
               <div className="stamp">REFUSED</div>
@@ -156,9 +158,9 @@ export function Home() {
 
           <p className="diagram-note">
             Verdict on chain: <b>ERR_RECIPIENT_SUBSTITUTION</b> · tx{" "}
-            <a href={TX_URL + REFUSAL_TX} target="_blank" rel="noopener" className="mono">
+            <TxLink hash={REFUSAL_TX} className="mono">
               {REFUSAL_TX}
-            </a>{" "}
+            </TxLink>{" "}
             · 0 tokens moved. The agent is assumed compromised. It holds only a scoped settle key, so the worst it can
             do is ask.
           </p>
@@ -169,8 +171,8 @@ export function Home() {
         <div className="wrap">
           <span className="pl-k">PROVEN LIVE</span>
           <span>
-            Receipt 35 · demo-live-005 · <strong>PAID</strong> · tx <span className="mono">{PROVEN_TX}</span> ·
-            block 277362593
+            <TxLink hash={PROVEN_TX} title="vault receipt number 37, settle transaction">Receipt 37</TxLink> · <AccountLink account={VAULT_TEST} title="view the vault account on NearBlocks">demo-live-007</AccountLink> · <strong>PAID</strong> · tx <TxLink hash={PROVEN_TX} className="mono">{PROVEN_TX}</TxLink> ·
+            block 277387665
           </span>
           <a href="#/attack/run" className="pl-link">
             Run it live on Break it &#8594;

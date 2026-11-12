@@ -168,10 +168,10 @@ describe("demoButtonCanRun", () => {
 });
 
 describe("DEMO_BUTTON_PROVEN_LINE", () => {
-  it("names the real proof: demo-live-005, receipt 35, the live tx", () => {
-    expect(DEMO_BUTTON_PROVEN_LINE).toContain("demo-live-005");
-    expect(DEMO_BUTTON_PROVEN_LINE).toContain("receipt 35");
-    expect(DEMO_BUTTON_PROVEN_LINE).toContain("D7aRDckcLkt4FghZUGpAkrCLx677NAVjPYrWUvTM2EJe");
+  it("names the real proof: demo-live-007, receipt 37, the live tx", () => {
+    expect(DEMO_BUTTON_PROVEN_LINE).toContain("demo-live-007");
+    expect(DEMO_BUTTON_PROVEN_LINE).toContain("receipt 37");
+    expect(DEMO_BUTTON_PROVEN_LINE).toContain("3dKKqs7KNZvTCn1VQTckjkXLWM5KUuw8g5tVWVqAhTDz");
   });
 });
 
