@@ -28,7 +28,7 @@ describe("evaluateBreakItForm", () => {
     const out = evaluateBreakItForm("someone-else.testnet", "100", "terms");
     expect(out.kind).toBe("refused");
     expect(out.code).toBe("ERR_RECIPIENT_SUBSTITUTION");
-    expect(out.tx).toBe("AFYAq8Sju41NjBFwPmTHbJ1psmsYQWjVdBhmXBZbpa7S");
+    expect(out.tx).toBe("EiBHjMBqZfBLZB33H4odbBfskGbVCX1Jor422t5S1cpX");
   });
 
   it("refuses a changed amount with ERR_TERMS_MISMATCH", () => {

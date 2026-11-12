@@ -8,18 +8,17 @@
  * disabled while a settle is in flight, and after a success it
  * offers to run again until the demo settles run out.
  *
- * Variants: "section" is the full panel (default), "hero" is the bare
- * button with the expected-result box for the Home hero and the end
- * of Guided demo, "nav" is the small header button whose result
- * shows as a line under the header. All three share the same POST,
- * the same states, and the same reducer. */
+ * One variant: the big orange button with the expected-result box,
+ * the result, and the Dismiss-free flow. The header and Home only
+ * link to it; they do not settle. */
 
-import { useReducer } from "react";
+import { useReducer, useRef } from "react";
 import { fmtToken } from "../lib/near";
 import { useLive } from "../lib/live";
 import {
   DEMO_BUTTON_PROVEN_LINE,
   DEMO_EXPLORER_TX,
+  createInFlightGuard,
   DEMO_SETTLE_ENDPOINT,
   DEMO_SETTLE_FALLBACK,
   demoButtonCanRun,
@@ -29,15 +28,17 @@ import {
 } from "../lib/demoSettle";
 import { Badge, HashChip } from "./ui";
 
-export type LiveDemoButtonVariant = "hero" | "section" | "nav";
-
-
-export function LiveDemoButton({ variant = "section", actions, top }: { variant?: LiveDemoButtonVariant; actions?: React.ReactNode; top?: number }) {
+export function LiveDemoButton({ actions }: { actions?: React.ReactNode }) {
   const [state, dispatch] = useReducer(demoButtonReducer, initialDemoButtonState);
   const { live: L, refreshLive } = useLive();
+  const guardRef = useRef(createInFlightGuard());
 
   const run = async () => {
-    if (!demoButtonCanRun(state)) return;
+    if (!guardRef.current.tryAcquire()) return;
+    if (!demoButtonCanRun(state)) {
+      guardRef.current.release();
+      return;
+    }
     dispatch({ type: "start" });
     try {
       const res = await fetch(DEMO_SETTLE_ENDPOINT, { method: "POST" });
@@ -79,6 +80,8 @@ export function LiveDemoButton({ variant = "section", actions, top }: { variant?
         type: "unconfirmed",
         error: "The request did not return an answer. The settle may still have gone through, check the receipt list on the test vault before running again.",
       });
+    } finally {
+      guardRef.current.release();
     }
   };
 
@@ -88,9 +91,9 @@ export function LiveDemoButton({ variant = "section", actions, top }: { variant?
   const policyLimit = L.policy.v ? String(L.policy.v.limit) : null;
   const canRunAgain = state.status === "success" && (remaining === null || remaining > 0);
 
-  /* Live state 12 Nov 2026: demo-live-001 to 004 are PAID, demo-live-005
-     to 010 are READY, so 6 are left. Update the idle label below when a
-     settle lands; after a success the remaining count comes from the API. */
+  /* Live state 12 Nov 2026: demo-live-001 to 005 are PAID, demo-live-006
+     to 010 are READY, so 5 are left. After a success the remaining count
+     comes from the API. */
   const buttonLabel =
     state.status === "loading"
       ? "Settling on testnet..."
@@ -224,99 +227,21 @@ export function LiveDemoButton({ variant = "section", actions, top }: { variant?
       </div>
     );
   };
-  if (variant === "nav") {
-    return (
-      <>
-        <button className="btn btn-primary sm flex-none" onClick={() => void run()} disabled={!demoButtonCanRun(state)}>
-          {buttonLabel}
-        </button>
-        {state.status !== "idle" && state.status !== "loading" ? (
-          <div
-            className="fixed left-0 right-0 z-40 border-b"
-            style={{ top, background: "var(--bg)", borderColor: "var(--line)" }}
-          >
-            <div className="wrap py-3 flex flex-wrap items-center gap-3">
-              {state.status === "success" && result ? (
-                <>
-                  <Badge value="PAID" />
-                  <span className="mono text-[13px]">
-                    {result.receiptIndex !== null ? "Receipt #" + result.receiptIndex + ", " : ""}
-                    {result.obligationId ?? "demo settle"} PAID
-                    {result.txHash ? (
-                      <>
-                        {" · "}
-                        <a href={DEMO_EXPLORER_TX(result.txHash)} target="_blank" rel="noopener">
-                          tx {result.txHash.slice(0, 8)}…
-                        </a>
-                      </>
-                    ) : null}
-                  </span>
-                  <a className="mono text-xs" style={{ color: "var(--accent-text)" }} href="#/proof">
-                    See it on Proof →
-                  </a>
-                </>
-              ) : (
-                <span className="text-sm dim">{state.error ?? "The demo settle did not run."}</span>
-              )}
-              {state.status !== "unconfirmed" &&
-              !(state.status === "success" && result?.remaining === 0) ? (
-                <button className="btn sm ghost ml-auto" onClick={() => dispatch({ type: "reset" })}>
-                  Dismiss
-                </button>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
-      </>
-    );
-  }
-
-  if (variant === "hero") {
-    return (
-      <div>
-        <div className="flex flex-wrap gap-3 items-center">
-          <button className="btn btn-primary" onClick={() => void run()} disabled={!demoButtonCanRun(state)}>
-            ▶ {buttonLabel}
-          </button>
-          <span className="mono text-xs dim2">
-            {remaining !== null && state.status === "success"
-              ? remaining + " demo settle" + (remaining === 1 ? "" : "s") + " left"
-              : "Demo obligations are pre-seeded READY; each settles once"}
-          </span>
-          {actions}
-        </div>
-        {expectedBox()}
-        {resultPanels}
-      </div>
-    );
-  }
-
+      /* The Run it live section on Break it: the big orange button from the
+     dark console design, the expected-result box, then the result. */
+  const showArrow =
+    state.status === "idle" || (state.status === "success" && canRunAgain) || state.status === "error";
   return (
-    <section className="wrap pt-12">
-      <div className="panel p-6 fadein">
-        <div className="flex flex-wrap items-center gap-3 mb-3">
-          <span className="kicker">Try it live</span>
-          {state.status === "success" ? <Badge value="PAID" /> : null}
-        </div>
-        <h2 className="text-2xl md:text-3xl mb-4">Run one real settlement</h2>
-        <p className="dim text-sm leading-relaxed max-w-3xl">
-          One click settles the next pre-seeded demo obligation on testnet, 100 base units of fake USDC to the authorized recipient, with the
-          exact terms read from the chain. No wallet, no login, no real value: testnet only, and the key that signs lives on the server,
-          scoped to settle on the test vault and nothing else.
-        </p>
-        <div className="flex flex-wrap items-center gap-3 mt-5">
-          <button className="btn btn-primary" onClick={() => void run()} disabled={!demoButtonCanRun(state)}>
-            {buttonLabel}
-          </button>
-          <span className="mono text-xs dim2">
-            {remaining !== null && state.status === "success"
-              ? remaining + " demo settle" + (remaining === 1 ? "" : "s") + " left"
-              : "Demo obligations are pre-seeded READY; each settles once"}
-          </span>
-        </div>
-        {expectedBox()}
-        {resultPanels}
-      </div>
-    </section>
+    <div>
+      <button className="btn-big" onClick={() => void run()} disabled={!demoButtonCanRun(state)}>
+        {buttonLabel}
+        {showArrow ? " \u2192" : ""}
+      </button>
+      {actions}
+      {expectedBox()}
+      {resultPanels}
+    </div>
   );
+
+
 }

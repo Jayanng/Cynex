@@ -4,6 +4,7 @@
  * index, and anything unconfirmed must never offer a retry. */
 
 import {
+  createInFlightGuard,
   DEMO_BUTTON_PROVEN_LINE,
   demoButtonCanRun,
   demoButtonReducer,
@@ -167,10 +168,10 @@ describe("demoButtonCanRun", () => {
 });
 
 describe("DEMO_BUTTON_PROVEN_LINE", () => {
-  it("names the real proof: demo-live-001, receipt 31, the live tx", () => {
-    expect(DEMO_BUTTON_PROVEN_LINE).toContain("demo-live-001");
-    expect(DEMO_BUTTON_PROVEN_LINE).toContain("receipt 31");
-    expect(DEMO_BUTTON_PROVEN_LINE).toContain("12pi6dZ1CzgvCeLWCCRSvC2iLyTaN7J2fRHtYnbHmcf6");
+  it("names the real proof: demo-live-005, receipt 35, the live tx", () => {
+    expect(DEMO_BUTTON_PROVEN_LINE).toContain("demo-live-005");
+    expect(DEMO_BUTTON_PROVEN_LINE).toContain("receipt 35");
+    expect(DEMO_BUTTON_PROVEN_LINE).toContain("D7aRDckcLkt4FghZUGpAkrCLx677NAVjPYrWUvTM2EJe");
   });
 });
 
@@ -299,5 +300,15 @@ describe("parseDemoSettleResponse, empty strings", () => {
     expect(emptyId.outcome).toBe("unconfirmed");
     const emptyTx = parseDemoSettleResponse({ ...successResult, txHash: "" });
     expect(emptyTx.outcome).toBe("unconfirmed");
+  });
+});
+
+describe("createInFlightGuard", () => {
+  it("allows the first acquire and blocks a second until release", () => {
+    const g = createInFlightGuard();
+    expect(g.tryAcquire()).toBe(true);
+    expect(g.tryAcquire()).toBe(false);
+    g.release();
+    expect(g.tryAcquire()).toBe(true);
   });
 });

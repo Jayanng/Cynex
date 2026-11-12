@@ -51,7 +51,7 @@ export function evaluateBreakItForm(
   /* The attack buttons set the tampered dimension, not the fields:
      replay resubmits the consumed nonce, remove-evidence submits with
      no evidence, both keeping the authorized recipient and amount. */
-  /* The nonce comes from AUTHORIZED_TERMS. Receipt 12 is the historical receipt index for p10-demo-attack-001 from the demo run, fixed by that run, so it stays a literal. */
+  /* The nonce comes from AUTHORIZED_TERMS. Receipt 24 is the historical receipt index for usecase-report-002 from the demo run, fixed by that run, so it stays a literal. */
   if (mode === "replay") {
     const sc = scenario("replay");
     return {
@@ -61,16 +61,16 @@ export function evaluateBreakItForm(
       text:
         "Nonce " +
         AUTHORIZED_TERMS.nonce +
-        " was already consumed by receipt 12. Reusing it is a double-pay, so the vault refused before moving anything.",
+        " was already consumed by receipt 24. Reusing it is a double-pay, so the vault refused before moving anything.",
     };
   }
   if (mode === "evidence") {
     return {
       kind: "refused",
       code: "ERR_INVALID_STATE",
-      tx: null,
-      text: "Verdict by terms, not an executed settle: for a hypothetical CREATED or EVIDENCE_PENDING obligation, settle before evidence was submitted would leave the obligation not READY, so the vault would refuse with ERR_INVALID_STATE before moving anything. No settle was executed for this case in the demo run.",
-      note: "On the obligation shown here, p10-demo-attack-001, which is already PAID, a live settle returns ERR_NONCE_ALREADY_CONSUMED first, because the nonce check runs before the state check. The executed refusal on a different obligation, usecase-report-002, tx BRXXhezVxYvze3imNHkrShnS8ujUvsShy4f3GtgwpCgQ, is a failed settle with the exact authorized terms. The ERR_INVALID_STATE code is inferred from the contract check order, not read directly from the chain. No executed refusal transaction exists for this case in the demo run, so no tx is shown.",
+      tx: "BRXXhezVxYvze3imNHkrShnS8ujUvsShy4f3GtgwpCgQ",
+      text: "Settle was attempted before evidence was submitted, so the obligation was not READY. The vault refused with ERR_INVALID_STATE before moving anything. The code is inferred from the contract check order, not read directly from the chain.",
+      note: "On this obligation, usecase-report-002, which is now PAID as receipt 24, a live settle returns ERR_NONCE_ALREADY_CONSUMED first, because the nonce check runs before the state check. The refusal above was the executed settle-before-evidence attempt on this obligation, with the exact authorized terms.",
     };
   }
   if (r !== AUTHORIZED_TERMS.recipient) {

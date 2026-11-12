@@ -1,689 +1,288 @@
-/* Cynex web, Home page.
-   Hero first, then Judges start here, the scripted path, the live strip,
-   how a settlement flows, the refusal, one live proof, the use case, the
-   three layers, the reputation gate, MCP, run it yourself, the trust model,
-   honest limits, the trust row, the calls to action, and the Footer.
-   The CLI verify lives in Proof. */
+/* Cynex web, home page.
+   Dark console redesign: the conflict first, the refusal ticket under
+   it, the live strip, the obligation diagram, the proven-live line,
+   how it works, honest limits, and the MCP section. No standalone Run
+   it live block here: the live action lives on Break it. The obligation
+   values are the real usecase-report-002 terms, read live from the test
+   vault and confirmed in docs/use-case-demo-script.md. */
 
-import { useEffect } from "react";
-import { AGENT, AGENT2, MCP_DEMO_RUN, MCP_FACTS, MCP_RUN, MCP_TOOLS, USECASE, VAULT_TEST } from "../lib/data";
-import { useLive } from "../lib/live";
-import { fmtToken, trunc } from "../lib/near";
-import { useChainRead } from "../lib/useChainRead";
-import { Badge, ChainReadOut, CmdBlock, HashChip, AcctChip, Icon, LoadTxt, Unavail } from "../components/ui";
 import { StripSection } from "../components/Strip";
-import { LiveDemoButton } from "../components/LiveDemoButton";
-import { RefusalPanel, TrustRow, VerifyHome, Footer } from "../components/shared";
+import { Footer } from "../components/shared";
+import { CopyButton } from "../components/ui";
 
-function LatestSettle() {
-  const { live: L } = useLive();
-  const f = L.recTest;
-  if (f.err)
-    return (
-      <div className="p-5">
-        <Unavail />
-      </div>
-    );
-  if (!f.rows || !f.rows.length)
-    return (
-      <div className="p-5">
-        <LoadTxt />
-      </div>
-    );
-  const r = f.rows[f.rows.length - 1];
-  const row2 = (k: string, v: React.ReactNode) => (
-    <div className="flex justify-between gap-4">
-      <span className="dim2">{k}</span>
-      <span className="text-right min-w-0" style={{ color: "var(--secondary)", whiteSpace: "nowrap", overflowX: "auto", minWidth: 0 }}>
+const REFUSAL_TX = "EiBHjMBqZfBLZB33H4odbBfskGbVCX1Jor422t5S1cpX";
+const PROVEN_TX = "D7aRDckcLkt4FghZUGpAkrCLx677NAVjPYrWUvTM2EJe";
+const DIGEST = "2a8bddcb3b001fd9051ec68757b8a113fa355cfe619f07882ac622721431ebc9";
+const RECIPIENT = "cynex-agent.cynexmaster.testnet";
+const TX_URL = "https://testnet.nearblocks.io/txns/";
+
+function CheckIcon() {
+  return (
+    <svg className="check" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="10" stroke="#3ED97A" strokeWidth="2" />
+      <path d="M8 12.5l2.6 2.6L16 9.5" stroke="#3ED97A" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function CrossIcon() {
+  return (
+    <svg className="check" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="10" stroke="#FF4A3D" strokeWidth="2" />
+      <path d="M9 9l6 6M15 9l-6 6" stroke="#FF4A3D" strokeWidth="2.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function OField({ k, v, sub, bad }: { k: string; v: React.ReactNode; sub?: string; bad?: boolean }) {
+  return (
+    <div className={"ofield" + (bad ? " bad" : "")}>
+      <span className="fk">{k}</span>
+      <span className="fv">
         {v}
+        {sub ? <small>{sub}</small> : null}
       </span>
+      {bad ? <CrossIcon /> : <CheckIcon />}
     </div>
-  );
-  return (
-    <div className="p-5 space-y-3">
-      <div className="flex items-center justify-between">
-        <span className="text-xs dim2">Latest settle, live read</span>
-        <Badge value="PAID" />
-      </div>
-      <div className="mono text-[13px] space-y-1.5">
-        {row2("receipt", "#" + r.index)}
-        {row2("obligation", r.obligation_id)}
-        {row2(
-          "amount",
-          <span title={fmtToken(r.amount) + " USDC · usdc.fakes.testnet, 6 decimals"}>{String(r.amount)} units</span>
-        )}
-        {row2("recipient", trunc(r.recipient, 14, 8))}
-      </div>
-      <div className="pt-1">
-        <HashChip hash={r.tx_ref} />
-      </div>
-      {!r.tx_ref ? (
-        <div className="text-xs dim2 mono">
-          No tx hash on this receipt: the automatic settle path records none, so there is nothing to link to.
-        </div>
-      ) : null}
-      <div className="text-xs dim2 mono">
-        read from {VAULT_TEST} · {L.checkedAt ? L.checkedAt.toLocaleTimeString() : ""}
-      </div>
-    </div>
-  );
-}
-
-function Layer({
-  n,
-  t,
-  body,
-  extra,
-  linktxt,
-  href,
-}: {
-  n: string;
-  t: string;
-  body: string;
-  extra?: React.ReactNode;
-  linktxt: string;
-  href: string;
-}) {
-  return (
-    <div className="panel panel-h p-6 flex flex-col">
-      <div className="mono text-xs dim2 mb-3">{n}</div>
-      <h3 className="text-lg mb-2 text-ink">{t}</h3>
-      <p className="dim text-sm leading-relaxed">{body}</p>
-      {extra}
-      <a href={href} className="mono text-xs mt-auto pt-4 inline-flex items-center gap-2" style={{ color: "var(--accent-text)" }}>
-        {linktxt}{" "}
-        <span style={{ width: 16, height: 16, display: "inline-grid", placeItems: "center" }}>
-          <Icon name="arrow" />
-        </span>
-      </a>
-    </div>
-  );
-}
-
-function UseCaseSection() {
-  return (
-    <section className="wrap mt-12 md:mt-14">
-      <div className="panel p-6">
-        <div className="kicker mb-3">What it is for</div>
-        <h2 className="text-2xl md:text-3xl mb-4">One job: pay for one named report, exactly</h2>
-        <p className="dim text-sm leading-relaxed max-w-3xl mb-5">{USECASE.story}</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 mb-5">
-          <div className="term">
-            <div className="tl">owner (human)</div>
-            <div className="tv">{USECASE.owner}</div>
-          </div>
-          <div className="term">
-            <div className="tl">procurement agent</div>
-            <div className="tv">{USECASE.procurementAgent}</div>
-          </div>
-          <div className="term">
-            <div className="tl">research agent (recipient)</div>
-            <div className="tv">{USECASE.researchAgent}</div>
-          </div>
-          <div className="term">
-            <div className="tl">amount</div>
-            <div className="tv">{USECASE.amount}</div>
-          </div>
-          <div className="term">
-            <div className="tl">artifact</div>
-            <div className="tv">{USECASE.artifact}</div>
-          </div>
-          <div className="term">
-            <div className="tl">artifact size</div>
-            <div className="tv">{USECASE.artifactBytes} bytes, under the 64 KiB cap</div>
-          </div>
-        </div>
-        <p className="dim text-sm leading-relaxed max-w-3xl mb-2">
-          Evidence is the exact report artifact committed by digest. The vault hashes the bytes itself and compares them to the digest, so a
-          different report cannot release the payment.
-        </p>
-        <div className="mono text-xs mb-5" style={{ color: "var(--accent-text)", overflowWrap: "anywhere" }}>
-          SHA-256 {USECASE.artifactDigest}
-        </div>
-        <div className="space-y-2.5 mb-5">
-          {USECASE.obligations.map((o) => (
-            <div className="attempt" key={o.id}>
-              <span className="att-label">{o.id}</span>
-              <Badge value="PAID" />
-              <span className="mono text-xs dim2">receipt #{o.receipt}</span>
-              <span className="mono text-xs dim2">{o.note}</span>
-            </div>
-          ))}
-        </div>
-        <h3 className="text-ink text-[15px] mb-3">The attack sequence on usecase-report-002: four recorded refusals and one successful settlement</h3>
-        <div className="space-y-2.5">
-          {USECASE.attacks.map((a) => (
-            <div className="attempt" key={a.tx}>
-              <span className="att-label">{a.label}</span>
-              <Badge value={a.code === "PAID" ? "PAID" : "REFUSED"} extra={a.code === "PAID" ? undefined : a.code} />
-              <span className="badge b-dim">
-                <span className="bdot"></span>Historical
-              </span>
-              <HashChip hash={a.tx} />
-            </div>
-          ))}
-        </div>
-        <p className="dim text-[13px] mt-4">
-          Full script: <span className="mono text-xs text-ink">docs/use-case-demo-script.md</span>. The research agent in the
-          two-agent run is a real second account, {AGENT2}, created 2026-11-08.
-        </p>
-      </div>
-    </section>
-  );
-}
-
-function McpSection() {
-  return (
-    <section className="wrap mt-12 md:mt-14">
-      <div className="kicker mb-3">Agent integration</div>
-      <h2 className="text-2xl md:text-3xl mb-4">An MCP server, with one tool that moves funds</h2>
-      <p className="dim text-sm leading-relaxed max-w-3xl mb-5">{MCP_FACTS}</p>
-      <div className="overflow-x-auto mb-5">
-        <table className="tbl">
-          <thead>
-            <tr>
-              <th>tool</th>
-              <th>what it does</th>
-              <th>moves funds</th>
-            </tr>
-          </thead>
-          <tbody>
-            {MCP_TOOLS.map(([name, what, moves]) => (
-              <tr key={name}>
-                <td className="mono" style={{ color: "var(--txt)" }}>
-                  {name}
-                </td>
-                <td className="dim">{what}</td>
-                <td>{moves ? <span className="mono text-xs" style={{ color: "var(--accent-text)" }}>yes, the only one</span> : <span className="mono text-xs dim2">no</span>}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p className="dim text-sm leading-relaxed max-w-3xl">
-        Run it from <span className="mono text-[13px] text-ink">frontend/</span>:{" "}
-        <span className="mono text-[13px]" style={{ color: "var(--accent-text)" }}>
-          {MCP_RUN}
-        </span>
-        . The MCP transcript is one of the deliverables carried through the use case, alongside the console run, the attack log, the receipt,
-        and the proof page. Docs: <span className="mono text-xs text-ink">services/mcp/README.md</span> and{" "}
-        <span className="mono text-xs text-ink">services/mcp/SECURITY.md</span>.
-      </p>
-      <p className="dim text-sm leading-relaxed max-w-3xl mt-3">
-        Try it with no funds at stake:{" "}
-        <span className="mono text-[13px]" style={{ color: "var(--accent-text)" }}>
-          {MCP_DEMO_RUN}
-        </span>{" "}
-        starts a local sandbox with five seeded obligations and serves the same six tools over stdio against it.
-      </p>
-    </section>
-  );
-}
-
-/* Hero checks card, in the mockup language: a beige card carrying
-   "what the checks saw" (white inner card, real vault checks with real
-   values) and "what nobody else checks" (soft orange pills). */
-function ChecksCard() {
-  const { live: L } = useLive();
-  const pol = L.policy.v;
-  const cap = pol
-    ? `Spent ${pol.spent} of ${pol.limit} base units.`
-    : "";
-  /* Only the cap row is a live policy value; the recipient and evidence
-     rows are recorded facts for the demo obligation, so they render
-     whether or not the policy read has landed. */
-  const rows: [string, string, boolean][] = [
-    ["Cap held.", cap, true],
-    ["Recipient fixed at authorization.", AGENT, false],
-    ["Evidence checked.", `${USECASE.artifactBytes} bytes hashed to the committed digest.`, false],
-  ];
-  return (
-    <div className="panel p-6" style={{ background: "var(--raised)" }}>
-      <div className="text-xs dim2 mb-3">What the checks saw</div>
-      <div className="panel p-5 mb-5">
-        <div className="flex flex-col">
-            {rows.map(([label, value, live], i) => (
-              <div
-                key={label}
-                className={
-                  "flex items-start gap-3 py-3" +
-                  (i === 0 ? " pt-0" : "") +
-                  (i === rows.length - 1 ? " pb-0" : " border-b")
-                }
-                style={{ borderColor: "var(--line2)" }}
-              >
-                {live && !pol ? null : (
-                  <span
-                    style={{
-                      color: "var(--pos-text)",
-                      width: 16,
-                      height: 16,
-                      display: "inline-grid",
-                      placeItems: "center",
-                      flex: "none",
-                      marginTop: 2,
-                    }}
-                  >
-                    <Icon name="check" />
-                  </span>
-                )}
-                <span className="text-[15px] leading-relaxed" style={{ overflowWrap: "anywhere" }}>
-                  {label}{" "}
-                  <b className="font-medium">
-                    {live && !pol ? (L.policy.err ? <Unavail /> : <LoadTxt />) : value}
-                  </b>
-                </span>
-              </div>
-            ))}
-        </div>
-      </div>
-      <div className="text-xs dim2 mb-3">What nobody else checks</div>
-      <div className="flex flex-col gap-2">
-        {["Where the money settled.", "What the payment was for."].map((t) => (
-          <div
-            key={t}
-            className="flex items-center gap-2 rounded-lg px-4 py-3 text-sm font-medium"
-            style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}
-          >
-            <span
-              style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent)", flex: "none" }}
-            />
-            {t}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function JudgesSteps() {
-  const { live: L } = useLive();
-  const count = L.recTest.v;
-  const step = (no: string, time: string, title: string, body: React.ReactNode) => (
-    <div className="panel p-5">
-      <div className="flex items-center justify-between mb-2">
-        <span className="mono text-xs" style={{ color: "var(--accent-text)" }}>
-          {no}
-        </span>
-        <span className="mono text-xs dim2">{time}</span>
-      </div>
-      <h3 className="text-lg mb-1 text-ink">{title}</h3>
-      <p className="dim text-sm leading-relaxed">{body}</p>
-    </div>
-  );
-  return (
-    <section className="wrap mt-12 md:mt-14">
-      <h2 className="mono text-[13px] mb-4" style={{ letterSpacing: ".14em", textTransform: "uppercase", color: "var(--secondary)" }}>
-        Judges, start here
-      </h2>
-      <div className="grid gap-4 md:grid-cols-3">
-        {step(
-          "01",
-          "10 sec",
-          "Run it live",
-          <>
-            <b className="text-ink">Do:</b> Press Run it live on Home.{" "}
-            <b className="text-ink">See:</b> the next receipt, PAID, and a transaction hash.
-          </>,
-        )}
-        {step(
-          "02",
-          "15 sec",
-          "Try to break it",
-          <>
-            <b className="text-ink">Do:</b> Change the recipient or the amount on Break it. <b className="text-ink">See:</b> Refused,
-            ERR_RECIPIENT_SUBSTITUTION for a changed recipient, tx <HashChip hash="AFYAq8Sju41NjBFwPmTHbJ1psmsYQWjVdBhmXBZbpa7S" />, or
-            ERR_TERMS_MISMATCH for a changed amount, tx <HashChip hash="43YaxJVggxuZ3E25WfjzkgGBsGAqLrj8nwdUU9RLAQRy" />, 0 tokens moved.
-          </>,
-        )}
-        {step(
-          "03",
-          "30 to 60 sec",
-          "Verify on chain",
-          <>
-            <b className="text-ink">Do:</b> Run <CmdBlock cmdKey="verify" /> on the test vault.{" "}
-            <b className="text-ink">See:</b>{" "}
-            {count != null ? (
-              <>Every row verified_ok = true, {count} receipts, all ok.</>
-            ) : L.recTest.err ? (
-              <>Receipt count unavailable, retrying.</>
-            ) : (
-              <>Receipt count loading, verification pending.</>
-            )}
-          </>,
-        )}
-      </div>
-    </section>
   );
 }
 
 export function Home() {
-  const { states, run } = useChainRead();
-  useEffect(() => {
-    const t = setTimeout(() => void run(12), 1200);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   return (
     <>
-      <section className="wrap pt-8 md:pt-12 relative">
-        <svg
-          className="pointer-events-none absolute right-0 -top-4 hidden lg:block"
-          width="460"
-          height="460"
-          viewBox="0 0 48 48"
-          fill="none"
-          aria-hidden="true"
-        >
-          <path d="M 35.6 10.2 A 18 18 0 1 0 35.6 37.8" stroke="#efe9df" strokeWidth="2.4" strokeLinecap="round" />
-        </svg>
-        <div className="relative grid grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] gap-12 items-center">
-          <div className="min-w-0">
-            <div className="kicker mb-5">Purpose-bound settlement · testnet</div>
-            <p className="conflict">The agent asked. The vault said no.</p>
-            <h1 className="hero-h">
-              Pay the obligation.
-              <br />
-              Not the prompt<span className="hero-period">.</span>
-            </h1>
-            <p className="mt-6 text-base leading-relaxed dim max-w-xl">
-              Cynex only pays exactly what a human authorized, same recipient, same amount, same evidence, and refuses everything else, even
-              if the AI agent is compromised.
-            </p>
-<div className="mt-8">
-              <LiveDemoButton
-                variant="hero"
-                actions={
-                  <a className="btn ghost" href="#/attack">
-                    Break it yourself
-                  </a>
-                }
-              />
-            </div>
-            <div className="mono text-xs dim2 mt-4">No wallet. No sign up. About 60 seconds, start to finish.</div>
-          </div>
-          <div className="flex min-w-0 flex-col gap-4">
-            <ChecksCard />
-            <div className="panel fadein" data-live-region="latest">
-              <LatestSettle />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <JudgesSteps />
-
-<section className="wrap mt-12 md:mt-14">
-        <div className="panel p-6">
-          <div className="kicker mb-3">Scripted path · one named example</div>
-          <h2 className="text-2xl md:text-3xl mb-3">Start with the proof that is already on chain.</h2>
-          <p className="dim text-sm leading-relaxed max-w-3xl mb-5">
-            <b className="text-ink">Open Proof, find receipt 24, usecase-report-002. You will see four recorded refusals and one successful settlement,
-            PAID.</b>{" "}
-            Three refusals first, then the exact payment the human authorized, for one named report, then the replay refusal after the payment.
+      <div className="hero">
+        <div className="wrap">
+          <p className="hero-tag">CYNEX · PURPOSE-BOUND SETTLEMENT VAULT · NEAR TESTNET</p>
+          <h1 className="hero-line">
+            The agent asked.
+            <br />
+            The vault said <span className="no">no.</span>
+          </h1>
+          <p className="hero-sub">
+            A human fixes the terms: <strong>recipient, amount, token, evidence, budget</strong>. The agent can only
+            ask. When the ask changes one field, the vault refuses on chain and <strong>no money moves</strong>. This
+            refusal already happened:
           </p>
-          <a className="btn btn-primary" href="#/proof">
-            Open Proof, receipt 24
-          </a>
+
+          <div className="ticket" role="group" aria-label="On-chain refusal record">
+            <div className="ticket-head">
+              <span className="verdict">REFUSED</span>
+              <span className="code">ERR_RECIPIENT_SUBSTITUTION</span>
+              <div className="moved">
+                <div className="n">0</div>
+                <div className="l">TOKENS MOVED</div>
+              </div>
+            </div>
+            <div className="ticket-rows">
+              <div className="trow">
+                <div className="k">OBLIGATION</div>
+                <div className="v">usecase-report-002</div>
+              </div>
+              <div className="trow">
+                <div className="k">TRANSACTION</div>
+                <div className="v">
+                  <a href={TX_URL + REFUSAL_TX} target="_blank" rel="noopener">
+                    {REFUSAL_TX}
+                  </a>
+                  <CopyButton text={REFUSAL_TX} />
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-      </section>
+      </div>
 
       <StripSection />
 
-      {/* Flow diagram: how a settlement moves through the layers */}
-      <section className="wrap mt-12">
-        <div className="panel p-6">
-          <div className="mono text-xs dim2 mb-3">How a settlement flows</div>
-          <div className="flow">
-            <span className="flow-step">human authorizes the obligation</span>
-            <span className="flow-arrow">-&gt;</span>
-            <span className="flow-step">agent requests settlement</span>
-            <span className="flow-arrow">-&gt;</span>
-            <span className="flow-step">console reputation gate: BLOCK refuses, WARN escalates</span>
-            <span className="flow-arrow">-&gt;</span>
-            <span className="flow-step">evidence to READY: preimage hash, TEE, or verifier</span>
-            <span className="flow-arrow">-&gt;</span>
-            <span className="flow-step">vault checks the fixed terms, in order</span>
-            <span className="flow-arrow">-&gt;</span>
-            <span className="flow-step">settle writes a hash-chained receipt</span>
+      <section className="block" id="diagram">
+        <div className="wrap">
+          <p className="sec-label">THE MECHANISM, IN ONE GLANCE</p>
+          <h2 className="sec-title">One field changed. Everything stops.</h2>
+          <p className="sec-lede">
+            An obligation is a locked card, not a prompt. The vault compares every field of a settle request against
+            the card the human authorized. <strong>One mismatch and the request dies.</strong>
+          </p>
+
+          <div className="diagram">
+            <div className="ocard">
+              <div className="ocard-head">
+                <span className="obadge lock">LOCKED BY HUMAN</span>
+                <span className="id">usecase-report-002</span>
+              </div>
+              <OField k="RECIPIENT" v={RECIPIENT} sub="The named payee, fixed at authorization" />
+              <OField k="AMOUNT" v="100" sub="Exact amount, not a range" />
+              <OField k="TOKEN" v="usdc.fakes.testnet" sub="The one token, substitutes do not settle" />
+              <OField k="EVIDENCE" v={DIGEST} sub="Committed digest of the report artifact" />
+              <OField k="BUDGET" v="10000" sub="Policy p6-001 cap, never exceeded" />
+            </div>
+
+            <div className="gate" aria-hidden="true">
+              <div className="gt">
+                SETTLE REQUEST<b>EVERY FIELD CHECKED</b>
+              </div>
+              <div className="arrow">&#8594;</div>
+              <div className="gate-box">VAULT</div>
+              <div className="arrow">&#8594;</div>
+              <div className="gt">
+                MISMATCH<b>NO PAYMENT</b>
+              </div>
+            </div>
+
+            <div className="ocard">
+              <div className="ocard-head">
+                <span className="obadge atk">AGENT REQUEST</span>
+                <span className="id">settle attempt</span>
+              </div>
+              <OField
+                k="RECIPIENT"
+                v={
+                  <>
+                    cynexmaster.testnet<span className="was">was: {RECIPIENT}</span>
+                  </>
+                }
+                bad
+              />
+              <OField k="AMOUNT" v="100" sub="Unchanged" />
+              <OField k="TOKEN" v="usdc.fakes.testnet" sub="Unchanged" />
+              <OField k="EVIDENCE" v={DIGEST} sub="Unchanged" />
+              <OField k="BUDGET" v="10000" sub="Unchanged" />
+              <div className="stamp">REFUSED</div>
+            </div>
           </div>
-          <p className="dim text-[13px] mt-3">
-            The vault is the last check, not the first: the gate can refuse before anything reaches the chain, and the vault refuses any
-            settle whose terms differ, whatever the gate said.
+
+          <p className="diagram-note">
+            Verdict on chain: <b>ERR_RECIPIENT_SUBSTITUTION</b> · tx{" "}
+            <a href={TX_URL + REFUSAL_TX} target="_blank" rel="noopener" className="mono">
+              {REFUSAL_TX}
+            </a>{" "}
+            · 0 tokens moved. The agent is assumed compromised. It holds only a scoped settle key, so the worst it can
+            do is ask.
           </p>
         </div>
       </section>
 
-
-      <RefusalPanel />
-
-      {/* One live proof */}
-      <section className="wrap mt-12 md:mt-14">
-        <div className="panel p-6">
-          <div className="flex flex-wrap items-center gap-3 mb-1">
-            <span className="kicker">One live proof</span>
-          </div>
-          <div className="flex flex-wrap items-center gap-4 mb-4">
-            <h2 className="text-2xl md:text-3xl">
-              A correct settle, <span style={{ color: "var(--pos-text)" }}>PAID</span>
-            </h2>
-            <Badge value="PAID" />
-          </div>
-          <p className="dim text-sm max-w-3xl leading-relaxed mb-5">
-            Step 2: after the vault refused a substituted recipient and an inflated amount, the correct settle of obligation{" "}
-            <span className="mono text-[13px] text-ink">p10-demo-attack-001</span> went through, 100 base units (0.0001 test USDC) to{" "}
-            <AcctChip account={AGENT} />, and wrote receipt #12 to the hash chain.
-          </p>
-          <div className="flex flex-wrap items-center gap-3 mb-2">
-            <span className="mono text-xs dim2">settle tx</span>
-            <HashChip hash="Ho97UjQEDDfe7Go66uHrVSJvbF8narZJ2YBH3hWarxi" />
-            <span className="mono text-xs dim2">receipt #12 · {VAULT_TEST}</span>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <button className="btn sm" onClick={() => void run(12)}>
-              Read receipt #12 from chain, now
-            </button>
-            <a className="mono text-xs dim inline-flex items-center gap-1" href="#/demo/guided/step2">
-              or watch the attack get refused first{" "}
-              <span style={{ width: 16, height: 16, display: "inline-grid", placeItems: "center" }}>
-                <Icon name="arrow" />
-              </span>
-            </a>
-          </div>
-          <div id="cr-12">
-            <ChainReadOut state={states[12] ?? null} />
-          </div>
-        </div>
-      </section>
-
-
-      <UseCaseSection />
-
-      {/* Three layers */}
-      <section className="wrap mt-12 md:mt-14">
-        <div className="kicker mb-3">The three layers</div>
-        <h2 className="text-2xl md:text-3xl mb-8">The decision moves to the chain</h2>
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="md:col-span-2">
-          <Layer
-            n="1"
-            t="On-chain integrity"
-            body="Settle checks the terms in a fixed order: obligation exists, in-flight and PAID nonce checks, READY state, resolved-ready, recipient, amount, expiry, policy exists and unfrozen, policy version, token lock, budget, native headroom. Eleven settle codes, no discretion."
-            extra={
-              <div className="mono text-xs dim mt-3">
-                <a href="#/docs/security" style={{ color: "var(--accent-text)" }}>
-                  All eleven settle codes, with their meanings
-                </a>
-              </div>
-            }
-            linktxt="Live example: wrong recipient refused"
-            href="#/demo/guided/step2"
-          />
-          </div>
-          <Layer
-            n="2"
-            t="TEE provenance"
-            body="PREIMAGE: the vault hashes the delivery artifact bytes itself and compares them to the digest committed at authorization. TEE: verification runs in the OutLayer guest, which fetches the evidence from its claimed source and returns the digest plus the source. The vault does not verify the TDX quote on chain; quote verification is off chain."
-            extra={
-              <div className="mono text-xs dim mt-3">
-                OutLayer request <span className="text-ink">11912</span> · 300 TGas console caller gas (contract: 100 TGas request + 50
-                TGas callback) · request_tee_verification is owner only, 0.01 NEAR deposit
-              </div>
-            }
-            linktxt="Live example: TEE settle, receipt #13"
-            href="#/demo/guided/step3"
-          />
-          <Layer
-            n="3"
-            t="VRF anchor"
-            body="During TEE execution the guest requests VRF randomness, and the vault verifies the VRF signature on chain with env::ed25519_verify, bound to the pending request. The signature proves the VRF response is valid and bound to that request. It does not prove TEE execution: the VRF signature is the on-chain anchor, and the TDX quote is verified off chain."
-            extra={
-              <div className="mono text-xs dim mt-3">
-                VRF signature verified on chain, bound to the pending request.
-              </div>
-            }
-            linktxt="Verify the attestation bundles"
-            href="#/proof"
-          />
-        </div>
-      </section>
-
-
-      {/* Off-chain reputation gate: separate from the three layers, the vault never sees a BLOCKed attempt */}
-      <section className="wrap mt-8">
-        <div className="panel p-6">
-          <div className="mono text-xs dim2 mb-3">Off-chain gate, not a layer</div>
-          <h3 className="text-lg mb-2 text-ink">Reputation gate</h3>
-          <p className="dim text-sm leading-relaxed">
-            Five signals scored before any settle by the off-chain console gate, never by the vault: account_existence,
-            account_age, prior_vault_interactions, blocklist, code_change_recency. BLOCK refuses before settlement and
-            names the signal and its source. WARN escalates unless CYNEX_APPROVE_WARN=1. Signals show as unavailable
-            when they cannot be sourced, and ALLOW needs at least one prior receipt. The vault never sees a BLOCKed
-            attempt: the gate refuses before anything reaches the chain.
-          </p>
-          <div className="mt-3">
-            <Badge value="BLOCK" extra="code_change_recency" />
-          </div>
-          <a href="#/demo/guided/gate" className="mono text-xs mt-4 pt-2 inline-flex items-center gap-2" style={{ color: "var(--accent-text)" }}>
-            The gate moment
-            <span style={{ width: 16, height: 16, display: "inline-grid", placeItems: "center" }}>
-              <Icon name="arrow" />
-            </span>
+      <div className="proven-line">
+        <div className="wrap">
+          <span className="pl-k">PROVEN LIVE</span>
+          <span>
+            Receipt 35 · demo-live-005 · <strong>PAID</strong> · tx <span className="mono">{PROVEN_TX}</span> ·
+            block 277362593
+          </span>
+          <a href="#/attack/run" className="pl-link">
+            Run it live on Break it &#8594;
           </a>
         </div>
-      </section>
+      </div>
 
-
-      <McpSection />
-
-<section className="wrap mt-12 md:mt-14">
-        <div className="kicker mb-3">Run it yourself</div>
-        <h2 className="text-2xl md:text-3xl mb-3">Two commands. No wallet. No account.</h2>
-        <p className="dim text-sm leading-relaxed max-w-3xl mb-5">
-          The local demo runs the real vault in a sandbox on your machine. The verify command replays the live testnet record from genesis.
-        </p>
-        <div className="mb-3">
-          <div className="mono text-xs dim2 mb-2">Local demo, MCP server over stdio</div>
-          <CmdBlock cmdKey="mcpdemo" />
-        </div>
-        <div className="mono text-xs dim2 mb-2 mt-5">Verify the live testnet record</div>
-        <VerifyHome />
-        <p className="mono text-xs dim2 mt-5">The verify command reads the NEAR testnet record. The MCP demo runs locally in a sandbox. Nothing here spends real funds, and nothing here needs your keys.</p>
-      </section>
-      {/* Trust model */}
-      <section className="wrap mt-12 md:mt-14">
-        <div className="panel p-6">
-          <div className="kicker mb-3">
-            Trust model
-          </div>
-          <div className="grid md:grid-cols-2 gap-x-10 gap-y-3 text-sm leading-relaxed dim">
-            {[
-              "The contract is the decision-maker. The agent proposes; the vault disposes. Terms are fixed at obligation creation, settle only checks them.",
-              "Funding enters only via ft_transfer_call. Evidence is required before settle: a SHA-256 preimage of the delivery artifact, or TEE verification via OutLayer.",
-              "Every successful settle writes a hash-chained receipt (NEP-297). Anyone can replay the chain from genesis, tamper with receipt i and it is detected at i+1.",
-              "NEAR function-call keys restrict which methods an agent key may call, they do not restrict the arguments. That gap is exactly what Cynex closes.",
-              "Cancel and reconciliation: cancel_obligation and cancel_expired_ready are owner only. cancel_expired_ready refuses a READY obligation that has not expired yet (ERR_NOT_EXPIRED); only an expired READY obligation can be cancelled that way. A transfer has a 10-minute timeout and evidence has a 1-hour timeout; a stuck transfer goes to RECONCILIATION_REQUIRED for a human. A confirmed failed transfer returns to READY for a fresh settle, up to 3 attempts (MAX_TRANSFER_ATTEMPTS), then escalates to reconciliation, and the contract never redispatches a transfer on its own.",
-              "TEE requirements: request_tee_verification is owner only, with a 0.01 NEAR deposit, 100 TGas for the request plus 50 TGas for the callback. The 300 TGas in the demo is the console caller gas, not a contract constant.",
-            ].map((t) => (
-              <div key={t.slice(0, 24)} className="flex gap-3">
-                <span className="flex-none mt-1" style={{ color: "var(--pos-text)", width: 16, height: 16, display: "inline-grid", placeItems: "center" }}>
-                  <Icon name="check" />
+      <section className="block" id="how">
+        <div className="wrap">
+          <p className="sec-label">HOW IT WORKS</p>
+          <h2 className="sec-title">Three steps. No trust in the agent.</h2>
+          <div className="hwsteps">
+            <div className="hwstep">
+              <div className="num">01</div>
+              <h3>The human authorizes</h3>
+              <p>
+                One obligation, fixed terms: recipient, amount, token, the evidence digest, and a budget. Once
+                created, the terms cannot be edited by the agent.
+              </p>
+            </div>
+            <div className="hwstep">
+              <div className="num">02</div>
+              <h3>The agent requests</h3>
+              <p>
+                The agent holds a scoped key that can only call <span className="mono">settle</span>. It can ask for
+                payment against the obligation. It cannot change what it asks for without the vault seeing it.
+              </p>
+            </div>
+            <div className="hwstep">
+              <div className="num">03</div>
+              <h3>The vault decides</h3>
+              <p>
+                Every field is checked against the locked card, plus the budget and replay state. Exact match:{" "}
+                <span className="mono" style={{ color: "var(--green)" }}>
+                  PAID
                 </span>
-                <span>{t}</span>
-              </div>
-            ))}
+                , with a receipt. Anything else:{" "}
+                <span className="mono" style={{ color: "var(--red)" }}>
+                  REFUSED
+                </span>
+                , and nothing moves.
+              </p>
+            </div>
           </div>
-          <div className="callout mt-6 mono text-[13px]">
-            The VRF signature does not prove TEE execution. The vault does not verify the TDX quote on chain: quote verification is off
-            chain, and the VRF signature is the on-chain anchor.
-          </div>
-          <div className="mono text-xs dim2 mt-4">Testnet only. No mainnet funds. No production settles from this site.</div>
         </div>
       </section>
 
-
-<section className="wrap mt-12 md:mt-14">
-        <div className="kicker mb-3">Honest limits</div>
-        <h2 className="text-2xl md:text-3xl mb-3">What Cynex does not do.</h2>
-        <p className="dim text-sm leading-relaxed max-w-3xl mb-5">The limits, stated on the page, not buried in a file.</p>
-        <ul className="space-y-2.5 dim text-sm leading-relaxed max-w-3xl" style={{ listStyle: "disc", paddingLeft: 20 }}>
-          <li>
-            <b className="text-ink">The VRF signature does not prove TEE execution.</b> It proves determinism and binding to the pending
-            request. That link must never be claimed.
-          </li>
-          <li>
-            <b className="text-ink">The vault does not verify the TDX quote on chain.</b> The quote is verified off chain, by design, not as
-            part of the contract check.
-          </li>
-          <li>
-            <b className="text-ink">Testnet only, fake testnet USDC with no value.</b> No mainnet deployment, no mainnet spending.
-          </li>
-          <li>
-            <b className="text-ink">One account held both agent roles in the canonical run.</b> Receipt 24 proves the vault enforces its controls, not
-            payment between two distinct accounts. The two-agent run is receipt 28.
-          </li>
-          <li>
-            <b className="text-ink">The Run it live button only settles pre-seeded demo obligations.</b> It is proven live: demo-live-001 settled, receipt 31 PAID, tx
-            12pi6dZ1CzgvCeLWCCRSvC2iLyTaN7J2fRHtYnbHmcf6, block 277243629. demo-live-002, 003 and 004 are also PAID, receipt 34 is
-            demo-live-004. As of 12 Nov 2026, six demo obligations remain, demo-live-005 to demo-live-010, and the button stops when they are used up.
-          </li>
-        </ul>
-      </section>
-
-      <TrustRow />
-
-      {/* CTAs */}
-      <section className="wrap mt-12 md:mt-14">
-        <div className="grid md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] gap-4">
-          <a href="#/demo/guided" className="panel panel-h p-6 block">
-            <div className="kicker mb-2">Demo</div>
-            <h3 className="text-xl mb-2 text-ink">See the demo</h3>
-            <p className="dim text-sm">
-              The full demo run, happy path, refused attacks, TEE settle, verification, every step with its real tx hash and a live chain
-              read.
-            </p>
-            <div className="mono text-xs mt-4 inline-flex items-center gap-2" style={{ color: "var(--accent-text)" }}>
-              guided walkthrough{" "}
-              <span style={{ width: 16, height: 16, display: "inline-grid", placeItems: "center" }}>
-                <Icon name="arrow" />
-              </span>
+      <section className="block" id="mcp" style={{ paddingTop: 0 }}>
+        <div className="wrap">
+          <div className="split">
+            <div className="limits">
+              <p className="sec-label">HONEST LIMITS</p>
+              <h2 className="sec-title" style={{ fontSize: "clamp(1.7rem,3.4vw,2.4rem)" }}>
+                What Cynex does not claim
+              </h2>
+              <ul>
+                <li>
+                  <span>
+                    <strong>The vault checks terms, not the caller.</strong> Safety comes from the fixed terms, the
+                    budget, and the scoped settle key, never from trusting who asks.
+                  </span>
+                </li>
+                <li>
+                  <span>
+                    <strong>TEE quotes are verified off chain.</strong> The vault does not verify the attestation
+                    quote on chain. That is by design, and it is stated plainly.
+                  </span>
+                </li>
+                <li>
+                  <span>
+                    <strong>VRF is not TEE proof.</strong> The VRF signature proves determinism and binding to a
+                    pending request. It does not prove TEE execution, and Cynex does not claim it does.
+                  </span>
+                </li>
+              </ul>
             </div>
-          </a>
-          <a href="#/proof" className="panel panel-h p-6 block">
-            <div className="kicker mb-2">Proof</div>
-            <h3 className="text-xl mb-2 text-ink">Verify it yourself</h3>
-            <p className="dim text-sm">
-              One command replays every receipt from genesis and recomputes each link. Live receipt table, four attestation bundles,
-              tamper-and-detect. The agent console that drives the demo is in the Docs.
-            </p>
-            <div className="mono text-xs mt-4 inline-flex items-center gap-2" style={{ color: "var(--accent-text)" }}>
-              one click away{" "}
-              <span style={{ width: 16, height: 16, display: "inline-grid", placeItems: "center" }}>
-                <Icon name="arrow" />
-              </span>
+            <div className="mcp">
+              <p className="sec-label">FOR AGENTS · MCP</p>
+              <h2 className="sec-title" style={{ fontSize: "clamp(1.7rem,3.4vw,2.4rem)" }}>
+                Drive the vault from your agent
+              </h2>
+              <div className="mcpfacts">
+                <div>
+                  <div className="n">6</div>
+                  <div className="l">
+                    TOOLS,
+                    <br />
+                    STDIO ONLY
+                  </div>
+                </div>
+                <div>
+                  <div className="n">1</div>
+                  <div className="l">
+                    MOVES FUNDS:
+                    <br />
+                    SETTLE
+                  </div>
+                </div>
+                <div>
+                  <div className="n">5</div>
+                  <div className="l">
+                    READ OR
+                    <br />
+                    PREPARE ONLY
+                  </div>
+                </div>
+              </div>
+              <p>
+                The MCP server exposes the vault over stdio. <strong>Only one of the six tools can move funds</strong>
+                , and it still has to pass every vault check on chain. Start it against a local sandbox:
+              </p>
+              <div className="termcmd">
+                <span className="prompt">$</span> npx cynex-mcp --sandbox
+              </div>
             </div>
-          </a>
+          </div>
         </div>
       </section>
 

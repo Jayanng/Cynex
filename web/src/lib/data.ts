@@ -41,7 +41,7 @@ export const DEMO_TOKEN = {
   readyObligationId: "",
   pendingObligationId: "",
 };
-export const DEMO_ATTACKER = "attacker.testnet"; // tampered recipient used only for live attempts; the vault refuses before any transfer
+export const DEMO_ATTACKER = "cynexmaster.testnet"; // recipient proposed in the recorded refusal tx EiBHjMBq; the vault refuses before any transfer
 export const DEMO_LIVE_LABEL =
   "Demo key, testnet only, scoped to settle on the test vault, low allowance. This key can only attempt settles; the vault decides.";
 
@@ -213,109 +213,8 @@ export const GUIDED: GuidedStep[] = [
    fixture rows are gone: settle has no token argument, so no token row can
    return ERR_TERMS_MISMATCH, and a bad VRF returns no error code at all.
    Replaced by a live fetch of the repo file when reachable. Read-only. */
-export interface PlaygroundRow {
-  id: string;
-  ev: string;
-  amount: string;
-  nonce: number | string;
-  expect: string;
-  ro?: boolean;
-  tx?: string | null;
-  receipt?: number | null;
-  note: string;
-  vault?: string;
-  recipient?: string;
-  role?: string;
-  fixture?: boolean;
-}
-export const PLAYGROUND_INITIAL: PlaygroundRow[] = [
-  { id: "p6-prod-001", ev: "delivery-note", amount: "1000", nonce: 1, expect: "ERR_RECIPIENT_SUBSTITUTION", vault: VAULT_PROD, recipient: ACME, role: "recipient substitution", note: "READY on chain, acme-supplies.testnet, an account that does not exist on chain. Propose a different payee for ERR_RECIPIENT_SUBSTITUTION." },
-  { id: "p6-prod-002", ev: "delivery-note", amount: "1000", nonce: 2, expect: "ERR_TERMS_MISMATCH", vault: VAULT_PROD, recipient: ACME, role: "terms mismatch", note: "READY on chain, acme-supplies.testnet, an account that does not exist on chain. Propose 1001 for ERR_TERMS_MISMATCH." },
-  { id: "p6-prod-003", ev: "delivery-note", amount: "1001", nonce: 3, expect: "ERR_BUDGET_EXCEEDED", vault: VAULT_PROD, recipient: ACME, role: "budget exceeded", note: "READY on chain, acme-supplies.testnet, an account that does not exist on chain, recorded 1001 against a 1000 headroom. Propose the recorded 1001 for ERR_BUDGET_EXCEEDED." },
-  { id: "p6-prod-004", ev: "delivery-note", amount: "1000", nonce: 4, expect: "ERR_OBLIGATION_EXPIRED", vault: VAULT_PROD, recipient: ACME, role: "expired-only", note: "READY on chain but expired: 90-second expiry, now passed. Proposing the recorded terms fails ERR_OBLIGATION_EXPIRED; not a generic spare." },
-  { id: "p6-prod-005", ev: "delivery-note", amount: "1000", nonce: 5, expect: "READY", vault: VAULT_PROD, recipient: ACME, role: "spare READY", note: "READY on chain, acme-supplies.testnet, an account that does not exist on chain. Spare for the demo." },
-  { id: "obl-verify-demo", ev: "delivery-note", amount: "1000", nonce: 9, expect: "ERR_NONCE_ALREADY_CONSUMED", vault: VAULT_PROD, recipient: ACME, role: "nonce replay", note: "PAID on chain, acme-supplies.testnet, an account that does not exist on chain. Replay it for ERR_NONCE_ALREADY_CONSUMED; no happy-path settle runs on production." },
-  { id: "p9-prod-preimage-001", ev: "PREIMAGE", amount: "100", nonce: 9101, expect: "CANCELLED", ro: true, vault: VAULT_PROD, recipient: AGENT, role: "preimage proof (read-only)", note: "CANCELLED on chain (live read 2026-11-10), evidence type PREIMAGE, recipient cynex-agent.cynexmaster.testnet. The proof obligation: the correct artifact bytes were submitted on chain. Read-only: this case is never settled from the playground." },
-  { id: "p9-prod-preimage-002", ev: "PREIMAGE", amount: "100", nonce: 9102, expect: "CANCELLED", ro: true, vault: VAULT_PROD, recipient: AGENT, role: "preimage proof (read-only)", note: "CANCELLED on chain (live read 2026-11-10), evidence type PREIMAGE, recipient cynex-agent.cynexmaster.testnet. The proof obligation: was awaiting the artifact bytes. Read-only: this case is never settled from the playground." },
-  { id: "p9-prod-tee-001", ev: "TEE", amount: "100", nonce: 9103, expect: "CANCELLED", ro: true, vault: VAULT_PROD, recipient: AGENT, role: "tee proof (read-only)", note: "CANCELLED on chain (live read 2026-11-10), evidence type TEE, recipient cynex-agent.cynexmaster.testnet. The proof obligation: TEE provenance is verified off chain through the OutLayer guest, with the VRF signature as the on-chain anchor. The VRF signature does not prove TEE execution. Read-only: this case is never settled from the playground." },
-  { id: "p6-obl-001", ev: "delivery-note", amount: "1000", nonce: 1, expect: "ERR_RECIPIENT_SUBSTITUTION", vault: VAULT_TEST, recipient: ACME, role: "recipient substitution", note: "READY on chain, acme-supplies.testnet, an account that does not exist on chain. Propose unregistered-xyz.testnet for ERR_RECIPIENT_SUBSTITUTION." },
-  { id: "p6-obl-002", ev: "delivery-note", amount: "1000", nonce: 2, expect: "ERR_TERMS_MISMATCH", vault: VAULT_TEST, recipient: ACME, role: "terms mismatch", note: "READY on chain, acme-supplies.testnet, an account that does not exist on chain. Propose 1001 for ERR_TERMS_MISMATCH." },
-  { id: "p6-obl-003", ev: "delivery-note", amount: "1000", nonce: 3, expect: "ERR_NONCE_ALREADY_CONSUMED", vault: VAULT_TEST, recipient: ACME, role: "nonce replay", note: "PAID on chain, acme-supplies.testnet, an account that does not exist on chain. Replay it for ERR_NONCE_ALREADY_CONSUMED." },
-  { id: "p6-obl-004", ev: "delivery-note", amount: "9001", nonce: 4, expect: "ERR_BUDGET_EXCEEDED", vault: VAULT_TEST, recipient: ACME, role: "budget exceeded", note: "READY on chain, acme-supplies.testnet, an account that does not exist on chain, recorded 9001 against a 9000 headroom. Propose the recorded 9001 for ERR_BUDGET_EXCEEDED." },
-  { id: "p6-obl-005", ev: "delivery-note", amount: "1000", nonce: 5, expect: "ERR_OBLIGATION_EXPIRED", vault: VAULT_TEST, recipient: ACME, role: "expired", note: "READY on chain, acme-supplies.testnet, an account that does not exist on chain, expired. Propose the recorded terms for ERR_OBLIGATION_EXPIRED." },
-  { id: "p6-obl-006", ev: "delivery-note", amount: "1000", nonce: 6, expect: "ERR_NONCE_ALREADY_CONSUMED", vault: VAULT_TEST, recipient: ACME, role: "nonce replay (already PAID)", receipt: 5, note: "PAID on chain (live read 2026-11-10, test receipt 5), recipient acme-supplies.testnet, an account that does not exist on chain. It settled correctly once (happy path), receipt 5; only a replay is possible now, refused with ERR_NONCE_ALREADY_CONSUMED. Consumed by the first correct settle; a fresh obligation is needed afterwards for another happy path." },
-  { id: "p10-demo-preimage-001", ev: "PREIMAGE", amount: "100", nonce: 1001, expect: "PAID", ro: true, tx: "3Gp3J2zZCKrne1PamDVf6PgXHk4qGc3a58GBvoFcNhrZ", receipt: 11, vault: VAULT_TEST, recipient: AGENT, role: "happy path (live demo, read-only)", note: "PAID on the test vault. The live demo happy path: create tx CC8gdACowXvBskZS9K4WEzXddunVpxpwCEdsdFdP2xa3, request evidence tx FE5EtKA12h8AwLcngWXuMsaSL1vhg9gzMB4RAWGWCNNx, submit preimage tx MVJrygCRiiZgNv96gkSQC9vzk2saLwj4wdKTULoCJzh, settle tx 3Gp3J2zZCKrne1PamDVf6PgXHk4qGc3a58GBvoFcNhrZ, receipt index 11. Agent 700 to 800 base units, policy spent 3400 to 3500. Read-only: this case is never settled from the playground." },
-  { id: "p10-demo-attack-001", ev: "PREIMAGE", amount: "100", nonce: 1002, expect: "PAID", ro: true, tx: "Ho97UjQEDDfe7Go66uHrVSJvbF8narZJ2YBH3hWarxi", receipt: 12, vault: VAULT_TEST, recipient: AGENT, role: "attack, three tries (live demo, read-only)", note: "PAID on the test vault after two failed attacks. Attack 1 recipient substitution tx AFYAq8Sju41NjBFwPmTHbJ1psmsYQWjVdBhmXBZbpa7S (ERR_RECIPIENT_SUBSTITUTION), attack 2 amount 200 base units tx 43YaxJVggxuZ3E25WfjzkgGBsGAqLrj8nwdUU9RLAQRy (ERR_TERMS_MISMATCH), correct settle tx Ho97UjQEDDfe7Go66uHrVSJvbF8narZJ2YBH3hWarxi, receipt index 12, replay tx AwzQS7XsuGSYnPmvd5jFJzPDs3WDc2gRgSbW3smWq1Cs (ERR_NONCE_ALREADY_CONSUMED). Agent 800 to 900 base units, policy spent 3500 to 3600. Read-only: this case is never settled from the playground." },
-  { id: "p10-demo-tee-001", ev: "TEE", amount: "100", nonce: 1003, expect: "PAID", ro: true, tx: "3QV2aCRSiJ8ZYqLECCpK6ZkXpYE4AdxJzmyP3JTaDqWB", receipt: 13, vault: VAULT_TEST, recipient: AGENT, role: "TEE and VRF (live demo, read-only)", note: "PAID on the test vault. The live demo TEE and VRF: TEE request tx 5Xvu78qxd9NfgJzRBeyvdQXnqK8sLfSmzrfVC5dgDK68 (OutLayer request 11912, guest 8abfe08b), settle tx 3QV2aCRSiJ8ZYqLECCpK6ZkXpYE4AdxJzmyP3JTaDqWB, receipt index 13. Agent 900 to 1000 base units, policy spent 3600 to 3700. Read-only: this case is never settled from the playground." },
-  { id: "pg-preimage-ok-001", ev: "PREIMAGE", amount: "25", nonce: 2001, expect: "PAID", fixture: true, vault: VAULT_TEST, recipient: AGENT, role: "scenario fixture", note: "Scenario fixture, not a file obligation: valid preimage, terms exact." },
-  { id: "pg-preimage-ok-002", ev: "PREIMAGE", amount: "10", nonce: 2013, expect: "PAID", fixture: true, vault: VAULT_TEST, recipient: AGENT, role: "scenario fixture", note: "Scenario fixture, not a file obligation: minimum-amount settle." },
-  { id: "pg-budget-edge-001", ev: "PREIMAGE", amount: "250", nonce: 2014, expect: "PAID", fixture: true, vault: VAULT_TEST, recipient: AGENT, role: "scenario fixture", note: "Scenario fixture, not a file obligation: settle exactly at remaining policy headroom." },
-  { id: "pg-rep-allow-001", ev: "PREIMAGE", amount: "20", nonce: 2015, expect: "ALLOW", fixture: true, vault: VAULT_TEST, recipient: AGENT, role: "scenario fixture", note: "Scenario fixture, not a file obligation. Reputation: code unchanged over 7 days, ALLOW, settle proceeds. ALLOW is a reputation verdict, not a vault outcome." },
-  { id: "pg-wrong-recipient-001", ev: "PREIMAGE", amount: "25", nonce: 2002, expect: "ERR_RECIPIENT_SUBSTITUTION", fixture: true, vault: VAULT_TEST, recipient: AGENT, role: "scenario fixture", note: "Scenario fixture, not a file obligation: injected instruction swaps the recipient to a different account." },
-  { id: "pg-wrong-amount-001", ev: "PREIMAGE", amount: "40", nonce: 2003, expect: "ERR_TERMS_MISMATCH", fixture: true, vault: VAULT_TEST, recipient: AGENT, role: "scenario fixture", note: "Scenario fixture, not a file obligation: attempts 80 against a 40 obligation." },
-  { id: "pg-replay-nonce-001", ev: "PREIMAGE", amount: "25", nonce: 2005, expect: "ERR_NONCE_ALREADY_CONSUMED", fixture: true, vault: VAULT_TEST, recipient: AGENT, role: "scenario fixture", note: "Scenario fixture, not a file obligation: same bill submitted twice, nonce already consumed." },
-  { id: "pg-budget-exceed-001", ev: "PREIMAGE", amount: "900", nonce: 2006, expect: "ERR_BUDGET_EXCEEDED", fixture: true, vault: VAULT_TEST, recipient: AGENT, role: "scenario fixture", note: "Scenario fixture, not a file obligation: cumulative spend would cross the budget policy." },
-  { id: "pg-expired-001", ev: "PREIMAGE", amount: "15", nonce: 2007, expect: "ERR_OBLIGATION_EXPIRED", fixture: true, vault: VAULT_TEST, recipient: AGENT, role: "scenario fixture", note: "Scenario fixture, not a file obligation: settle attempted after the obligation expired." },
-  { id: "pg-policy-frozen-001", ev: "PREIMAGE", amount: "15", nonce: 2008, expect: "ERR_POLICY_FROZEN", fixture: true, vault: VAULT_TEST, recipient: AGENT, role: "scenario fixture", note: "Scenario fixture, not a file obligation: policy frozen by the owner, every settle refused while frozen." },
-  { id: "pg-tee-ok-001", ev: "TEE", amount: "60", nonce: 2009, expect: "PAID", fixture: true, vault: VAULT_TEST, recipient: AGENT, role: "scenario fixture", note: "Scenario fixture, not a file obligation: OutLayer verification, VRF bound to the pending request." },
-  { id: "pg-rep-block-001", ev: "PREIMAGE", amount: "30", nonce: 2011, expect: "BLOCK", fixture: true, vault: VAULT_TEST, recipient: AGENT, role: "scenario fixture", note: "Scenario fixture, not a file obligation. Reputation: code_change_recency, code changed under 24h ago, no history, BLOCK." },
-  { id: "pg-rep-warn-001", ev: "PREIMAGE", amount: "30", nonce: 2012, expect: "WARN", fixture: true, vault: VAULT_TEST, recipient: AGENT, role: "scenario fixture", note: "Scenario fixture, not a file obligation. Reputation: code changed 3 days ago, WARN, escalates unless CYNEX_APPROVE_WARN=1." },
-];
 export const PLAYGROUND_SOURCE_INITIAL =
   "bundled snapshot · demo/playground-obligations.json @ master " + COMMIT + " · live states read 2026-11-10";
-
-/* Attack scenarios, demo/attack-scenarios.json */
-export interface AttackScenario {
-  name: string;
-  code: string;
-  tx: string | null;
-  vector: string;
-  attempt: string;
-}
-export const ATTACKS: AttackScenario[] = [
-  {
-    name: "Recipient substitution",
-    code: "ERR_RECIPIENT_SUBSTITUTION",
-    tx: "AFYAq8Sju41NjBFwPmTHbJ1psmsYQWjVdBhmXBZbpa7S",
-    vector: "A poisoned invoice page tells the agent the vendor rotated their payout account. The agent calls settle with a different recipient. In the executed demo tx the proposed recipient was the owner account, cynexmaster.testnet.",
-    attempt: "recipient → a different account · amount 100 base units · nonce 1002",
-  },
-  {
-    name: "Amount inflation",
-    code: "ERR_TERMS_MISMATCH",
-    tx: "43YaxJVggxuZ3E25WfjzkgGBsGAqLrj8nwdUU9RLAQRy",
-    vector: "The injected instruction claims the bill is 200, not 100. The obligation on chain says 100.",
-    attempt: "amount 100 → 200 base units · nonce 1002",
-  },
-  {
-    name: "Nonce replay, double pay",
-    code: "ERR_NONCE_ALREADY_CONSUMED",
-    tx: "AwzQS7XsuGSYnPmvd5jFJzPDs3WDc2gRgSbW3smWq1Cs",
-    vector: "The agent is told the first payment failed and to retry the identical settle. The nonce was consumed by receipt #12.",
-    attempt: "reuse nonce 1002 after receipt #12",
-  },
-  {
-    name: "Budget drain",
-    code: "ERR_BUDGET_EXCEEDED",
-    tx: null,
-    vector: "Repeated plausible-looking settles until cumulative spend crosses the obligation’s budget policy.",
-    attempt: "cumulative spend > policy budget",
-  },
-  {
-    name: "Expired obligation",
-    code: "ERR_OBLIGATION_EXPIRED",
-    tx: null,
-    vector: "Settle is attempted after the obligation’s expiry, stale bills cannot be paid.",
-    attempt: "settle after expiry",
-  },
-  {
-    name: "Settle under a frozen policy",
-    code: "ERR_POLICY_FROZEN",
-    tx: null,
-    vector: "The owner freezes the policy. Every settle is refused while the policy is frozen.",
-    attempt: "settle while policy frozen",
-  },
-];
 
 /* Attestation bundles, in repo under docs/attestation-proofs/. Tx hashes from README.md:311-318. */
 export interface Bundle {
@@ -388,10 +287,10 @@ export interface BreakItScenario {
    Obligation p10-demo-attack-001 on the test vault: recipient
    cynex-agent, 100 base units, nonce 1002. */
 export const AUTHORIZED_TERMS = {
-  obligation: "p10-demo-attack-001",
+  obligation: "usecase-report-002",
   recipient: AGENT,
   amount: "100",
-  nonce: 1002,
+  nonce: 30002,
 } as const;
 
 export const BREAK_IT: BreakItScenario[] = [
@@ -399,8 +298,8 @@ export const BREAK_IT: BreakItScenario[] = [
     key: "recipient",
     label: "Change the recipient",
     code: "ERR_RECIPIENT_SUBSTITUTION",
-    tx: "AFYAq8Sju41NjBFwPmTHbJ1psmsYQWjVdBhmXBZbpa7S",
-    attempt: "settle p10-demo-attack-001 to a different recipient · 100 base units (0.0001 test USDC) · nonce 1002",
+    tx: "EiBHjMBqZfBLZB33H4odbBfskGbVCX1Jor422t5S1cpX",
+    attempt: "settle usecase-report-002 to a different recipient · 100 base units (0.0001 test USDC) · nonce 30002",
     why: "The obligation fixes the recipient on chain. The settle call asked for a different recipient, so the vault refused before moving anything.",
     live: { obligation: "ready", recipient: DEMO_ATTACKER, amount: "100", expectState: "READY" },
   },
@@ -408,8 +307,8 @@ export const BREAK_IT: BreakItScenario[] = [
     key: "amount",
     label: "Change the amount",
     code: "ERR_TERMS_MISMATCH",
-    tx: "43YaxJVggxuZ3E25WfjzkgGBsGAqLrj8nwdUU9RLAQRy",
-    attempt: "settle p10-demo-attack-001 for 200 base units (0.0002 test USDC) instead of the fixed 100 base units (0.0001 test USDC) · nonce 1002",
+    tx: "2NaWqCYiUnh9DMhRCR6JVSDQ3R7yD26U8Auf3qEer91f",
+    attempt: "settle usecase-report-002 for 200 base units (0.0002 test USDC) instead of the fixed 100 base units (0.0001 test USDC) · nonce 30002",
     why: "The obligation fixes the amount at 100 base units (0.0001 test USDC). The settle asked for 200 base units (0.0002 test USDC), so the terms did not match and the vault refused.",
     live: { obligation: "ready", recipient: AGENT, amount: "200", expectState: "READY" },
   },
@@ -417,19 +316,19 @@ export const BREAK_IT: BreakItScenario[] = [
     key: "replay",
     label: "Replay a nonce",
     code: "ERR_NONCE_ALREADY_CONSUMED",
-    tx: "AwzQS7XsuGSYnPmvd5jFJzPDs3WDc2gRgSbW3smWq1Cs",
-    attempt: "settle p10-demo-attack-001 again with nonce 1002, after receipt #12 already consumed it",
-    why: "Nonce 1002 was consumed by receipt #12. Reusing it is a double-pay, so the vault refused.",
-    live: { obligation: "p10-demo-attack-001", recipient: AGENT, amount: "100", expectState: "PAID" },
+    tx: "hG6uhpePR9ZcvCZXZprpXa8rvbAGGQPxD4ZyMpP91F6",
+    attempt: "settle usecase-report-002 again with nonce 30002, after receipt #24 already consumed it",
+    why: "Nonce 30002 was consumed by receipt #24. Reusing it is a double-pay, so the vault refused.",
+    live: { obligation: "usecase-report-002", recipient: AGENT, amount: "100", expectState: "PAID" },
   },
   {
     key: "evidence",
     label: "Remove the evidence",
-    // Simulated display code for the PAID obligation shown in the terms grid (p10-demo-attack-001); a live run against the pending target extracts the real code ERR_INVALID_STATE from the call.
-    code: "ERR_NONCE_ALREADY_CONSUMED",
-    tx: null,
-    attempt: "settle p10-demo-attack-001 with no evidence presented, on an obligation that is already PAID",
-    why: "On the obligation shown here, p10-demo-attack-001, which is already PAID, a live settle returns ERR_NONCE_ALREADY_CONSUMED first, because the nonce check runs before the state check (contract/src/lib.rs:1496-1497). The no-evidence case itself, ERR_INVALID_STATE, applies to a CREATED or EVIDENCE_PENDING obligation, which is the live pending target, not the obligation shown here. This case was not executed on chain in the demo run, so the verdict shown is simulated, not a real on-chain verdict.",
+    // The settle-before-evidence refusal was executed on usecase-report-002 as tx BRXXhezVxYvze3imNHkrShnS8ujUvsShy4f3GtgwpCgQ; the ERR_INVALID_STATE code is inferred from the contract check order, not read directly from the chain.
+    code: "ERR_INVALID_STATE",
+    tx: "BRXXhezVxYvze3imNHkrShnS8ujUvsShy4f3GtgwpCgQ",
+    attempt: "settle usecase-report-002 with no evidence presented, before evidence was submitted",
+    why: "On this obligation, usecase-report-002, settle was attempted before evidence was submitted, so it was not READY and the vault refused with ERR_INVALID_STATE. The code is inferred from the contract check order. The obligation is now PAID as receipt 24, so a live settle today returns ERR_NONCE_ALREADY_CONSUMED first, because the nonce check runs before the state check.",
     live: { obligation: "pending", recipient: AGENT, amount: "100", expectState: "NOT_READY" },
   },
 ];

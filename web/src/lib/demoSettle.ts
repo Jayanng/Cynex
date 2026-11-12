@@ -186,6 +186,25 @@ export function demoButtonReducer(
  * once the demo settles are used up, and never runs after an
  * unconfirmed settle: that tx may still land, so a retry would spend
  * a second obligation. */
+/* Synchronous in-flight guard for the demo settle button. React state
+   updates are async, so a second click before the re-render commits
+   would still see the old idle state and send a second POST. The guard
+   is a plain boolean flipped synchronously, so the second invocation
+   returns false before any dispatch or fetch. */
+export function createInFlightGuard() {
+  let inFlight = false;
+  return {
+    tryAcquire(): boolean {
+      if (inFlight) return false;
+      inFlight = true;
+      return true;
+    },
+    release() {
+      inFlight = false;
+    },
+  };
+}
+
 export function demoButtonCanRun(state: DemoButtonState): boolean {
   if (state.status === "idle" || state.status === "error") return true;
   if (state.status === "success") {
@@ -203,7 +222,7 @@ export function demoButtonCanRun(state: DemoButtonState): boolean {
    with its tx hash is shown, that result replaces it. Live state
    12 Nov 2026, re-verified from chain. */
 export const DEMO_BUTTON_PROVEN_LINE =
-  "Proven live: demo-live-001, receipt 31 PAID, tx 12pi6dZ1CzgvCeLWCCRSvC2iLyTaN7J2fRHtYnbHmcf6, block 277243629.";
+  "Proven live: demo-live-005, receipt 35 PAID, tx D7aRDckcLkt4FghZUGpAkrCLx677NAVjPYrWUvTM2EJe, block 277362593.";
 
 export type DemoSettleOutcome =
   | { outcome: "success"; result: DemoSettleResult }
