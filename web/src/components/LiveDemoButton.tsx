@@ -258,7 +258,7 @@ export function LiveDemoButton({ actions }: { actions?: React.ReactNode }) {
     return (
       <div className="expected">
         <b>Press Run it live.</b>{" "}
-        <>You will see the next receipt, PAID, and a transaction hash.</>
+        <>While demo settles remain, a successful settle shows the next receipt, PAID, and its transaction hash when one is returned.</>
         <span>{DEMO_BUTTON_PROVEN_LINE}</span>
       </div>
     );

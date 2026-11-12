@@ -16,7 +16,7 @@ const VERIFY_CMD = "node frontend/dist-test/cli/cynex.js verify-live " + VAULT_T
 function jestCounts(): [string, string, string] {
   const m = TEST_COUNTS.match(/(\d+) tests passed, (\d+) skipped, (\d+) total/);
   if (m) return [m[1], m[2], m[3]];
-  return ["640", "3", "643"];
+  return ["655", "3", "658"];
 }
 
 export function Docs({ active }: { active?: string }) {
@@ -70,6 +70,22 @@ export function Docs({ active }: { active?: string }) {
               <li>
                 <span className="fn">receipts</span>
                 <span className="tag">VIEW</span>
+              </li>
+              <li>
+                <span className="fn">get_obligation</span>
+                <span className="tag">VIEW</span>
+              </li>
+              <li>
+                <span className="fn">get_policy</span>
+                <span className="tag">VIEW</span>
+              </li>
+              <li>
+                <span className="fn">cancel_expired_ready</span>
+                <span className="tag">WRITE \u00b7 OWNER</span>
+              </li>
+              <li>
+                <span className="fn">ft_on_transfer</span>
+                <span className="tag">WRITE \u00b7 FUNDING</span>
               </li>
             </ul>
           </div>
@@ -186,9 +202,9 @@ export function Docs({ active }: { active?: string }) {
             <p style={{ color: "var(--ink-dim)", lineHeight: 1.6, fontWeight: 500 }}>
               {codeHashIsSnapshot
                 ? L.codeTest.err
-                  ? "The hash of the vault code deployed on NEAR testnet, pinned snapshot from 12 Nov 2026, the live read is unavailable. Both vaults run this code."
-                  : "The hash of the vault code deployed on NEAR testnet, pinned snapshot from 12 Nov 2026, while the live read loads. Both vaults run this code."
-                : "The hash of the vault code deployed on NEAR testnet, read live. Both vaults run this code."}
+                  ? "The hash of the test vault code deployed on NEAR testnet, pinned snapshot from 12 Nov 2026, the live read is unavailable."
+                  : "The hash of the test vault code deployed on NEAR testnet, pinned snapshot from 12 Nov 2026, while the live read loads."
+                : "The hash of the test vault code deployed on NEAR testnet, read live."}
             </p>
           </div>
         </div>

@@ -90,12 +90,12 @@ const KIND_META: Record<AttackKind, { label: string; blurb: string }> = {
   prompt_injection: {
     label: "5. Prompt injection",
     blurb:
-      "Type an instruction that tries to talk the agent into the wrong terms. The vault reads the contract terms, not the prompt, so it still refuses.",
+      "Type an instruction that tries to talk the agent into the wrong terms. The vault reads the contract terms, not the prompt, so wrong terms still refuse.",
   },
   freeform: {
     label: "6. Type anything",
     blurb:
-      "Type anything at all and see if it breaks. Whatever can be read from your text is submitted live, and the vault still refuses.",
+      "Type anything at all and see if it breaks. Whatever can be read from your text is submitted live, and the vault refuses anything but the exact locked terms.",
   },
 };
 
@@ -421,9 +421,7 @@ export function BreakIt() {
         <p className="sec-label">LIVE ATTACK FORM</p>
         <h3>Build your attack</h3>
         <p className="sub">
-          Pick one of six live attacks. Every one submits a real settle
-          attempt to the test vault on chain, and the vault answers with
-          a real verdict and a real transaction hash.
+          Pick one of six live attacks. When one reaches the test vault on chain, it submits a real settle attempt and the vault answers with a real verdict and, when the chain returns one, a real transaction hash.
         </p>
         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
           {KIND_ORDER.map((k) => (
@@ -484,8 +482,7 @@ export function BreakIt() {
             />
             {kind === "change_recipient" ? (
               <p className="sub">
-                Amount stays locked at {DEMO_LIVE_TERMS.amount} base units, so
-                only the recipient is being tested.
+                Amount starts at the locked {DEMO_LIVE_TERMS.amount} base units. Leave it there and only the recipient is being tested.
               </p>
             ) : null}
             <label className="flab" htmlFor="atkAmount">
@@ -507,8 +504,7 @@ export function BreakIt() {
             {kind === "change_amount" ? (
               <>
                 <p className="sub">
-                  Recipient stays locked at {<AccountLink account={DEMO_LIVE_TERMS.recipient} />}, so
-                  only the amount is being tested.
+                  Recipient starts at the locked {<AccountLink account={DEMO_LIVE_TERMS.recipient} />}. Leave it there and only the amount is being tested.
                 </p>
                 <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
                   <button
@@ -840,7 +836,7 @@ export function BreakIt() {
           </p>
         </div>
         <div style={{ marginTop: "1.6rem" }}>
-          <p className="sec-label">YOUR LIVE ATTEMPTS · ON CHAIN</p>
+          <p className="sec-label">YOUR LIVE ATTEMPTS</p>
           {attempts.length === 0 ? (
             <p className="sub">
               No live attempts yet in this browser. Attack once and the verdict, error code and

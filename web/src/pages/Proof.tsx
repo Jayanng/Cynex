@@ -62,7 +62,7 @@ const RECEIPTS: { index: string; obligation: string; tx: string; block: string }
 function jestCounts(): [string, string, string] {
   const m = TEST_COUNTS.match(/(\d+) tests passed, (\d+) skipped, (\d+) total/);
   if (m) return [m[1], m[2], m[3]];
-  return ["640", "3", "643"];
+  return ["655", "3", "658"];
 }
 
 export function Proof() {
@@ -262,7 +262,7 @@ export function Proof() {
                 <tr>
                   <td data-h="ITEM">Receipt counts and policy spend</td>
                   <td data-h="STATUS">
-                    <span className="st-real">REAL · LIVE</span>
+                    <span className="st-real">REAL</span>
                   </td>
                   <td data-h="NOTE">{countsLine}</td>
                 </tr>
@@ -304,9 +304,9 @@ export function Proof() {
                 <tr>
                   <td data-h="ITEM">Break it attack form</td>
                   <td data-h="STATUS">
-                    <span className="st-sim">REPLAYS RECORD</span>
+                    <span className="st-real">LIVE</span>
                   </td>
-                  <td data-h="NOTE">Shows the recorded on-chain verdict for that attack, sends no transaction</td>
+                  <td data-h="NOTE">Submits a real settle to the test vault on chain and shows the vault's verdict and its transaction hash when one comes back. The four recorded attacks are listed separately on Break it.</td>
                 </tr>
                 <tr>
                   <td data-h="ITEM">Tamper and detect panel</td>

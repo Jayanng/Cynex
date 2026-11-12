@@ -57,8 +57,7 @@ export function Attack({ anchor }: { anchor?: string }) {
           </h1>
           <p className="hero-sub">
             Pick one of six live attacks below and try to settle. <strong>Any change from the locked terms is
-            refused.</strong> The form submits your attempt to the test vault on chain, and the vault answers with a
-            real verdict and a real transaction hash.
+            refused.</strong> When your attempt reaches the test vault on chain, the vault answers with a real verdict and, when the chain returns one, a real transaction hash.
           </p>
         </div>
       </div>
@@ -102,8 +101,7 @@ export function Attack({ anchor }: { anchor?: string }) {
               <p className="sec-label">DO NOT TAKE OUR WORD FOR IT</p>
               <h2 className="sec-title">Run it live.</h2>
               <p className="sec-lede" style={{ marginBottom: "2rem" }}>
-                One click settles the next ready demo obligation on testnet, on its locked terms, and writes a real
-                receipt.
+                One click settles the next ready demo obligation on testnet, on its locked terms, and a successful settle writes a real receipt, while demo settles remain.
               </p>
               <LiveDemoButton />
               <p className="sec-lede" style={{ marginTop: "1rem", fontSize: "0.9rem" }}>
@@ -149,8 +147,7 @@ export function Attack({ anchor }: { anchor?: string }) {
           </h2>
           <p className="sec-lede">
             Receipts are linked: each receipt carries the hash of the one before it. Change the amount on receipt 24
-            below and the link into the next receipt no longer matches. The verifier flags it. Try putting{" "}
-            <strong>100</strong> back.
+            below and the link into the next receipt no longer matches. The verifier flags it. Reset puts <strong>100</strong> back.
           </p>
           <TamperPanel id="break" />
         </section>
