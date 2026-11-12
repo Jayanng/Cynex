@@ -66,7 +66,7 @@ export function Strip() {
       <div className="wrap">
         <div className="live-head">
           <span className="dot" aria-hidden="true"></span>
-          <span>LIVE STATE \u00b7 NEAR TESTNET</span>
+          <span>LIVE STATE · NEAR TESTNET</span>
           {checked ? <span>CHECKED {checked}</span> : L.anyErr ? <Unavail /> : <LoadTxt />}
         </div>
         <div className="live-grid">
