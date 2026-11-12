@@ -11,6 +11,7 @@ import { Attack } from "./pages/Attack";
 import { Docs } from "./pages/Docs";
 import { Proof } from "./pages/Proof";
 import { Logo } from "./components/Logo";
+import { LiveDemoButton } from "./components/LiveDemoButton";
 import { applySandboxRedirect, effectiveRoute, pageForRoute, parseHash, titleForPage } from "./lib/routes";
 
 function parseRoute(): string[] {
@@ -55,6 +56,9 @@ function Header({ page }: { page: string }) {
           ))}
         </nav>
         <div className="flex items-center gap-2 flex-none">
+          <span className="hidden md:block">
+            <LiveDemoButton variant="nav" top={64} />
+          </span>
           <div className="netpill mono" title="Live RPC: test.rpc.fastnear.com">
             <span className={"livedot" + (live.anyErr ? " err" : "")} id="netdot"></span>
             <span id="nettxt">{nettxt}</span>

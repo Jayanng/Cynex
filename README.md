@@ -109,7 +109,7 @@ RUSTUP_TOOLCHAIN=1.93.0 cargo clippy --all-targets -- -D warnings
 RUSTUP_TOOLCHAIN=1.93.0 cargo near build non-reproducible-wasm
 ```
 
-**2. Frontend and services.** From `frontend/`. See 405 tests passed, 3 skipped, 408 total:
+**2. Frontend and services.** From `frontend/`. See 463 tests passed, 3 skipped, 466 total:
 
 ```sh
 npm install

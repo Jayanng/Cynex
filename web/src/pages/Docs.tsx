@@ -7,7 +7,7 @@
    content column, so the page cannot scroll sideways. */
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { AGENT, CLI_COMMANDS, COMMIT, MASTER_TIP, CONSOLE_FACTS, CONSOLE_RUN, CP, DOC_COMMITS, MCP_FACTS, MCP_RUN, MCP_TOOLS, RPC_URL, SETTLE_CODES, TOKEN, VAULT_PROD, VAULT_TEST } from "../lib/data";
+import { AGENT, CLI_COMMANDS, COMMIT, MASTER_TIP, CONSOLE_FACTS, CONSOLE_RUN, CP, DOC_COMMITS, TEST_COUNTS, MCP_FACTS, MCP_RUN, MCP_TOOLS, RPC_URL, SETTLE_CODES, TOKEN, VAULT_PROD, VAULT_TEST } from "../lib/data";
 import { StripSection } from "../components/Strip";
 import { Badge, CmdBlock, CodePanel, HashChip, Icon } from "../components/ui";
 import { Footer } from "../components/shared";
@@ -452,7 +452,7 @@ neutral: no contract, or first observation, not a penalty`}
           <div className="flex flex-col">
             {[
               ["Typecheck (web build, tsc -b)", "clean"],
-              ["Jest", "20 suites passed, 1 failed, 1 skipped · 393 tests passed, 1 failed, 3 skipped, 397 total"],
+              ["Jest", TEST_COUNTS],
               ["Conformance", "6 / 6"],
             ].map(([k, v], i, arr) => (
               <div

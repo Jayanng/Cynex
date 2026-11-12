@@ -11,6 +11,7 @@ export const TOKEN = "usdc.fakes.testnet";
 export const REPO = "https://github.com/Jayanng/Cynex";
 export const COMMIT = "a79e426";
 export const MASTER_TIP = "e677e53"; // master tip the Docs badges were verified against; bump on release. COMMIT stays pinned as the playground snapshot provenance.
+export const TEST_COUNTS = "463 tests passed, 3 skipped, 466 total"; // single source for the Jest counts shown on the site; update README.md by hand to match. Update from a fresh run of: NODE_OPTIONS=--experimental-vm-modules npx jest --roots src ../services --runInBand (from frontend/).
 export const ACME = "acme-supplies.testnet";
 export const DEMO_POLICY_ID = "p6-001";
 export const DEMO_POLICY_PROD_ID = "p5-prod-001";
@@ -55,10 +56,12 @@ export const CP: Record<string, string> = {
     "node frontend/dist-test/cli/cynex.js verify --csv cynex-testvault.cynexmaster.testnet > receipts.csv",
   verifyProd:
     "node frontend/dist-test/cli/cynex.js verify-live cynex-vault.cynexmaster.testnet",
+  mcpdemo:
+    "cd frontend && npm run mcp:build && npm run mcp:demo",
   curlProd:
     'curl -s https://test.rpc.fastnear.com -H "content-type: application/json" -d \'{"jsonrpc":"2.0","id":"1","method":"query","params":{"request_type":"view_code","finality":"final","account_id":"cynex-vault.cynexmaster.testnet"}}\'',
   coldrun:
-    "git clone https://github.com/Jayanng/Cynex.git\ncd Cynex/frontend\nnpm install\nnpm run typecheck\nNODE_PATH=$PWD/node_modules npm run jest  # 20 suites passed, 1 failed, 1 skipped, 393 tests passed, 1 failed, 3 skipped, 397 total\nnpx tsc --outDir dist-test --rootDir .. --module NodeNext --moduleResolution NodeNext --target ES2022 --strict --skipLibCheck --esModuleInterop --lib es2022,dom --typeRoots ./node_modules/@types ../agent/console.ts ../cli/cynex.ts ../services/verifier/verifier.ts ../services/verifier/verify.test.ts ../services/executor/executor.ts ../services/executor/executor.test.ts ../services/console/console.test.ts ../services/reputation/reputation.ts ../services/reputation/snapshot.ts ../services/reputation/live-sources.ts || true  # tsc exits 2 with 5 known near-api-js type errors (README.md:506-509); dist-test/ still works\ncd ..\nnode frontend/dist-test/cli/cynex.js verify-live cynex-testvault.cynexmaster.testnet",
+    "git clone https://github.com/Jayanng/Cynex.git\ncd Cynex/frontend\nnpm install\nnpm run typecheck\nNODE_PATH=$PWD/node_modules npm run jest  # " + TEST_COUNTS + "\n# builds console, CLI, verifier, executor, reputation: exits 2 with 5 known near-api-js type errors (README.md:506-509), dist-test/ still works\nnpx tsc --outDir dist-test --rootDir .. --module NodeNext --moduleResolution NodeNext --target ES2022 --strict --skipLibCheck --esModuleInterop --lib es2022,dom --typeRoots ./node_modules/@types ../agent/console.ts ../cli/cynex.ts ../services/verifier/verifier.ts ../services/verifier/verify.test.ts ../services/executor/executor.ts ../services/executor/executor.test.ts ../services/console/console.test.ts ../services/reputation/reputation.ts ../services/reputation/snapshot.ts ../services/reputation/live-sources.ts || true  # tsc exits 2 with 5 known near-api-js type errors (README.md:506-509); dist-test/ still works\ncd ..\nnode frontend/dist-test/cli/cynex.js verify-live cynex-testvault.cynexmaster.testnet",
   att13324:
     "outlayer-verify bundle docs/attestation-proofs/attestation-proof-prod-tee-001.json --offline",
   att10640:
@@ -380,6 +383,17 @@ export interface BreakItScenario {
   why: string;
   live: { obligation: string; recipient: string; amount: string; expectState: string };
 }
+/* The authorized terms the BreakIt form is judged against, one source so
+   the form logic, the authorized line, and the terms grid cannot drift.
+   Obligation p10-demo-attack-001 on the test vault: recipient
+   cynex-agent, 100 base units, nonce 1002. */
+export const AUTHORIZED_TERMS = {
+  obligation: "p10-demo-attack-001",
+  recipient: AGENT,
+  amount: "100",
+  nonce: 1002,
+} as const;
+
 export const BREAK_IT: BreakItScenario[] = [
   {
     key: "recipient",

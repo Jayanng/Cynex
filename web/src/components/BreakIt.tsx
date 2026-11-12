@@ -13,10 +13,12 @@
 
 import { useState } from "react";
 import { JsonRpcProvider, KeyPairSigner, Account } from "near-api-js";
-import { AGENT, BREAK_IT, DEMO_ATTACKER, DEMO_LIVE_LABEL, DEMO_TOKEN, RPC_URL, VAULT_TEST } from "../lib/data";
+import { AUTHORIZED_TERMS, BREAK_IT, DEMO_ATTACKER, DEMO_LIVE_LABEL, DEMO_TOKEN, RPC_URL, VAULT_TEST } from "../lib/data";
+import { evaluateBreakItForm, type BreakItFormMode, type BreakItFormOut } from "../lib/breakItForm";
 import { useLive } from "../lib/live";
 import { getObligation, type Obligation } from "../lib/near";
 import { Badge, HashChip, TermsGrid } from "./ui";
+import { RefusalBreakdown } from "./shared";
 
 function demoKeyConfigured(): boolean {
   return !!(
@@ -80,6 +82,10 @@ interface LiveOut {
 export function BreakIt() {
   const { live, refreshLive } = useLive();
   const [selected, setSelected] = useState(0);
+  const [formRecipient, setFormRecipient] = useState(DEMO_ATTACKER);
+  const [formAmount, setFormAmount] = useState<string>(AUTHORIZED_TERMS.amount); // string, not the as-const literal type
+  const [formMode, setFormMode] = useState<BreakItFormMode>("terms");
+  const [formOut, setFormOut] = useState<BreakItFormOut | null>(null);
   const [liveStatus, setLiveStatus] = useState<{ text: string; cls: string }>({ text: "not configured", cls: "b-dim" });
   const [liveOut, setLiveOut] = useState<LiveOut | null>(null);
   const [liveBusy, setLiveBusy] = useState(false);
@@ -89,6 +95,25 @@ export function BreakIt() {
   const renderBreak = (i: number) => {
     setSelected(i);
     setLiveOut(null);
+    setFormOut(null);
+    /* The buttons are the fast path to each named attack; they set the
+       form to that attack's tampered values, so Run attack shows the
+       matching refusal. Recipient and amount attacks change a field;
+       replay resubmits the consumed nonce and remove-evidence submits
+       with no evidence, both keeping the authorized recipient and amount. */
+    const sc = BREAK_IT[i];
+    setFormMode(sc.key === "replay" ? "replay" : sc.key === "evidence" ? "evidence" : "terms");
+    setFormRecipient(sc.key === "recipient" ? DEMO_ATTACKER : AUTHORIZED_TERMS.recipient);
+    /* The inflated amount is twice the authorized amount, so it follows AUTHORIZED_TERMS. */
+    setFormAmount(sc.key === "amount" ? String(BigInt(AUTHORIZED_TERMS.amount) * 2n) : AUTHORIZED_TERMS.amount);
+  };
+
+  /* Free-form path: evaluate the proposed terms in the browser against
+     the fixed on-chain terms. The logic lives in lib/breakItForm so Jest
+     can cover it; the refusal shown is the recorded one from the test
+     vault, not a fresh live attempt from this click. */
+  const runFormAttack = () => {
+    setFormOut(evaluateBreakItForm(formRecipient, formAmount, formMode));
   };
 
   const tryLiveAttack = async (i: number) => {
@@ -290,10 +315,94 @@ export function BreakIt() {
         </div>
         <h2 className="text-2xl md:text-3xl mb-2">Pick an attack. Watch the vault refuse.</h2>
         <p className="dim text-sm max-w-3xl leading-relaxed mb-5">
-          Your attempt is a simulation, labelled as one, it is evaluated in your browser against the real on-chain obligation terms. The
-          refusal it shows is the real on-chain verdict for the first three attacks, which were executed on the test vault and link to their
-          real refusal transactions. The fourth attack was never executed on chain, so its verdict is simulated, not a real on-chain verdict.
+          The obligation on chain names one recipient and one amount. Change either one and submit. The refusal below is the recorded one
+          from the test vault, not a fresh live attempt from your click.
         </p>
+        <div className="mb-5">
+          <div className="grid gap-4 md:grid-cols-2 mb-4">
+            <div>
+              <label className="mono text-xs dim2 block mb-2" htmlFor="bi-recipient">
+                Proposed recipient
+              </label>
+              <input
+                id="bi-recipient"
+                className="input w-full mono"
+                value={formRecipient}
+                onChange={(e) => {
+                  setFormRecipient(e.target.value);
+                  setFormMode("terms");
+                }}
+              />
+            </div>
+            <div>
+              <label className="mono text-xs dim2 block mb-2" htmlFor="bi-amount">
+                Proposed amount, base units
+              </label>
+              <input
+                id="bi-amount"
+                className="input w-full mono"
+                value={formAmount}
+                onChange={(e) => {
+                  setFormAmount(e.target.value);
+                  setFormMode("terms");
+                }}
+              />
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <button className="btn btn-primary sm" onClick={runFormAttack}>
+              Run attack
+            </button>
+            <span className="mono text-xs dim2">
+              Authorized: <span className="text-ink">{AUTHORIZED_TERMS.recipient}</span>, {AUTHORIZED_TERMS.amount} base units, nonce {AUTHORIZED_TERMS.nonce}.
+            </span>
+          </div>
+          {formMode === "replay" ? (
+            <p className="mono text-xs dim2 mt-3">Replay selected: resubmits nonce {AUTHORIZED_TERMS.nonce}, already consumed by receipt 12.</p>
+          ) : formMode === "evidence" ? (
+            <p className="mono text-xs dim2 mt-3">Remove the evidence selected: submits with no evidence presented.</p>
+          ) : null}
+          {formOut ? (
+            <div className="mt-4 border-t pt-4 fadein" style={{ borderColor: "var(--line2)" }}>
+              {formOut.kind === "refused" ? (
+                <>
+                  <div className="flex flex-wrap items-center gap-3 mb-2">
+                    <Badge value="REFUSED" extra={formOut.code} />
+                  </div>
+                  <p className="dim text-sm leading-relaxed mb-3">{formOut.text}</p>
+                  {formOut.tx ? (
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="mono text-xs dim2">recorded refusal tx</span>
+                      <HashChip hash={formOut.tx} />
+                      <span className="mono text-xs text-ink">0 tokens moved</span>
+                    </div>
+                  ) : null}
+                  <p className="mono text-xs dim2 mt-3">
+                    {formOut.note ??
+                      "Recorded refusal from the test vault. This panel checks your terms in the browser against the recorded refusal; it never submits a live settle. Live settles happen only through the Run it live button, which uses a scoped settle-only key held server side."}
+                  </p>
+                </>
+              ) : formOut.kind === "invalid" ? (
+                <>
+                  <p className="dim text-sm leading-relaxed">{formOut.text}</p>
+                  <p className="mono text-xs dim2 mt-3">
+                    Nothing was submitted, and no live attempt was made from this panel.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="dim text-sm leading-relaxed">{formOut.text}</p>
+                  <p className="mono text-xs dim2 mt-3">
+                    Nothing was refused, because the proposed terms match the authorized terms.
+                  </p>
+                  <p className="mono text-xs dim2 mt-3">
+                    No live attempt was made from this panel. Live settles happen only through the Run it live button, which uses a scoped settle-only key held server side.
+                  </p>
+                </>
+              )}
+            </div>
+          ) : null}
+        </div>
         <div className="flex flex-wrap gap-2 mb-5">
           {BREAK_IT.map((sc, i) => (
             <button key={sc.key} className={"btn sm " + (i === selected ? "btn-primary" : "")} onClick={() => renderBreak(i)}>
@@ -306,10 +415,10 @@ export function BreakIt() {
             <div className="mb-4">
               <TermsGrid
                 terms={[
-                  ["obligation", "p10-demo-attack-001"],
-                  ["recipient (fixed)", AGENT],
-                  ["amount (fixed)", "100 base units (0.0001 USDC)"],
-                  ["nonce", "1002"],
+                  ["obligation", AUTHORIZED_TERMS.obligation],
+                  ["recipient (fixed)", AUTHORIZED_TERMS.recipient],
+                  ["amount (fixed)", AUTHORIZED_TERMS.amount + " base units (0.0001 USDC)"],
+                  ["nonce", String(AUTHORIZED_TERMS.nonce)],
                   ["evidence", "PREIMAGE"],
                 ]}
               />
@@ -361,6 +470,13 @@ export function BreakIt() {
             )}
           </div>
           <div id="live-out" className="mt-4">{liveOut ? liveOut.html : null}</div>
+        </div>
+        <div className="mt-6 border-t pt-5" style={{ borderColor: "var(--line2)" }}>
+          <h3 className="text-lg mb-2 text-ink">Why the vault refused, item by item</h3>
+          <p className="dim text-sm leading-relaxed mb-4 max-w-3xl">
+            The same four checks as on Home, with the live refusal transaction next to the recipient row. Every row ends with 0 tokens moved.
+          </p>
+          <RefusalBreakdown />
         </div>
       </div>
     </section>

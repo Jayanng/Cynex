@@ -19,6 +19,7 @@
   --neg:#dc2626; --neg-text:#b91c1c; --neg-bg:#fdeaea;
   --warn-text:#92400e;
   --green:#15803d; --red:#b91c1c; --amber:#92400e;
+  --band-red:#ff8f8f; --band-red-border:#5a2b2b; --band-red-bg:#2b1d1a; --band-green:#4ade80; --band-border:#4a4238;
 }
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
@@ -35,7 +36,7 @@ a{color:var(--accent-text);text-decoration:none} a:hover{color:#7c3e0c}
 :focus-visible{outline:2px solid var(--accent-text);outline-offset:2px}
 h1,h2,h3{font-weight:500;letter-spacing:0}
 .kicker{font-family:'Instrument Sans',sans-serif;font-size:13px;font-weight:500;color:var(--muted)}
-.panel{background:var(--card);border:1px solid var(--line);border-radius:12px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;min-width:0}
 .panel-h{transition:border-color .18s cubic-bezier(.22,1,.36,1)}
 .panel-h:hover{border-color:rgba(31,27,22,.2)}
 .btn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:12px 20px;font-weight:500;font-size:14px;color:var(--txt);background:var(--raised);cursor:pointer;transition:color .15s cubic-bezier(.22,1,.36,1),background-color .15s cubic-bezier(.22,1,.36,1),border-color .15s cubic-bezier(.22,1,.36,1);white-space:normal}
@@ -53,7 +54,7 @@ h1,h2,h3{font-weight:500;letter-spacing:0}
 .b-refused,.b-blocked{color:var(--neg-text);background:var(--neg-bg)}
 .b-warn{color:var(--warn-text);background:var(--accent-soft)}
 .b-dim{color:var(--muted)}
-.codechip{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--neg-text);border:1px solid var(--line);background:var(--neg-bg);border-radius:6px;padding:4px 8px;white-space:normal;overflow-wrap:anywhere}
+.codechip{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--neg-text);border:1px solid var(--line);background:var(--neg-bg);border-radius:6px;padding:4px 8px;white-space:nowrap}
 .hashchip{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--raised);border-radius:8px;padding:4px 8px 4px 12px;font-size:12px;color:var(--secondary);font-family:'JetBrains Mono',monospace;max-width:100%;overflow:hidden;min-width:0}
 .hashchip>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .icbtn{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:8px;color:var(--muted);cursor:pointer;border:none;background:transparent;flex:none;transition:color .15s cubic-bezier(.22,1,.36,1),background-color .15s cubic-bezier(.22,1,.36,1);padding:0}
@@ -76,7 +77,7 @@ h1,h2,h3{font-weight:500;letter-spacing:0}
    than its content. Measured pre-fix, /docs overflowed at 641, 700, 767,
    800, 860, 900, 926, 1000, 1100 and 1200px, so no media-query ceiling
    (767 or 860) closes the gap. */
-@media(max-width:640px){.wrap{padding-inline:20px}.hero-h{font-size:clamp(34px,10.5vw,44px)}.attempt{max-width:100%}.badge{text-align:left;line-height:1.6}.btn{text-align:left}}
+@media(max-width:640px){.wrap{padding-inline:20px}.hero-h{font-size:clamp(34px,10.5vw,44px)}.attempt{max-width:100%}.badge{text-align:left;line-height:1.6}.btn{text-align:left}.tbl th{white-space:normal}}
 .strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
 .strip-cell{padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--card);min-width:0}
 .strip-cell:last-child{grid-column:span 2}
@@ -113,7 +114,7 @@ h1,h2,h3{font-weight:500;letter-spacing:0}
 .term{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 16px;min-width:0}
 @media(max-width:640px){.terms-grid{gap:12px}}
 .term .tl{font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:500}
-.term .tv{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--txt);overflow-wrap:anywhere}
+.term .tv{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--txt);overflow-wrap:normal;overflow-x:auto;white-space:nowrap}
 .navlink{padding:8px 12px;border-radius:8px;font-size:14px;font-weight:500;color:var(--secondary);transition:color .15s cubic-bezier(.22,1,.36,1),background-color .15s cubic-bezier(.22,1,.36,1);position:relative}
 .navlink:hover{color:var(--txt)}
 .navlink.active{color:var(--txt);background:var(--raised);box-shadow:inset 0 -2px 0 var(--accent)}
@@ -148,6 +149,12 @@ mark{background:var(--accent-soft);color:var(--accent-text);border-radius:4px;pa
 ::selection{background:rgba(243,146,60,.3)}
 .fadein{animation:fadein .45s cubic-bezier(.22,1,.36,1) both}
 @keyframes fadein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* Conflict line above the hero, and the expected-result box under the
+   Run it live button. */
+.conflict{font-size:20px;font-weight:700;letter-spacing:-.01em;margin:22px 0 0;color:var(--neg-text)}
+.expected{background:var(--accent-soft);border:1px solid #f3cfa5;border-radius:12px;padding:14px 18px;font-size:15px;margin-top:18px}
+.expected span{display:block;font-size:13.5px;color:var(--secondary);margin-top:4px}
 
 /* ---------- Swiss: the Attack header is an ink band ----------
    Near-black ground, cream type, the orange square in the C mark is the

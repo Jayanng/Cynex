@@ -1,10 +1,10 @@
 /* Cynex web, shared page fragments.
-   Ported from the showcase: refusal panel, trust row, verify section,
+   Refusal band, refusal breakdown, trust row, verify section,
    reputation gate, footer, and the live counts line. */
 
-import { AGENT, CP, EX_TX, REPO } from "../lib/data";
+import { AGENT, CP, REPO, TEST_COUNTS, USECASE } from "../lib/data";
 import { useLive } from "../lib/live";
-import { Icon, Badge, HashChip, Unavail, LoadTxt } from "./ui";
+import { Icon, Badge, HashChip, Unavail, LoadTxt, CmdBlock } from "./ui";
 import { Logo } from "./Logo";
 
 /* ---------- footer ---------- */
@@ -58,37 +58,156 @@ export function CountsLine() {
   );
 }
 
-/* ---------- refusal panel (first screen, real on-chain refusal) ---------- */
+/* ---------- refusal breakdown: the four checks behind receipt 24 ----------
+   Rows are data-driven from USECASE.attacks: the tx hashes and error codes
+   come from the data, never hardcoded here. The check names and the plain
+   wording of what was wrong are display text, keyed by error code. */
+const REFUSAL_META: Record<string, [string, string]> = {
+  ERR_INVALID_STATE: ["Evidence missing", "Settle called before evidence was submitted."],
+  ERR_RECIPIENT_SUBSTITUTION: ["Recipient changed", "Proposed recipient did not match the recipient fixed at authorization."],
+  ERR_TERMS_MISMATCH: ["Amount changed", "Proposed 200 base units, authorized 100."],
+  ERR_NONCE_ALREADY_CONSUMED: ["Replay", "Same nonce reused after the order was paid."],
+};
+
+export function RefusalBreakdown({ dark }: { dark?: boolean }) {
+  const rows = USECASE.attacks.filter((a) => a.code !== "PAID");
+  const th = dark ? { color: "var(--bg)", opacity: 0.6 } : undefined;
+  const td = dark ? { color: "var(--bg)" } : undefined;
+  return (
+    <div className="overflow-x-auto">
+      <table className="tbl">
+        <thead>
+          <tr>
+            <th style={th}>Check</th>
+            <th style={th}>What was wrong</th>
+            <th style={th}>Error code</th>
+            <th style={th}>Evidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((a) => {
+            const meta = REFUSAL_META[a.code] ?? [a.label, ""];
+            return (
+              <tr key={a.code}>
+                <td style={td}>{meta[0]}</td>
+                <td style={td}>{meta[1]}</td>
+                <td>
+                  <span className="codechip">{a.code}</span>
+                </td>
+                <td style={td}>
+                  <span className="inline-flex flex-wrap items-center gap-2">
+                    {a.tx ? (
+                      <HashChip hash={a.tx} />
+                    ) : (
+                      <span className="mono text-xs dim2">No tx</span>
+                    )}
+                    <span className="mono text-xs dim2">0 tokens moved</span>
+                  </span>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+
+/* ---------- refusal panel: the dark band, used once, for the refusal ---------- */
 export function RefusalPanel() {
   return (
-    <section className="wrap pt-10">
-      <div className="panel p-6 fadein">
-        <div className="flex flex-wrap items-center gap-3 mb-3">
-          <span className="kicker">
-            Live refusal, already on chain
-          </span>
-          <Badge value="REFUSED" extra="ERR_RECIPIENT_SUBSTITUTION" />
-        </div>
-        <p className="text-lg md:text-xl leading-snug text-ink max-w-3xl">
-          The submitted settle tried to pay a different recipient instead of the authorized recipient. The vault refused.
+    <section className="wrap mt-12 md:mt-14">
+      <div className="band-ink p-6 md:p-8">
+        <div className="kicker mb-3">01&nbsp;&nbsp;The refusal</div>
+        <h2 className="text-2xl md:text-3xl mb-3" style={{ color: "var(--bg)" }}>
+          This already happened. On chain. Not a story.
+        </h2>
+        <p className="dim text-sm md:text-base leading-relaxed max-w-3xl">
+          The strongest claim Cynex makes is a negative one: a compromised agent cannot move money it was not told to move. Here is the transaction that proves it.
         </p>
-        <p className="dim text-sm mt-2 max-w-3xl">
-          Obligation <span className="mono text-[13px] text-ink">p10-demo-attack-001</span> · 100 base units (0.0001 test USDC) · nonce 1002 ·
-          the terms are fixed on chain, so the injected instruction was worthless. In the executed tx the proposed recipient was the owner
-          account, cynexmaster.testnet. <b className="text-ink">0 tokens moved.</b>
+        <div className="grid md:grid-cols-2 gap-8 mt-8 items-start">
+          <div>
+            <span
+              className="mono text-[13px] inline-block rounded-lg border px-4 py-3"
+              style={{ letterSpacing: ".12em", color: "var(--band-red)", borderColor: "var(--band-red-border)", background: "var(--band-red-bg)" }}
+            >
+              REFUSED · ERR_RECIPIENT_SUBSTITUTION
+            </span>
+            <div className="mono text-[13px] space-y-2 mt-5">
+              <div className="flex justify-between gap-4">
+                <span className="dim">Attempt</span>
+                <span className="text-right" style={{ color: "var(--bg)" }}>Pay a different account than the order names</span>
+              </div>
+              <div className="flex justify-between gap-4 items-center">
+                <span className="dim">Tx</span>
+                <HashChip hash="EiBHjMBqZfBLZB33H4odbBfskGbVCX1Jor422t5S1cpX" />
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="dim">Moved</span>
+                <span style={{ color: "var(--band-green)", fontWeight: 600 }}>0 tokens</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="dim">Vault</span>
+                <span className="text-right" style={{ color: "var(--bg)", whiteSpace: "nowrap" }}>cynex-testvault.cynexmaster.testnet</span>
+              </div>
+            </div>
+          </div>
+          <div>
+            <p className="dim leading-relaxed mb-5">
+              The vault does not trust the caller, the prompt, or the agent. It reads the order it was given at authorization, compares the request to it, and answers with a code. A refusal is the product working, and every refusal is a receipt you can open.
+            </p>
+            <a className="btn" href="#/attack" style={{ borderColor: "var(--band-border)", color: "var(--bg)", background: "transparent" }}>
+              Break it yourself →
+            </a>
+          </div>
+        </div>
+        <h3 className="text-xl mt-10 mb-2" style={{ color: "var(--bg)" }}>
+          Why the vault refused, item by item
+        </h3>
+        <p className="dim text-sm leading-relaxed max-w-3xl mb-4">
+          Four checks, four refusals, before the correct settle in receipt 24. Each row is one check the vault ran against the authorized terms.
         </p>
-        <div className="flex flex-wrap items-center gap-3 mt-4">
-          <span className="mono text-xs dim2">refusal tx</span>
-          <HashChip hash="AFYAq8Sju41NjBFwPmTHbJ1psmsYQWjVdBhmXBZbpa7S" />
-          <a className="btn btn-primary sm" href={EX_TX("AFYAq8Sju41NjBFwPmTHbJ1psmsYQWjVdBhmXBZbpa7S")} target="_blank" rel="noopener">
-            Read it from the chain
-          </a>
-        </div>
-        <div className="mono text-xs dim2 mt-3">
-          Historical fact, executed on the test vault, not a simulation. The chain read is live; the refusal itself already happened.
-        </div>
+        <RefusalBreakdown dark />
+        <p className="mono text-xs dim mt-4">
+          Receipt 24, usecase-report-002: four refusals, then PAID. The four txs above are the refusals.
+        </p>
       </div>
     </section>
+  );
+}
+
+
+/* ---------- verify home: one verify command on Home, with live expected output ---------- */
+export function VerifyHome() {
+  const { live: L } = useLive();
+  const count = L.recTest.v;
+  return (
+    <div>
+      <div className="mb-3">
+        <CmdBlock cmdKey="verify" />
+      </div>
+      <div className="flex flex-wrap items-center gap-4">
+        <span className="mono text-xs dim2">Expected:</span>
+        {L.recTest.err ? (
+          <Unavail />
+        ) : count == null ? (
+          <LoadTxt />
+        ) : (
+          <span className="mono text-[13px]">
+            every row verified_ok = true, {count} receipts on the test vault, all ok.
+          </span>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-4 mt-3">
+        <span data-live-region="counts">
+          <CountsLine />
+        </span>
+        <a className="mono text-xs inline-flex items-center gap-2" style={{ color: "var(--accent-text)" }} href="#/proof">
+          Full record, Proof →
+        </a>
+      </div>
+    </div>
   );
 }
 
@@ -116,7 +235,7 @@ export function TrustRow() {
     <section className="wrap mt-8">
       <div className="panel p-6">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-          {cell("393 tests passing", "20 suites passed, 1 failed, 1 skipped \u00b7 393 tests passed, 1 failed, 3 skipped, 397 total \u00b7 Jest")}
+          {cell("463 tests passing", TEST_COUNTS + " \u00b7 Jest")}
           {cell("25 error codes", "defined in the contract, 11 returned by settle")}
           <div data-live-region="trustreceipts">{receiptsCell()}</div>
           {cell("4 attestation bundles", "in the repo, verify offline")}

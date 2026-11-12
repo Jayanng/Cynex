@@ -15,8 +15,11 @@
     "src",
     "scripts"
   ],
-  // route-smoke.test.ts imports web/src/lib/routes.ts, which sits outside this project rootDir; tsc would fail TS6059. The test is typechecked by ts-jest when jest runs, and routes.ts is typechecked by web tsc -b.
+  // route-smoke.test.ts imports web/src/lib/routes.ts, which sits outside this project rootDir; tsc would fail TS6059. The test is typechecked by ts-jest when jest runs, and routes.ts is typechecked by web tsc -b. The same holds for the demo-settle and breakIt tests below, which import web/src and web/api.
   "exclude": [
-    "src/route-smoke.test.ts"
+    "src/route-smoke.test.ts",
+    "src/demoSettle.test.ts",
+    "src/breakItForm.test.ts",
+    "src/demoSettleApi.test.ts"
   ]
 }

@@ -10,6 +10,7 @@ import { useLive } from "../lib/live";
 import { StripSection } from "../components/Strip";
 import { Badge, ChainReadOut, CmdBlock, CopyButton, HashChip, Icon, ReadOnlyBadge, TermsGrid } from "../components/ui";
 import { Gate, Footer, CountsLine } from "../components/shared";
+import { LiveDemoButton } from "../components/LiveDemoButton";
 
 /* ---------- guided ---------- */
 function Guided({ anchor }: { anchor?: string }) {
@@ -148,6 +149,9 @@ export function Demo({ anchor }: { anchor?: string }) {
       </section>
       <StripSection />
       <Guided anchor={anchor} />
+      <section className="wrap mt-10">
+        <LiveDemoButton variant="hero" />
+      </section>
       <section className="wrap mt-10">
         <div className="panel p-6">
           <div className="kicker mb-3">Next</div>

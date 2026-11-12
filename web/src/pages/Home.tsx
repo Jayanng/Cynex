@@ -1,7 +1,8 @@
 /* Cynex web, Home page.
-   Hero first, then the live strip, how a settlement flows, the refusal,
-   one live proof, the use case, the three layers, the reputation gate,
-   MCP, the trust model, the trust row, the calls to action, and the Footer.
+   Hero first, then Judges start here, the scripted path, the live strip,
+   how a settlement flows, the refusal, one live proof, the use case, the
+   three layers, the reputation gate, MCP, run it yourself, the trust model,
+   honest limits, the trust row, the calls to action, and the Footer.
    The CLI verify lives in Proof. */
 
 import { useEffect } from "react";
@@ -9,9 +10,10 @@ import { AGENT, AGENT2, MCP_DEMO_RUN, MCP_FACTS, MCP_RUN, MCP_TOOLS, USECASE, VA
 import { useLive } from "../lib/live";
 import { fmtToken, trunc } from "../lib/near";
 import { useChainRead } from "../lib/useChainRead";
-import { Badge, ChainReadOut, HashChip, AcctChip, Icon, LoadTxt, Unavail } from "../components/ui";
+import { Badge, ChainReadOut, CmdBlock, HashChip, AcctChip, Icon, LoadTxt, Unavail } from "../components/ui";
 import { StripSection } from "../components/Strip";
-import { RefusalPanel, TrustRow, Footer } from "../components/shared";
+import { LiveDemoButton } from "../components/LiveDemoButton";
+import { RefusalPanel, TrustRow, VerifyHome, Footer } from "../components/shared";
 
 function LatestSettle() {
   const { live: L } = useLive();
@@ -32,7 +34,7 @@ function LatestSettle() {
   const row2 = (k: string, v: React.ReactNode) => (
     <div className="flex justify-between gap-4">
       <span className="dim2">{k}</span>
-      <span className="text-right min-w-0" style={{ color: "var(--secondary)", overflowWrap: "anywhere" }}>
+      <span className="text-right min-w-0" style={{ color: "var(--secondary)", whiteSpace: "nowrap", overflowX: "auto", minWidth: 0 }}>
         {v}
       </span>
     </div>
@@ -148,7 +150,7 @@ function UseCaseSection() {
             </div>
           ))}
         </div>
-        <h3 className="text-ink text-[15px] mb-3">The attack sequence on usecase-report-002: four refusals, then the correct settle</h3>
+        <h3 className="text-ink text-[15px] mb-3">The attack sequence on usecase-report-002: four recorded refusals and one successful settlement</h3>
         <div className="space-y-2.5">
           {USECASE.attacks.map((a) => (
             <div className="attempt" key={a.tx}>
@@ -294,6 +296,67 @@ function ChecksCard() {
   );
 }
 
+function JudgesSteps() {
+  const { live: L } = useLive();
+  const count = L.recTest.v;
+  const step = (no: string, time: string, title: string, body: React.ReactNode) => (
+    <div className="panel p-5">
+      <div className="flex items-center justify-between mb-2">
+        <span className="mono text-xs" style={{ color: "var(--accent-text)" }}>
+          {no}
+        </span>
+        <span className="mono text-xs dim2">{time}</span>
+      </div>
+      <h3 className="text-lg mb-1 text-ink">{title}</h3>
+      <p className="dim text-sm leading-relaxed">{body}</p>
+    </div>
+  );
+  return (
+    <section className="wrap mt-12 md:mt-14">
+      <h2 className="mono text-[13px] mb-4" style={{ letterSpacing: ".14em", textTransform: "uppercase", color: "var(--secondary)" }}>
+        Judges, start here
+      </h2>
+      <div className="grid gap-4 md:grid-cols-3">
+        {step(
+          "01",
+          "10 sec",
+          "Run it live",
+          <>
+            <b className="text-ink">Do:</b> Press Run it live on Home.{" "}
+            <b className="text-ink">See:</b> the next receipt, PAID, and a transaction hash.
+          </>,
+        )}
+        {step(
+          "02",
+          "15 sec",
+          "Try to break it",
+          <>
+            <b className="text-ink">Do:</b> Change the recipient or the amount on Break it. <b className="text-ink">See:</b> Refused,
+            ERR_RECIPIENT_SUBSTITUTION for a changed recipient, tx <HashChip hash="AFYAq8Sju41NjBFwPmTHbJ1psmsYQWjVdBhmXBZbpa7S" />, or
+            ERR_TERMS_MISMATCH for a changed amount, tx <HashChip hash="43YaxJVggxuZ3E25WfjzkgGBsGAqLrj8nwdUU9RLAQRy" />, 0 tokens moved.
+          </>,
+        )}
+        {step(
+          "03",
+          "30 to 60 sec",
+          "Verify on chain",
+          <>
+            <b className="text-ink">Do:</b> Run <CmdBlock cmdKey="verify" /> on the test vault.{" "}
+            <b className="text-ink">See:</b>{" "}
+            {count != null ? (
+              <>Every row verified_ok = true, {count} receipts, all ok.</>
+            ) : L.recTest.err ? (
+              <>Receipt count unavailable, retrying.</>
+            ) : (
+              <>Receipt count loading, verification pending.</>
+            )}
+          </>,
+        )}
+      </div>
+    </section>
+  );
+}
+
 export function Home() {
   const { states, run } = useChainRead();
   useEffect(() => {
@@ -318,6 +381,7 @@ export function Home() {
         <div className="relative grid grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] gap-12 items-center">
           <div className="min-w-0">
             <div className="kicker mb-5">Purpose-bound settlement · testnet</div>
+            <p className="conflict">The agent asked. The vault said no.</p>
             <h1 className="hero-h">
               Pay the obligation.
               <br />
@@ -327,18 +391,17 @@ export function Home() {
               Cynex only pays exactly what a human authorized, same recipient, same amount, same evidence, and refuses everything else, even
               if the AI agent is compromised.
             </p>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <a className="btn btn-primary" href="#/demo/guided">
-                See the demo{" "}
-                <span style={{ width: 16, height: 16, display: "inline-grid", placeItems: "center" }}>
-                  <Icon name="arrow" />
-                </span>
-              </a>
-              <a className="btn" href="#/proof">
-                Verify it yourself
-              </a>
+<div className="mt-8">
+              <LiveDemoButton
+                variant="hero"
+                actions={
+                  <a className="btn ghost" href="#/attack">
+                    Break it yourself
+                  </a>
+                }
+              />
             </div>
-            <div className="mono text-xs dim2 mt-4">no login · no wallet · every receipt is a real chain receipt</div>
+            <div className="mono text-xs dim2 mt-4">No wallet. No sign up. About 60 seconds, start to finish.</div>
           </div>
           <div className="flex min-w-0 flex-col gap-4">
             <ChecksCard />
@@ -346,6 +409,23 @@ export function Home() {
               <LatestSettle />
             </div>
           </div>
+        </div>
+      </section>
+
+      <JudgesSteps />
+
+<section className="wrap mt-12 md:mt-14">
+        <div className="panel p-6">
+          <div className="kicker mb-3">Scripted path · one named example</div>
+          <h2 className="text-2xl md:text-3xl mb-3">Start with the proof that is already on chain.</h2>
+          <p className="dim text-sm leading-relaxed max-w-3xl mb-5">
+            <b className="text-ink">Open Proof, find receipt 24, usecase-report-002. You will see four recorded refusals and one successful settlement,
+            PAID.</b>{" "}
+            Three refusals first, then the exact payment the human authorized, for one named report, then the replay refusal after the payment.
+          </p>
+          <a className="btn btn-primary" href="#/proof">
+            Open Proof, receipt 24
+          </a>
         </div>
       </section>
 
@@ -496,6 +576,21 @@ export function Home() {
 
 
       <McpSection />
+
+<section className="wrap mt-12 md:mt-14">
+        <div className="kicker mb-3">Run it yourself</div>
+        <h2 className="text-2xl md:text-3xl mb-3">Two commands. No wallet. No account.</h2>
+        <p className="dim text-sm leading-relaxed max-w-3xl mb-5">
+          The local demo runs the real vault in a sandbox on your machine. The verify command replays the live testnet record from genesis.
+        </p>
+        <div className="mb-3">
+          <div className="mono text-xs dim2 mb-2">Local demo, MCP server over stdio</div>
+          <CmdBlock cmdKey="mcpdemo" />
+        </div>
+        <div className="mono text-xs dim2 mb-2 mt-5">Verify the live testnet record</div>
+        <VerifyHome />
+        <p className="mono text-xs dim2 mt-5">The verify command reads the NEAR testnet record. The MCP demo runs locally in a sandbox. Nothing here spends real funds, and nothing here needs your keys.</p>
+      </section>
       {/* Trust model */}
       <section className="wrap mt-12 md:mt-14">
         <div className="panel p-6">
@@ -527,6 +622,34 @@ export function Home() {
         </div>
       </section>
 
+
+<section className="wrap mt-12 md:mt-14">
+        <div className="kicker mb-3">Honest limits</div>
+        <h2 className="text-2xl md:text-3xl mb-3">What Cynex does not do.</h2>
+        <p className="dim text-sm leading-relaxed max-w-3xl mb-5">The limits, stated on the page, not buried in a file.</p>
+        <ul className="space-y-2.5 dim text-sm leading-relaxed max-w-3xl" style={{ listStyle: "disc", paddingLeft: 20 }}>
+          <li>
+            <b className="text-ink">The VRF signature does not prove TEE execution.</b> It proves determinism and binding to the pending
+            request. That link must never be claimed.
+          </li>
+          <li>
+            <b className="text-ink">The vault does not verify the TDX quote on chain.</b> The quote is verified off chain, by design, not as
+            part of the contract check.
+          </li>
+          <li>
+            <b className="text-ink">Testnet only, fake testnet USDC with no value.</b> No mainnet deployment, no mainnet spending.
+          </li>
+          <li>
+            <b className="text-ink">One account held both agent roles in the canonical run.</b> Receipt 24 proves the vault enforces its controls, not
+            payment between two distinct accounts. The two-agent run is receipt 28.
+          </li>
+          <li>
+            <b className="text-ink">The Run it live button only settles pre-seeded demo obligations.</b> It is proven live: demo-live-001 settled, receipt 31 PAID, tx
+            12pi6dZ1CzgvCeLWCCRSvC2iLyTaN7J2fRHtYnbHmcf6, block 277243629. demo-live-002, 003 and 004 are also PAID, receipt 34 is
+            demo-live-004. As of 12 Nov 2026, six demo obligations remain, demo-live-005 to demo-live-010, and the button stops when they are used up.
+          </li>
+        </ul>
+      </section>
 
       <TrustRow />
 
