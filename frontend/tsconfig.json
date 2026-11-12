@@ -27,6 +27,7 @@
     "src/demoAttackApi.test.ts",
     "src/liveAttempts.test.ts",
     "src/nearReceipts.test.ts",
+    "src/liveReceiptsApi.test.ts",
     "src/links.test.ts"
   ]
 }

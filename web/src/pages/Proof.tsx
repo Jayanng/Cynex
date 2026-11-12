@@ -1,6 +1,6 @@
 /* Cynex web, Proof page.
    Every claim names the contract method behind it and the live evidence
-   for it. The receipt table shows the six key receipts with their real
+   for it. The receipt table shows the seven key receipts with their real
    settle transactions and blocks, all verified from the chain. The
    receipt tx_ref field is empty on chain, so the tx hashes shown are
    the real settle transactions, not values copied out of the receipt. */
@@ -51,6 +51,12 @@ const RECEIPTS: { index: string; obligation: string; tx: string; block: string }
     tx: "3dKKqs7KNZvTCn1VQTckjkXLWM5KUuw8g5tVWVqAhTDz",
     block: "277387665",
   },
+  {
+    index: "38",
+    obligation: "demo-live-008",
+    tx: "BgvVNfX7CL2FoqR9dS6HLjdHRgedKXfsAUeLp2jhLvM2",
+    block: "277403330",
+  },
 ];
 
 function jestCounts(): [string, string, string] {
@@ -67,11 +73,11 @@ export function Proof() {
   const countsLine =
     !L.recTest.err && !L.recProd.err && !L.policy.err && L.recTest.v != null && L.recProd.v != null && L.policy.v
       ? `${L.recTest.v} test receipts, ${L.recProd.v} production receipts, policy p6-001 spent ${L.policy.v.spent} of ${L.policy.v.limit}`
-      : "38 test receipts, 13 production receipts, policy p6-001 spent 6100 of 10000, read 12 Nov 2026";
+      : "39 test receipts, 13 production receipts, policy p6-001 spent 6200 of 10000, read 12 Nov 2026";
   const policyEvidence =
     !L.policy.err && L.policy.v != null
       ? `Policy p6-001 spent ${L.policy.v.spent} of ${L.policy.v.limit}, read live`
-      : "Policy p6-001 spent 6100 of 10000, read 12 Nov 2026";
+      : "Policy p6-001 spent 6200 of 10000, read 12 Nov 2026";
 
   return (
     <>
@@ -130,9 +136,9 @@ export function Proof() {
             </table>
           </div>
           <div className="note-box">
-            <b>About tx_ref:</b> the receipt tx_ref field is empty on chain for receipts 24, 31, 34, 35, 36 and 37. The vault does
+            <b>About tx_ref:</b> the receipt tx_ref field is empty on chain for receipts 24, 31, 34, 35, 36, 37 and 38. The vault does
             not record the settle tx hash in the receipt. The tx hashes shown above are the real settle transactions,
-            not values copied out of the receipt.
+            not values copied out of the receipt. Each hash above is the hash of the settle transaction that produced that receipt, returned when the settle transaction was submitted and recorded at settle time, while the receipt tx_ref field on chain stays empty by contract behaviour.
           </div>
         </section>
 
@@ -197,9 +203,9 @@ export function Proof() {
                   <td data-h="METHOD" className="mono">
                     settle
                   </td>
-                  <td data-h="CHECK">Live demo obligations demo-live-001 to 007</td>
+                  <td data-h="CHECK">Live demo obligations demo-live-001 to 008</td>
                   <td data-h="EVIDENCE" className="hash">
-                    Receipts 31, 35, 36 and 37 · PAID · txs in the receipt table above
+                    Receipts 31, 35, 36, 37 and 38 · PAID · txs in the receipt table above
                   </td>
                 </tr>
                 <tr>
@@ -247,7 +253,7 @@ export function Proof() {
                   <td data-h="NOTE">Four tx hashes listed on Break it and on Guided demo</td>
                 </tr>
                 <tr>
-                  <td data-h="ITEM">Receipts 24, 31, 34, 35, 36, 37</td>
+                  <td data-h="ITEM">Receipts 24, 31, 34, 35, 36, 37, 38</td>
                   <td data-h="STATUS">
                     <span className="st-real">REAL</span>
                   </td>
@@ -283,7 +289,7 @@ export function Proof() {
                   </td>
                   <td data-h="NOTE">
                     Settles the next ready demo obligation on testnet and returns the receipt and tx hash. Proven
-                    live: receipt 37, <AccountLink account={VAULT_TEST} title="view the vault account on NearBlocks">demo-live-007</AccountLink>, tx <TxLink hash="3dKKqs7KNZvTCn1VQTckjkXLWM5KUuw8g5tVWVqAhTDz">3dKKqs7KNZvTCn1VQTckjkXLWM5KUuw8g5tVWVqAhTDz</TxLink>, block 277387665
+                    live: receipt 38, <AccountLink account={VAULT_TEST} title="view the vault account on NearBlocks">demo-live-008</AccountLink>, tx <TxLink hash="BgvVNfX7CL2FoqR9dS6HLjdHRgedKXfsAUeLp2jhLvM2">BgvVNfX7CL2FoqR9dS6HLjdHRgedKXfsAUeLp2jhLvM2</TxLink>, block 277403330
                   </td>
                 </tr>
                 <tr>

@@ -13,7 +13,7 @@ import { TxLink, AccountLink } from "../lib/links";
 import { VAULT_TEST, TOKEN } from "../lib/data";
 
 const REFUSAL_TX = "EiBHjMBqZfBLZB33H4odbBfskGbVCX1Jor422t5S1cpX";
-const PROVEN_TX = "3dKKqs7KNZvTCn1VQTckjkXLWM5KUuw8g5tVWVqAhTDz";
+const PROVEN_TX = "BgvVNfX7CL2FoqR9dS6HLjdHRgedKXfsAUeLp2jhLvM2";
 const DIGEST = "2a8bddcb3b001fd9051ec68757b8a113fa355cfe619f07882ac622721431ebc9";
 const RECIPIENT = "cynex-agent.cynexmaster.testnet";
 
@@ -171,8 +171,8 @@ export function Home() {
         <div className="wrap">
           <span className="pl-k">PROVEN LIVE</span>
           <span>
-            <TxLink hash={PROVEN_TX} title="vault receipt number 37, settle transaction">Receipt 37</TxLink> · <AccountLink account={VAULT_TEST} title="view the vault account on NearBlocks">demo-live-007</AccountLink> · <strong>PAID</strong> · tx <TxLink hash={PROVEN_TX} className="mono">{PROVEN_TX}</TxLink> ·
-            block 277387665
+            <TxLink hash={PROVEN_TX} title="vault receipt number 38, settle transaction">Receipt 38</TxLink> · <AccountLink account={VAULT_TEST} title="view the vault account on NearBlocks">demo-live-008</AccountLink> · <strong>PAID</strong> · tx <TxLink hash={PROVEN_TX} className="mono">{PROVEN_TX}</TxLink> ·
+            block 277403330
           </span>
           <a href="#/attack/run" className="pl-link">
             Run it live on Break it &#8594;

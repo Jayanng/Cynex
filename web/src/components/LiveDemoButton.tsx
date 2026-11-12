@@ -93,8 +93,8 @@ export function LiveDemoButton({ actions }: { actions?: React.ReactNode }) {
   const policyLimit = !L.policy.err && L.policy.v ? String(L.policy.v.limit) : null;
   const canRunAgain = state.status === "success" && (remaining === null || remaining > 0);
 
-  /* Live state 12 Nov 2026: demo-live-001 to 007 are PAID, demo-live-008
-     to 010 are READY, so 3 are left. After a success the remaining count
+  /* Live state 12 Nov 2026: demo-live-001 to 008 are PAID, demo-live-009
+     to 010 are READY, so 2 are left. After a success the remaining count
      comes from the API. */
   const buttonLabel =
     state.status === "loading"

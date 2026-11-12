@@ -11,7 +11,7 @@ export const TOKEN = "usdc.fakes.testnet";
 export const REPO = "https://github.com/Jayanng/Cynex";
 export const COMMIT = "a79e426";
 export const MASTER_TIP = "e677e53"; // master tip the Docs badges were verified against; bump on release. COMMIT stays pinned as the playground snapshot provenance.
-export const TEST_COUNTS = "640 tests passed, 3 skipped, 643 total"; // single source for the Jest counts shown on the site; update README.md by hand to match. Update from a fresh run of: NODE_OPTIONS=--experimental-vm-modules npx jest --roots src ../services --runInBand (from frontend/).
+export const TEST_COUNTS = "655 tests passed, 3 skipped, 658 total"; // single source for the Jest counts shown on the site; update README.md by hand to match. Update from a fresh run of: NODE_OPTIONS=--experimental-vm-modules npx jest --roots src ../services --runInBand (from frontend/).
 export const ACME = "acme-supplies.testnet";
 export const DEMO_POLICY_ID = "p6-001";
 export const DEMO_POLICY_PROD_ID = "p5-prod-001";

@@ -12,7 +12,7 @@ import { CopyButton } from "../components/ui";
 import { VAULT_TEST } from "../lib/data";
 import { AccountLink, TxLink } from "../lib/links";
 
-const PROVEN_TX = "3dKKqs7KNZvTCn1VQTckjkXLWM5KUuw8g5tVWVqAhTDz";
+const PROVEN_TX = "BgvVNfX7CL2FoqR9dS6HLjdHRgedKXfsAUeLp2jhLvM2";
 
 const RECORDED = [
   {
@@ -114,16 +114,16 @@ export function Attack({ anchor }: { anchor?: string }) {
             <div className="proven">
               <div className="ph">
                 <span className="paid">PAID</span>
-                <span className="oid">Already proven live · <TxLink hash={PROVEN_TX} title="vault receipt number 37, settle transaction">receipt 37</TxLink></span>
+                <span className="oid">Already proven live · <TxLink hash={PROVEN_TX} title="vault receipt number 38, settle transaction">receipt 38</TxLink></span>
               </div>
               <dl>
                 <div className="row">
                   <dt>OBLIGATION</dt>
-                  <dd><AccountLink account={VAULT_TEST} title="view the vault account on NearBlocks">demo-live-007</AccountLink> · settled</dd>
+                  <dd><AccountLink account={VAULT_TEST} title="view the vault account on NearBlocks">demo-live-008</AccountLink> · settled</dd>
                 </div>
                 <div className="row">
                   <dt>RECEIPT</dt>
-                  <dd><TxLink hash={PROVEN_TX} title="vault receipt number 37, settle transaction">37</TxLink> · PAID</dd>
+                  <dd><TxLink hash={PROVEN_TX} title="vault receipt number 38, settle transaction">38</TxLink> · PAID</dd>
                 </div>
                 <div className="row">
                   <dt>TRANSACTION</dt>
@@ -133,7 +133,7 @@ export function Attack({ anchor }: { anchor?: string }) {
                 </div>
                 <div className="row">
                   <dt>BLOCK</dt>
-                  <dd>277387665</dd>
+                  <dd>277403330</dd>
                 </div>
               </dl>
             </div>

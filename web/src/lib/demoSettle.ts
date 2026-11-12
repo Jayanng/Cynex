@@ -222,7 +222,7 @@ export function demoButtonCanRun(state: DemoButtonState): boolean {
    with its tx hash is shown, that result replaces it. Live state
    12 Nov 2026, re-verified from chain. */
 export const DEMO_BUTTON_PROVEN_LINE =
-  "Proven live: demo-live-007, receipt 37 PAID, tx 3dKKqs7KNZvTCn1VQTckjkXLWM5KUuw8g5tVWVqAhTDz, block 277387665.";
+  "Proven live: demo-live-008, receipt 38 PAID, tx BgvVNfX7CL2FoqR9dS6HLjdHRgedKXfsAUeLp2jhLvM2, block 277403330.";
 
 export type DemoSettleOutcome =
   | { outcome: "success"; result: DemoSettleResult }

@@ -1,13 +1,16 @@
-/* Tests for the bounded receipts read in web/src/lib/near.ts: a fetch
- * that never resolves must fail within the timeout instead of hanging,
- * a slow read that then succeeds must return its rows, retries happen
- * only for transient failures, and the exact-integer quoting still
- * keeps large u128 amounts and u64 index and timestamp values exact.
- * An HTTP 500 and a non-JSON body are
- * transient and retried, a 200 with neither error nor result is an
- * error rather than zero rows, and the whole call has a total budget
- * across pages. The real RPC is never hit here; the
- * global fetch is mocked and fake timers drive the timeouts. */
+/* Tests for the receipts read in web/src/lib/near.ts, now served by
+ * /api/live-receipts: a fetch that never resolves must fail within the
+ * timeout instead of hanging, a slow read that then succeeds must
+ * return its rows, retries happen only for transient failures, and an
+ * invalid row is an error, never silently accepted. The endpoint
+ * returns the full rows in one response, so there is no client
+ * pagination any more: the server pages the RPC and quotes the exact
+ * integers, the client only validates what comes back. An endpoint
+ * 502 and a non-JSON body are transient and retried, a 400 is not, a
+ * 200 with no rows array is an error rather than zero rows, and the
+ * whole call has a total budget. The real RPC and the real endpoint
+ * are never hit here; the global fetch is mocked and fake timers
+ * drive the timeouts. */
 
 import { jest } from "@jest/globals";
 
@@ -29,38 +32,34 @@ const BLOCK_HEIGHT = 277362593;
  * turn them into exact strings. */
 const BIG_TIMESTAMP = "1762951234567890123";
 const BIG_AMOUNT = "123456789012345678901234567890";
-const ONE_ROW =
-  '[{"index":35,"prev_hash":[],"obligation_id":"demo-live-005",' +
-  '"recipient":"cynex-agent.cynexmaster.testnet","amount":' +
-  BIG_AMOUNT +
-  ',"token_id":"usdc.fakes.testnet","timestamp":' +
-  BIG_TIMESTAMP +
-  ',"tx_ref":"abc123"}]';
-
-/* A synthetic row with an index above 2^53, only to prove the quoting
- * keeps the index exact: no such receipt exists on chain, the largest
- * real index is 37. */
 const BIG_INDEX = "9007199254740993";
-const BIG_INDEX_ROW =
-  '[{"index":' + BIG_INDEX + ',"prev_hash":[],"obligation_id":"exactness-fixture",' +
-  '"recipient":"cynex-agent.cynexmaster.testnet","amount":' + BIG_AMOUNT +
-  ',"token_id":"usdc.fakes.testnet","timestamp":' + BIG_TIMESTAMP +
-  ',"tx_ref":"abc123"}]';
 
-/* A synthetic full page of 50 rows, only to force pagination onto a
- * second page: no 50-row page exists on chain, the vault holds 38
- * receipts. Every row carries all receipt fields. */
-const FIFTY_ROWS =
-  "[" +
-  Array.from(
-    { length: 50 },
-    (_, i) =>
-      '{"index":' + i + ',"prev_hash":[],"obligation_id":"pagination-fixture",' +
-      '"recipient":"cynex-agent.cynexmaster.testnet","amount":"100",' +
-      '"token_id":"usdc.fakes.testnet","timestamp":' + BIG_TIMESTAMP +
-      ',"tx_ref":""}',
-  ).join(",") +
-  "]";
+/* Rows as the endpoint returns them: exact-integer fields already
+ * exact strings, because the server did the quoting. The client only
+ * has to pass them through and validate them. */
+const ROW_35 = {
+  index: 35,
+  prev_hash: [],
+  obligation_id: "demo-live-005",
+  recipient: "cynex-agent.cynexmaster.testnet",
+  amount: BIG_AMOUNT,
+  token_id: "usdc.fakes.testnet",
+  timestamp: BIG_TIMESTAMP,
+  tx_ref: "abc123",
+};
+
+/* A synthetic row with an index above 2^53, only to prove the client
+ * keeps the index exact: no such receipt exists on chain, the largest
+ * real index is 38. */
+const ROW_BIG_INDEX = {
+  ...ROW_35,
+  index: BIG_INDEX,
+  obligation_id: "exactness-fixture",
+};
+
+function endpointResponse(rows: unknown[]): Response {
+  return mockResponse({ rows, block: BLOCK_HEIGHT });
+}
 
 const fetchMock = jest.fn();
 
@@ -75,26 +74,6 @@ function htmlErrorResponse(status: number): Response {
     status,
     json: async (): Promise<never> => {
       throw new SyntaxError("Unexpected token < in JSON at position 0");
-    },
-  } as unknown as Response;
-}
-
-function receiptsResponse(rowsJson: string): Response {
-  const bytes = [...new TextEncoder().encode(rowsJson)];
-  return mockResponse({ result: { result: bytes, block_height: BLOCK_HEIGHT } });
-}
-
-/* A response whose body arrives bodyMs after the headers, so one
- * attempt can be stretched across the shared headers-plus-body
- * deadline. The header delay is set by the mock implementation. */
-function delayedBodyResponse(rowsJson: string, bodyMs: number): Response {
-  const body = { result: { result: [...new TextEncoder().encode(rowsJson)], block_height: BLOCK_HEIGHT } };
-  return {
-    ok: true,
-    status: 200,
-    json: async () => {
-      await new Promise((resolve) => setTimeout(resolve, bodyMs));
-      return body;
     },
   } as unknown as Response;
 }
@@ -186,10 +165,24 @@ describe("withReceiptRetries", () => {
 });
 
 describe("fetchReceipts", () => {
+  it("calls the live receipts endpoint with the vault, as a GET", async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(endpointResponse([ROW_35])));
+    const out = await fetchReceipts(VAULT, { timeoutMs: 1000, maxAttempts: 1, retryBaseDelayMs: 10 });
+    expect(out.rows).toHaveLength(1);
+    expect(out.rows[0].obligation_id).toBe("demo-live-005");
+    expect(out.block).toBe(BLOCK_HEIGHT);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "/api/live-receipts?vault=" + encodeURIComponent(VAULT),
+    );
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(init.method).toBe("GET");
+  });
+
   it("a hung first attempt that then succeeds returns its rows", async () => {
     fetchMock
       .mockImplementationOnce(neverResolves)
-      .mockImplementation(() => Promise.resolve(receiptsResponse(ONE_ROW)));
+      .mockImplementation(() => Promise.resolve(endpointResponse([ROW_35])));
     const promise = fetchReceipts(VAULT, { timeoutMs: 100, maxAttempts: 3, retryBaseDelayMs: 10 });
     await jest.advanceTimersByTimeAsync(500);
     const out = await promise;
@@ -209,7 +202,7 @@ describe("fetchReceipts", () => {
   });
 
   it("keeps a large u128 amount, and an index and timestamp above 2^53, exact", async () => {
-    fetchMock.mockImplementation(() => Promise.resolve(receiptsResponse(BIG_INDEX_ROW)));
+    fetchMock.mockImplementation(() => Promise.resolve(endpointResponse([ROW_BIG_INDEX])));
     const out = await fetchReceipts(VAULT, { timeoutMs: 1000, maxAttempts: 1, retryBaseDelayMs: 10 });
     expect(out.rows).toHaveLength(1);
     expect(String(out.rows[0].index)).toBe(BIG_INDEX);
@@ -221,20 +214,20 @@ describe("fetchReceipts", () => {
     expect(String(Number(BIG_TIMESTAMP))).not.toBe(BIG_TIMESTAMP);
   });
 
-  it("does not retry a deterministic RPC error", async () => {
+  it("does not retry a deterministic endpoint 400", async () => {
     fetchMock.mockImplementation(() =>
-      Promise.resolve(mockResponse({ error: { code: -32601, message: "Method not found" } })),
+      Promise.resolve({ ok: false, status: 400, json: async () => ({}) } as unknown as Response),
     );
     await expect(
       fetchReceipts(VAULT, { timeoutMs: 1000, maxAttempts: 3, retryBaseDelayMs: 10 }),
-    ).rejects.toThrow("receipts view failed");
+    ).rejects.toThrow("receipts view failed: HTTP 400");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("treats an HTML 500 as transient and retries it", async () => {
-    fetchMock.mockImplementation(() => Promise.resolve(htmlErrorResponse(500)));
+  it("treats an endpoint 502 as transient and retries it", async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(htmlErrorResponse(502)));
     const promise = fetchReceipts(VAULT, { timeoutMs: 1000, maxAttempts: 3, retryBaseDelayMs: 10 });
-    const assertion = expect(promise).rejects.toThrow("receipts view failed: HTTP 500");
+    const assertion = expect(promise).rejects.toThrow("receipts view failed: HTTP 502");
     await jest.advanceTimersByTimeAsync(1000);
     await assertion;
     expect(fetchMock).toHaveBeenCalledTimes(3);
@@ -257,58 +250,28 @@ describe("fetchReceipts", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it("throws instead of returning zero rows when a 200 has neither error nor result", async () => {
-    fetchMock.mockImplementation(() => Promise.resolve(mockResponse({})));
+  it("throws instead of returning zero rows when the body has no rows array", async () => {
+    for (const body of [{ block: BLOCK_HEIGHT }, { rows: {}, block: BLOCK_HEIGHT }, { rows: null, block: BLOCK_HEIGHT }]) {
+      fetchMock.mockImplementation(() => Promise.resolve(mockResponse(body)));
+      await expect(
+        fetchReceipts(VAULT, { timeoutMs: 1000, maxAttempts: 1, retryBaseDelayMs: 10 }),
+      ).rejects.toThrow("receipts view failed");
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("rejects an invalid row instead of accepting it silently", async () => {
+    const bad = { ...ROW_35 };
+    delete (bad as Record<string, unknown>).amount;
+    fetchMock.mockImplementation(() => Promise.resolve(endpointResponse([bad])));
     await expect(
-      fetchReceipts(VAULT, { timeoutMs: 1000, maxAttempts: 3, retryBaseDelayMs: 10 }),
-    ).rejects.toThrow("receipts view failed: missing result");
+      fetchReceipts(VAULT, { timeoutMs: 1000, maxAttempts: 1, retryBaseDelayMs: 10 }),
+    ).rejects.toThrow("receipts view failed: invalid receipt entry");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("throws instead of returning zero rows when the decoded payload is not an array", async () => {
-    fetchMock.mockImplementation(() => Promise.resolve(receiptsResponse("{}")));
-    await expect(
-      fetchReceipts(VAULT, { timeoutMs: 1000, maxAttempts: 3, retryBaseDelayMs: 10 }),
-    ).rejects.toThrow("receipts view failed");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("throws instead of accepting a receipt entry with missing fields", async () => {
-    fetchMock.mockImplementation(() => Promise.resolve(receiptsResponse("[{}]")));
-    await expect(
-      fetchReceipts(VAULT, { timeoutMs: 1000, maxAttempts: 3, retryBaseDelayMs: 10 }),
-    ).rejects.toThrow("receipts view failed");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("rejects when slow headers plus a slow body exceed the one shared deadline", async () => {
-    fetchMock.mockImplementation(
-      () => new Promise<Response>((resolve) => setTimeout(() => resolve(delayedBodyResponse(ONE_ROW, 90)), 90)),
-    );
-    const promise = fetchReceipts(VAULT, { timeoutMs: 100, maxAttempts: 1, retryBaseDelayMs: 10, totalTimeoutMs: 150 });
-    const assertion = expect(promise).rejects.toThrow("timed out");
-    await jest.advanceTimersByTimeAsync(500);
-    await assertion;
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("rejects instead of accepting a page that completes past the total budget", async () => {
-    fetchMock
-      .mockImplementationOnce(() => Promise.resolve(receiptsResponse(FIFTY_ROWS)))
-      .mockImplementation(
-        () => new Promise<Response>((resolve) => setTimeout(() => resolve(delayedBodyResponse(ONE_ROW, 90)), 90)),
-      );
-    const promise = fetchReceipts(VAULT, { timeoutMs: 100, maxAttempts: 1, retryBaseDelayMs: 10, totalTimeoutMs: 150 });
-    const assertion = expect(promise).rejects.toThrow("timed out");
-    await jest.advanceTimersByTimeAsync(500);
-    await assertion;
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-  });
-
-  it("rejects once the whole call exceeds its total budget instead of paging for minutes", async () => {
-    fetchMock
-      .mockImplementationOnce(() => Promise.resolve(receiptsResponse(FIFTY_ROWS)))
-      .mockImplementation(neverResolves);
+  it("rejects once the whole call exceeds its total budget instead of retrying past it", async () => {
+    fetchMock.mockImplementation(neverResolves);
     const promise = fetchReceipts(VAULT, {
       timeoutMs: 100,
       maxAttempts: 3,
@@ -318,7 +281,7 @@ describe("fetchReceipts", () => {
     const assertion = expect(promise).rejects.toThrow("exceeded total budget");
     await jest.advanceTimersByTimeAsync(1000);
     await assertion;
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -333,10 +296,17 @@ describe("readReceipt", () => {
   });
 
   it("returns the single row on success, with the timestamp exact", async () => {
-    fetchMock.mockImplementation(() => Promise.resolve(receiptsResponse(ONE_ROW)));
+    fetchMock.mockImplementation(() => Promise.resolve(endpointResponse([ROW_35])));
     const out = await readReceipt(35, { timeoutMs: 1000, maxAttempts: 1, retryBaseDelayMs: 10 });
     expect(out.rec?.obligation_id).toBe("demo-live-005");
     expect(out.rec?.timestamp).toBe(BIG_TIMESTAMP);
+    expect(out.block).toBe(BLOCK_HEIGHT);
+  });
+
+  it("returns null when the index is not in the rows", async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(endpointResponse([ROW_35])));
+    const out = await readReceipt(99, { timeoutMs: 1000, maxAttempts: 1, retryBaseDelayMs: 10 });
+    expect(out.rec).toBeNull();
     expect(out.block).toBe(BLOCK_HEIGHT);
   });
 });
