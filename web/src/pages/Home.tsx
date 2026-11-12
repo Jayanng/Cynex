@@ -51,18 +51,20 @@ export function Home() {
   return (
     <>
       <div className="hero">
-        <div className="wrap">
-          <p className="hero-tag">CYNEX · PURPOSE-BOUND SETTLEMENT VAULT · NEAR TESTNET</p>
-          <h1 className="hero-line">
-            The agent asked.
-            <br />
-            The vault said <span className="no">no.</span>
-          </h1>
-          <p className="hero-sub">
-            A human fixes the terms: <strong>recipient, amount, token, evidence, budget</strong>. The agent can only
-            ask. When the ask changes one field, the vault refuses on chain and <strong>no money moves</strong>. This
-            refusal already happened:
-          </p>
+        <div className="wrap hero-grid">
+          <div>
+            <p className="hero-tag">CYNEX · PURPOSE-BOUND SETTLEMENT VAULT · NEAR TESTNET</p>
+            <h1 className="hero-line">
+              The agent asked.
+              <br />
+              The vault said <span className="no">no.</span>
+            </h1>
+            <p className="hero-sub">
+              A human fixes the terms: <strong>recipient, amount, token, evidence, budget</strong>. The agent can
+              only ask. When the ask changes one field, the vault refuses on chain and <strong>no money moves</strong>.
+              This refusal already happened:
+            </p>
+          </div>
 
           <div className="ticket" role="group" aria-label="On-chain refusal record">
             <div className="ticket-head">
