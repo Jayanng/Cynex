@@ -1,7 +1,10 @@
 export default {
   preset: "ts-jest/presets/default-esm",
   testEnvironment: "node",
-  extensionsToTreatAsEsm: [".ts"],
+  // .tsx is listed too: web/src/lib/links.tsx is a .tsx helper
+  // imported by links.test.ts, and without it Jest loads the file
+  // untransformed through the native ESM loader.
+  extensionsToTreatAsEsm: [".ts", ".tsx"],
   moduleNameMapper: { "^(\\.{1,2}/.*)\\.js$": "$1" },
   transform: { "^.+\\.tsx?$": ["ts-jest", { useESM: true }] },
   // The MCP, console, and agent sources live outside frontend/, so

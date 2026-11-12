@@ -1,166 +1,165 @@
-/* Cynex web, Demo page (guided walkthrough only).
-   Every action already happened on the test vault, each prints its real
-   tx hash, explorer-linked, with a live chain read after it. No login,
-   no wallet, no obligation creation. */
+/* Cynex web, guided demo page.
+   The six-step walkthrough of usecase-report-002, in order, with the
+   real on-chain transactions. The refusal transactions below are the
+   ones recorded for this obligation, verified from the chain: the
+   settle-before-evidence refusal, the recipient refusal, the amount
+   refusal, the correct settle that wrote receipt 24, and the replay
+   refusal. All four refusals are on this one obligation. */
 
-import { useEffect } from "react";
-import { GUIDED, VAULT_TEST } from "../lib/data";
-import { useChainRead } from "../lib/useChainRead";
-import { useLive } from "../lib/live";
-import { StripSection } from "../components/Strip";
-import { Badge, ChainReadOut, CmdBlock, CopyButton, HashChip, Icon, ReadOnlyBadge, TermsGrid } from "../components/ui";
-import { Gate, Footer, CountsLine } from "../components/shared";
+import { Footer } from "../components/shared";
+import { CopyButton } from "../components/ui";
+import { TxLink, AccountLink } from "../lib/links";
+import { VAULT_TEST } from "../lib/data";
 
-/* ---------- guided ---------- */
-function Guided({ anchor }: { anchor?: string }) {
-  const { states, run } = useChainRead();
-  useEffect(() => {
-    if (anchor) {
-      const t = setTimeout(() => {
-        const el = document.getElementById("guided-" + anchor);
-        if (el) {
-          /* Margin first: scrollIntoView reads it at scroll time. */
-          el.style.scrollMarginTop = "90px";
-          el.scrollIntoView({ behavior: "smooth", block: "start" });
-        }
-      }, 80);
-      return () => clearTimeout(t);
-    }
-  }, [anchor]);
+const RECIPIENT_REFUSAL_TX = "EiBHjMBqZfBLZB33H4odbBfskGbVCX1Jor422t5S1cpX";
+const AMOUNT_REFUSAL_TX = "2NaWqCYiUnh9DMhRCR6JVSDQ3R7yD26U8Auf3qEer91f";
+const SETTLE_TX = "2VLL134m83x5fWZLr2qBbPkjJ7gL9YR7V7U9eur7qoVC";
+const REPLAY_TX = "hG6uhpePR9ZcvCZXZprpXa8rvbAGGQPxD4ZyMpP91F6";
+const BEFORE_EVIDENCE_TX = "BRXXhezVxYvze3imNHkrShnS8ujUvsShy4f3GtgwpCgQ";
 
+function TxLine({ k, tx }: { k: string; tx: string }) {
   return (
-    <section className="wrap mt-12 space-y-8">
-      {GUIDED.map((s) => (
-        <div className="step" id={"guided-" + s.anchor} key={s.anchor}>
-          <div className="rail">
-            <div className={"node " + s.cls}>{s.n}</div>
-            <div className="line"></div>
-          </div>
-          <div className="panel p-6">
-            <div className="flex flex-wrap items-center gap-3 mb-2">
-              <h3 className="text-lg md:text-xl">{s.title}</h3>
-              <span className="hashchip" title="obligation id">
-                <span>{s.ob}</span>
-                <CopyButton text={s.ob} />
-              </span>
-            </div>
-            <p className="dim text-sm leading-relaxed mb-5 max-w-3xl">{s.desc}</p>
-            <div className="mb-5">
-              <TermsGrid terms={s.terms} />
-            </div>
-            <div className="space-y-2.5 mb-5">
-              {s.attempts.map((a) => (
-                <div className="attempt" key={a.label}>
-                  <span className="att-label">{a.label}</span>
-                  <span className="flex flex-wrap items-center gap-2">
-                    <Badge value={a.verdict} extra={a.code ?? null} />
-                  </span>
-                  <span className="badge b-dim">
-                    <span className="bdot"></span>Historical
-                  </span>
-                  <HashChip hash={a.tx} />
-                  {a.note ? <span className="mono text-xs dim2">{a.note}</span> : null}
-                </div>
-              ))}
-            </div>
-            <div className="flex flex-wrap items-center gap-4">
-              <span className="mono text-xs dim">{s.delta}</span>
-              <span className="dim2">·</span>
-              <button className="btn sm" onClick={() => void run(s.receipt)}>
-                Read receipt #{s.receipt} from chain, now
-              </button>
-              <span className="badge b-dim">
-                <span className="bdot"></span>Live
-              </span>
-            </div>
-            <div id={"cr-" + s.receipt}>
-              <ChainReadOut state={states[s.receipt] ?? null} />
-            </div>
-          </div>
-        </div>
-      ))}
-      <Gate />
-      {/* step 5, verification (step 4 is the reputation gate) */}
-      <div className="step" id="guided-step5">
-        <div className="rail">
-          <div className="node">5</div>
-        </div>
-        <div className="panel p-6">
-          <div className="flex flex-wrap items-center gap-3 mb-2">
-            <h3 className="text-lg md:text-xl">Verification, replay the whole chain</h3>
-            <ReadOnlyBadge />
-          </div>
-          <p className="dim text-sm leading-relaxed mb-4 max-w-3xl">
-            <span className="mono text-[13px]" style={{ color: "var(--accent-text)", overflowWrap: "anywhere" }}>
-              node frontend/dist-test/cli/cynex.js verify-live cynex-testvault.cynexmaster.testnet
-            </span>{" "}
-            paginates <span className="mono text-[13px]">receipts(start, limit)</span> from genesis over the test vault, recomputes every
-            hash link, and detects gaps and mismatches. Expected: every row{" "}
-            <span className="mono text-[13px]">verified_ok = true</span>.
-          </p>
-          <div className="space-y-2 mb-4">
-            <CmdBlock cmdKey="verify" />
-            <CmdBlock cmdKey="verifyCsv" />
-          </div>
-          <div className="flex flex-wrap items-center gap-4">
-            <span data-live-region="counts">
-              <CountsLine />
-            </span>
-            <a className="mono text-xs inline-flex items-center gap-2" style={{ color: "var(--accent-text)" }} href="#/proof">
-              full proof page{" "}
-              <span style={{ width: 16, height: 16, display: "inline-grid", placeItems: "center" }}>
-                <Icon name="arrow" />
-              </span>
-            </a>
-          </div>
-        </div>
-      </div>
-    </section>
+    <div className="txline">
+      <span className="k">{k}</span>
+      <TxLink hash={tx}>{tx}</TxLink>
+      <CopyButton text={tx} />
+    </div>
   );
 }
 
-/* ---------- page ---------- */
 export function Demo({ anchor }: { anchor?: string }) {
-  const { refreshLive } = useLive();
-  useEffect(() => {
-    void refreshLive();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  void anchor;
   return (
     <>
-      <section className="wrap pt-8 md:pt-10">
-        <a
-          href="#/"
-          className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium mb-4"
-          style={{ borderColor: "var(--line)", background: "var(--raised)", color: "var(--secondary)" }}
-        >
-          ← Home
-        </a>
-        <div>
-          <div className="kicker mb-2">Demo · test vault</div>
-          <h1 className="text-3xl md:text-4xl">Proof in motion</h1>
-          <p className="dim text-sm mt-2 max-w-2xl">
-            Every action below already happened on{" "}
-            <span className="mono text-[13px]">{VAULT_TEST}</span>, each prints its real tx hash, explorer-linked, with a live chain
-            read after it. No login, no wallet, no obligation creation.
+      <div className="page-hero">
+        <div className="wrap">
+          <p className="hero-tag">GUIDED DEMO · <AccountLink account={VAULT_TEST} title="view the vault account on NearBlocks">USECASE-REPORT-002</AccountLink> · NEAR TESTNET</p>
+          <h1 className="page-line">
+            One obligation.
+            <br />
+            Four refusals.
+            <br />
+            <span className="green">One payment.</span>
+          </h1>
+          <p className="hero-sub">
+            A human authorizes a procurement agent to pay a research agent exactly for one named report. Follow the
+            real sequence, in order. Every refusal and the one payment below happened on chain.
           </p>
-        </div>
-      </section>
-      <StripSection />
-      <Guided anchor={anchor} />
-      <section className="wrap mt-10">
-        <div className="panel p-6">
-          <div className="kicker mb-3">Next</div>
-          <div className="flex flex-wrap gap-x-8 gap-y-3">
-            <a className="mono text-sm inline-flex items-center gap-2" style={{ color: "var(--accent-text)" }} href="#/attack">
-              Try to break it yourself →
-            </a>
-            <a className="mono text-sm inline-flex items-center gap-2" style={{ color: "var(--accent-text)" }} href="#/docs">
-              Read how it works →
-            </a>
+          <div className="ticket">
+            <div className="ticket-rows">
+              <div className="trow">
+                <div className="k">OBLIGATION</div>
+                <div className="v"><AccountLink account={VAULT_TEST} title="view the vault account on NearBlocks">usecase-report-002</AccountLink></div>
+              </div>
+              <div className="trow">
+                <div className="k">OUTCOME</div>
+                <div className="v">Receipt 24 · PAID, after three refusals. A fourth refusal stops the replay.</div>
+              </div>
+            </div>
           </div>
         </div>
-      </section>
+      </div>
+      <div className="wrap">
+        <div className="timeline">
+          <div className="tstep">
+            <div className="big">01</div>
+            <div>
+              <span className="pill created">CREATED</span>
+              <h3>The obligation is created</h3>
+              <p>
+                A human authorizes a procurement agent to pay a research agent exactly for the named report. The
+                evidence is the exact report artifact, committed by digest up front. Recipient, amount, token,
+                evidence and budget are locked at this moment. The agent cannot edit them later.
+              </p>
+            </div>
+          </div>
+          <div className="tstep">
+            <div className="big">02</div>
+            <div>
+              <span className="pill refused">REFUSED · 0 TOKENS MOVED</span>
+              <h3>The agent tries to settle before evidence</h3>
+              <p>
+                Evidence has not been submitted yet, so the obligation is not READY. The vault refuses
+                before any terms are compared. Nothing moves.
+              </p>
+              <div className="txline">
+                <span className="k">ERROR</span>
+                <span>ERR_INVALID_STATE</span>
+              </div>
+              <TxLine k="TX" tx={BEFORE_EVIDENCE_TX} />
+            </div>
+          </div>
+          <div className="tstep">
+            <div className="big">03</div>
+            <div>
+              <span className="pill refused">REFUSED · 0 TOKENS MOVED</span>
+              <h3>The agent tries to change the recipient</h3>
+              <p>
+                The settle request names a different recipient than the locked obligation. The vault compares the
+                field, finds the substitution, and refuses. Nothing moves.
+              </p>
+              <div className="txline">
+                <span className="k">ERROR</span>
+                <span>ERR_RECIPIENT_SUBSTITUTION</span>
+              </div>
+              <TxLine k="TX" tx={RECIPIENT_REFUSAL_TX} />
+            </div>
+          </div>
+          <div className="tstep">
+            <div className="big">04</div>
+            <div>
+              <span className="pill refused">REFUSED · 0 TOKENS MOVED</span>
+              <h3>The agent tries to change the amount to 200</h3>
+              <p>
+                The recipient is right this time, but the amount is not the locked amount. One field differs, so the
+                whole request dies on the terms check.
+              </p>
+              <div className="txline">
+                <span className="k">ERROR</span>
+                <span>ERR_TERMS_MISMATCH</span>
+              </div>
+              <TxLine k="TX" tx={AMOUNT_REFUSAL_TX} />
+            </div>
+          </div>
+          <div className="tstep">
+            <div className="big">05</div>
+            <div>
+              <span className="pill paid">PAID · RECEIPT 24</span>
+              <h3>The report is submitted as evidence and the agent settles</h3>
+              <p>
+                With the exact evidence and every field matching the locked obligation, the vault settles. This is the
+                only step where money moves, and it writes receipt 24.
+              </p>
+              <div className="txline">
+                <span className="k">RECEIPT</span>
+                <span>24 · <AccountLink account={VAULT_TEST} title="view the vault account on NearBlocks">usecase-report-002</AccountLink> · PAID</span>
+              </div>
+              <TxLine k="TX" tx={SETTLE_TX} />
+            </div>
+          </div>
+          <div className="tstep">
+            <div className="big">06</div>
+            <div>
+              <span className="pill refused">REFUSED · 0 TOKENS MOVED</span>
+              <h3>The agent tries to settle again: replay</h3>
+              <p>
+                The same obligation, presented a second time. The nonce was already consumed by receipt 24, so the
+                vault refuses. An obligation pays once, never twice.
+              </p>
+              <div className="txline">
+                <span className="k">ERROR</span>
+                <span>ERR_NONCE_ALREADY_CONSUMED</span>
+              </div>
+              <TxLine k="TX" tx={REPLAY_TX} />
+            </div>
+          </div>
+        </div>
+        <p className="diagram-note" style={{ paddingBottom: "4rem" }}>
+          That is the whole demo:{" "}
+          <b style={{ color: "var(--ink)" }}>authorize once, refuse every change, pay exactly once.</b> Try the same
+          attacks yourself on Break it.
+        </p>
+      </div>
       <Footer />
     </>
   );

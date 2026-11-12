@@ -1,10 +1,21 @@
 /* Cynex web, live store.
    Replaces the static page's global `live` object and renderLiveRegions.
    One refresh reads all live values in parallel; components re-render
-   from this context. On any failure the affected field shows
-   "Unavailable, retrying", never a cached value, and a retry is
-   scheduled after 8 seconds. A refresh also runs every 5 seconds while
-   a live region is mounted, as in the showcase. */
+   from this context. On any failure the affected field keeps its last
+   good value but sets err, so the UI shows "Unavailable, retrying"
+   and never presents a stale value as fresh. A field with no good
+   value yet shows "Loading live data" until the first success, or
+   "Unavailable, retrying" once it has failed. A retry is scheduled
+   after 8 seconds. A refresh also runs every 5 seconds while a live
+   region is mounted, as in the showcase. Every job in a refresh is
+   bounded: the receipts reads carry their own timeout and retry in
+   near.ts, and the four near-api-js reads (viewCode twice, fetchPolicy,
+   agentBalance) are raced against the same 4s timeout there, so a
+   stalled read rejects instead of blocking the refresh forever, and
+   the refreshing guard is always released in a finally block, so a
+   failed refresh can never wedge the 5s interval. checkedAt only
+   moves when at least one job succeeded, so it never claims a fresh
+   check after a refresh where every read failed. */
 
 import { createContext, useContext, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { VAULT_PROD, VAULT_TEST } from "./data";
@@ -62,7 +73,8 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     if (refreshing.current) return;
     refreshing.current = true;
     if (retryTimer.current) clearTimeout(retryTimer.current);
-    const jobs: [
+    try {
+      const jobs: [
       Promise<{ hash: string; block: number | null }>,
       Promise<{ hash: string; block: number | null }>,
       Promise<{ rows: Receipt[]; block: number | null }>,
@@ -123,14 +135,16 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       }
       next.anyErr = anyErr;
       if (block) next.blockHeight = block;
-      next.checkedAt = new Date();
+      if (settled.some((job) => job.status === "fulfilled")) next.checkedAt = new Date();
       return next;
     });
-    refreshing.current = false;
-    if (anyErr) {
-      retryTimer.current = setTimeout(() => {
-        void refreshLive();
-      }, 8000);
+      if (anyErr) {
+        retryTimer.current = setTimeout(() => {
+          void refreshLive();
+        }, 8000);
+      }
+    } finally {
+      refreshing.current = false;
     }
   }, []);
 

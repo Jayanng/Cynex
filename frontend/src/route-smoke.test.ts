@@ -39,6 +39,9 @@ describe("parseHash", function () {
   it("parses #/demo/sandbox", function () {
     expect(parseHash("#/demo/sandbox")).toEqual(["demo", "sandbox"]);
   });
+  it("parses #/attack/run", function () {
+    expect(parseHash("#/attack/run")).toEqual(["attack", "run"]);
+  });
   it("parses an empty hash and the root as no route", function () {
     expect(parseHash("")).toEqual([]);
     expect(parseHash("#/")).toEqual([]);
@@ -52,7 +55,12 @@ describe("effectiveRoute", function () {
   it("leaves every other route alone", function () {
     expect(effectiveRoute(["attack"])).toEqual(["attack"]);
     expect(effectiveRoute(["demo", "guided"])).toEqual(["demo", "guided"]);
+    expect(effectiveRoute(["attack", "run"])).toEqual(["attack", "run"]);
     expect(effectiveRoute([])).toEqual([]);
+  });
+  it("the #/attack/run anchor is the second segment", function () {
+    const r = effectiveRoute(parseHash("#/attack/run"));
+    expect(r[1]).toBe("run");
   });
 });
 

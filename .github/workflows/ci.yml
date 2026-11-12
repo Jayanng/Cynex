@@ -10,7 +10,7 @@ permissions:
 jobs:
   rust:
     name: Contract (fmt, clippy, tests, build)
-    runs-on: ubuntu-latest
+    runs-on: instabox-medium
     defaults:
       run:
         working-directory: contract
@@ -49,7 +49,7 @@ jobs:
 
   frontend:
     name: Frontend (typecheck, tests)
-    runs-on: ubuntu-latest
+    runs-on: instabox-medium
     defaults:
       run:
         working-directory: frontend
@@ -63,6 +63,11 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install dependencies
         run: npm ci
+      - name: Install web dependencies
+        # The frontend tsconfig comment claims the web sources are
+        # typechecked by web tsc -b; that is only true if CI runs it.
+        run: npm ci
+        working-directory: web
       - name: Install MCP dependencies
         run: npm ci
         working-directory: services/mcp
@@ -71,5 +76,11 @@ jobs:
         working-directory: services/mcp
       - name: Typecheck
         run: npm run typecheck
+      - name: Typecheck web
+        # Same typecheck half as the web build script (tsc -b plus
+        # the api project), so the frontend tsconfig comment claim
+        # that web sources are typechecked by web tsc -b holds in CI.
+        run: npx tsc -b && npx tsc -p tsconfig.api.json
+        working-directory: web
       - name: Tests
         run: NODE_PATH=$PWD/node_modules npm run jest

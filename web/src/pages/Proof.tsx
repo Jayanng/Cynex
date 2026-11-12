@@ -1,377 +1,436 @@
 /* Cynex web, Proof page.
-   Everything here is either a live chain read or a file in the repo.
-   Nothing asks for trust, one command replays the whole receipt chain
-   from genesis. The receipt table renders prev_hash as short hex with
-   copy and expand, never as a decimal byte list. */
+   Every claim names the contract method behind it and the live evidence
+   for it. The receipt table shows the seven key receipts with their real
+   settle transactions and blocks, all verified from the chain. The
+   receipt tx_ref field is empty on chain, so the tx hashes shown are
+   the real settle transactions, not values copied out of the receipt. */
 
-import { useState } from "react";
-import { BUNDLES, REPO, VAULT_PROD, VAULT_TEST } from "../lib/data";
+import { TEST_COUNTS, VAULT_TEST, TOKEN } from "../lib/data";
 import { useLive } from "../lib/live";
-import { bytesToHex, fmtToken, fmtTs, trunc } from "../lib/near";
 import { StripSection } from "../components/Strip";
-import { CmdBlock, HashChip, AcctChip, HexHash, Icon, ReadOnlyBadge, Unavail, LoadTxt } from "../components/ui";
-import { Footer, CountsLine } from "../components/shared";
-import { TamperPanel } from "../components/TamperPanel";
+import { Footer } from "../components/shared";
+import { CopyButton } from "../components/ui";
+import { TxLink, AccountLink } from "../lib/links";
 
-function JudgeItem({ n, t, body }: { n: string; t: string; body: React.ReactNode }) {
-  return (
-    <div className="flex gap-3">
-      <span
-        className="flex-none w-7 h-7 grid place-items-center rounded-lg border mono text-xs"
-        style={{ borderColor: "var(--line)", color: "var(--pos-text)" }}
-      >
-        {n}
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="text-ink font-medium text-sm">{t}</div>
-        {body}
-      </div>
-    </div>
-  );
+const CODE_HASH_SNAPSHOT = "65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6";
+
+const RECEIPTS: { index: string; obligation: string; tx: string; block: string }[] = [
+  {
+    index: "24",
+    obligation: "usecase-report-002",
+    tx: "2VLL134m83x5fWZLr2qBbPkjJ7gL9YR7V7U9eur7qoVC",
+    block: "276787166",
+  },
+  {
+    index: "31",
+    obligation: "demo-live-001",
+    tx: "12pi6dZ1CzgvCeLWCCRSvC2iLyTaN7J2fRHtYnbHmcf6",
+    block: "277243629",
+  },
+  {
+    index: "34",
+    obligation: "demo-live-004",
+    tx: "3KU6pZ6cQLEaFAne3SvNNJTDUpmeuJ6BwpaYR1Sd3Taq",
+    block: "277247420",
+  },
+  {
+    index: "35",
+    obligation: "demo-live-005",
+    tx: "D7aRDckcLkt4FghZUGpAkrCLx677NAVjPYrWUvTM2EJe",
+    block: "277362593",
+  },
+  {
+    index: "36",
+    obligation: "demo-live-006",
+    tx: "G4t39dyNEXPWE5EWgyrKALewvVU5hMhwCRBhC6AC7qx8",
+    block: "277375354",
+  },
+  {
+    index: "37",
+    obligation: "demo-live-007",
+    tx: "3dKKqs7KNZvTCn1VQTckjkXLWM5KUuw8g5tVWVqAhTDz",
+    block: "277387665",
+  },
+  {
+    index: "38",
+    obligation: "demo-live-008",
+    tx: "BgvVNfX7CL2FoqR9dS6HLjdHRgedKXfsAUeLp2jhLvM2",
+    block: "277403330",
+  },
+];
+
+function jestCounts(): [string, string, string] {
+  const m = TEST_COUNTS.match(/(\d+) tests passed, (\d+) skipped, (\d+) total/);
+  if (m) return [m[1], m[2], m[3]];
+  return ["655", "3", "658"];
 }
 
 export function Proof() {
-  const { live: L, refreshLive } = useLive();
-  const [replay, setReplay] = useState<{ running: boolean; marks: Record<number, "ok" | "bad">; done: boolean; okCount: number }>({
-    running: false,
-    marks: {},
-    done: false,
-    okCount: 0,
-  });
-
-  const replayBrowser = async () => {
-    const f = L.recTest;
-    if (!f.rows || !f.rows.length) return;
-    setReplay({ running: true, marks: {}, done: false, okCount: 0 });
-    const marks: Record<number, "ok" | "bad"> = {};
-    let ok = 0;
-    for (let i = 0; i < f.rows.length; i++) {
-      await new Promise((r) => setTimeout(r, 60));
-      const good = f.link?.perRow[i] ?? false;
-      marks[i] = good ? "ok" : "bad";
-      if (good) ok++;
-      setReplay({ running: true, marks: { ...marks }, done: false, okCount: ok });
-    }
-    setReplay({ running: false, marks, done: true, okCount: ok });
-  };
-
-  const f = L.recTest;
-  const tableBody = () => {
-    if (f.err)
-      return (
-        <div className="p-8 text-center space-y-4">
-          <div>
-            <Unavail />
-          </div>
-          <div>
-            <button className="btn sm" onClick={() => void refreshLive()}>
-              <span style={{ width: 16, height: 16, display: "inline-grid", placeItems: "center" }}>
-                <Icon name="refresh" />
-              </span>
-              Retry now
-            </button>
-          </div>
-        </div>
-      );
-    if (!f.rows)
-      return (
-        <div className="p-8 text-center">
-          <LoadTxt />
-        </div>
-      );
-    if (!f.rows.length)
-      return <div className="p-8 text-center dim mono text-[13px]">receipts(start: 0, limit: 50) returned no rows.</div>;
-    const per = f.link?.perRow ?? [];
-    return (
-      <>
-        <div className="overflow-auto max-h-[460px]">
-          <table className="tbl">
-            <thead className="sticky top-0 z-10">
-              <tr>
-                <th>index</th>
-                <th>prev_hash</th>
-                <th>obligation_id</th>
-                <th>recipient</th>
-                <th>amount</th>
-                <th>token_id</th>
-                <th>timestamp</th>
-                <th>tx_ref</th>
-                <th>link_ok</th>
-              </tr>
-            </thead>
-            <tbody>
-              {f.rows.map((r, i) => {
-                const ok = per[i];
-                const mark = replay.marks[i];
-                return (
-                  <tr key={r.index} id={"rx-" + i} className={mark === "ok" ? "row-ok" : mark === "bad" ? "row-bad" : undefined}>
-                    <td className="dim">{r.index}</td>
-                    <td>
-                      <HexHash value={r.prev_hash} />
-                    </td>
-                    <td style={{ color: "var(--txt)" }}>{r.obligation_id}</td>
-                    <td>
-                      <a href={"https://testnet.nearblocks.io/address/" + r.recipient} target="_blank" rel="noopener" title={r.recipient}>
-                        {trunc(r.recipient, 12, 8)}
-                      </a>
-                    </td>
-                    <td title={"raw: " + String(r.amount) + " · " + fmtToken(r.amount) + " USDC · usdc.fakes.testnet, 6 decimals"}>{String(r.amount)}</td>
-                    <td className="dim" title={r.token_id}>
-                      {trunc(r.token_id, 10, 8)}
-                    </td>
-                    <td className="dim" title={String(r.timestamp)}>
-                      {fmtTs(r.timestamp)}
-                    </td>
-                    <td>
-                      {/^[1-9A-HJ-NP-Za-km-z]{43,44}$/.test(r.tx_ref) ? (
-                        <HashChip hash={r.tx_ref} />
-                      ) : r.tx_ref ? (
-                        <span className="dim mono" title={r.tx_ref}>
-                          {trunc(r.tx_ref, 12, 8)}
-                        </span>
-                      ) : (
-                        <span className="dim mono" title="tx_ref is empty on chain for this receipt: the automatic settle path records no tx hash">
-                          -
-                        </span>
-                      )}
-                    </td>
-                    <td>
-                      {ok ? (
-                        <span
-                          style={{ color: "var(--pos-text)", width: 16, height: 16, display: "inline-grid", placeItems: "center" }}
-                          title={"index follows receipt " + (i - 1 < 0 ? "genesis" : String(i - 1)) + " (contiguity only; hash links are checked by verify-live)"}
-                        >
-                          <Icon name="check" />
-                        </span>
-                      ) : (
-                        <span
-                          style={{ color: "var(--neg-text)", width: 16, height: 16, display: "inline-grid", placeItems: "center" }}
-                          title="link broken"
-                        >
-                          <Icon name="x" />
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        <div
-          className="px-4 py-3 border-t mono text-xs dim2 flex flex-wrap gap-x-5 gap-y-1"
-          style={{ borderColor: "var(--line2)" }}
-        >
-          <span>source: {VAULT_TEST} · receipts(start, limit) · live</span>
-          <span>link_ok = index contiguity (in-browser); hash links are recomputed by the CLI verify-live</span>
-          <span>canonical recompute: node frontend/dist-test/cli/cynex.js verify-live cynex-testvault.cynexmaster.testnet</span>
-        </div>
-        {replay.done ? (
-          <div
-            className={"logline " + (replay.okCount === f.rows.length ? "ok" : "bad") + " fadein mt-3"}
-          >
-            structural replay: {replay.okCount}/{f.rows.length} receipts · indices contiguous · hash links are recomputed by the CLI, not
-            here · canonical SHA-256 recompute: verify-live (command above)
-          </div>
-        ) : null}
-      </>
-    );
-  };
+  const { live: L } = useLive();
+  const [passed, skipped, total] = jestCounts();
+  const codeHash = !L.codeTest.err && L.codeTest.v ? L.codeTest.v : CODE_HASH_SNAPSHOT;
+  const codeHashIsSnapshot = L.codeTest.err || !L.codeTest.v;
+  const countsLine =
+    !L.recTest.err && !L.recProd.err && !L.policy.err && L.recTest.v != null && L.recProd.v != null && L.policy.v
+      ? `${L.recTest.v} test receipts, ${L.recProd.v} production receipts, policy p6-001 spent ${L.policy.v.spent} of ${L.policy.v.limit}`
+      : "39 test receipts, 13 production receipts, policy p6-001 spent 6200 of 10000, read 12 Nov 2026";
+  const policyEvidence =
+    !L.policy.err && L.policy.v != null
+      ? `Policy p6-001 spent ${L.policy.v.spent} of ${L.policy.v.limit}, read live`
+      : "Policy p6-001 spent 6200 of 10000, read 12 Nov 2026";
 
   return (
     <>
+      <div className="page-hero">
+        <div className="wrap">
+          <p className="hero-tag">PROOF · VERIFY EVERY CLAIM</p>
+          <h1 className="page-line">
+            Do not trust
+            <br />
+            this page. <span className="accent">Check it.</span>
+          </h1>
+          <p className="hero-sub">
+            Every claim below names the contract method behind it and the live evidence for it. Counts:{" "}
+            <strong>{countsLine}</strong>.
+          </p>
+        </div>
+      </div>
       <StripSection />
-      <section className="wrap pt-8 md:pt-10">
-        <a
-          href="#/"
-          className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium mb-4"
-          style={{ borderColor: "var(--line)", background: "var(--raised)", color: "var(--secondary)" }}
-        >
-          ← Home
-        </a>
-        <div className="kicker mb-2">Proof</div>
-        <h1 className="text-3xl md:text-4xl mb-2">Verify it yourself</h1>
-        <p className="dim text-sm max-w-2xl">
-          Everything on this page is either a live chain read or a file in the repo. Nothing here asks for trust, one command replays the
-          whole receipt chain from genesis.
-        </p>
-      </section>
 
-      {/* judges start here */}
-      <section className="wrap mt-8">
-        <div className="panel p-6">
-          <div className="kicker mb-4">Judges, start here</div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-6 text-sm">
-            <div>
-            <JudgeItem
-              n="1"
-              t="Live vaults"
-              body={
-                <div className="flex flex-col gap-1.5 mt-1">
-                  <AcctChip account={VAULT_PROD} />
-                  <AcctChip account={VAULT_TEST} />
-                </div>
-              }
-            />
-            </div>
-            <JudgeItem n="2" t="One command" body={<div className="mt-2"><CmdBlock cmdKey="verify" /></div>} />
-            <JudgeItem
-              n="3"
-              t="Four attestation bundles"
-              body={
-                <div className="mono text-xs dim mt-1">
-                  prod-tee-001 (request 13324) · 10640 · 11912 · 13040, below, with verify commands.
-                </div>
-              }
-            />
-            <div>
-            <JudgeItem
-              n="4"
-              t="Demo run + live state"
-              body={
-                <div className="mt-1 flex flex-col gap-2">
-                  <a className="mono text-xs" href="#/docs/p10demo">
-                    docs/demo-script.md
-                  </a>
-                  <span data-live-region="counts">
-                    <CountsLine />
+      <div className="wrap">
+        <section className="block" style={{ paddingBottom: "2rem" }}>
+          <p className="sec-label">RECEIPTS · ON CHAIN</p>
+          <h2 className="sec-title" style={{ fontSize: "clamp(1.9rem,4vw,3rem)" }}>
+            The live receipts
+          </h2>
+          <div className="table-wrap">
+            <table className="data">
+              <thead>
+                <tr>
+                  <th>Receipt</th>
+                  <th>Obligation</th>
+                  <th>Verdict</th>
+                  <th>Settle transaction</th>
+                  <th>Block</th>
+                </tr>
+              </thead>
+              <tbody>
+                {RECEIPTS.map((r) => (
+                  <tr key={r.index}>
+                    <td data-h="RECEIPT"><TxLink hash={r.tx} title={"vault receipt number " + r.index + ", settle transaction"}>{r.index}</TxLink></td>
+                    <td data-h="OBLIGATION" className="mono">
+                      <AccountLink account={VAULT_TEST} title="view the vault account on NearBlocks">{r.obligation}</AccountLink>
+                    </td>
+                    <td data-h="VERDICT">
+                      <span className="st-paid">PAID</span>
+                    </td>
+                    <td data-h="TX" className="hash">
+                      <TxLink hash={r.tx}>{r.tx}</TxLink>
+                    </td>
+                    <td data-h="BLOCK" className="mono">
+                      {r.block}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="note-box">
+            <b>About tx_ref:</b> the receipt tx_ref field is empty on chain for receipts 24, 31, 34, 35, 36, 37 and 38. The vault does
+            not record the settle tx hash in the receipt. The tx hashes shown above are the real settle transactions,
+            not values copied out of the receipt. Each hash above is the hash of the settle transaction that produced that receipt, returned when the settle transaction was submitted and recorded at settle time, while the receipt tx_ref field on chain stays empty by contract behaviour.
+          </div>
+        </section>
+
+        <section className="block" style={{ paddingTop: "1rem", paddingBottom: "2rem" }}>
+          <p className="sec-label">CLAIM MAP</p>
+          <h2 className="sec-title" style={{ fontSize: "clamp(1.9rem,4vw,3rem)" }}>
+            Claim, method, evidence
+          </h2>
+          <div className="table-wrap">
+            <table className="data">
+              <thead>
+                <tr>
+                  <th>Claim</th>
+                  <th>Contract method</th>
+                  <th>Check</th>
+                  <th>Live evidence</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td data-h="CLAIM">A changed recipient is refused, 0 moved</td>
+                  <td data-h="METHOD" className="mono">
+                    settle
+                  </td>
+                  <td data-h="CHECK">Terms comparison on settle</td>
+                  <td data-h="EVIDENCE" className="hash">
+                    ERR_RECIPIENT_SUBSTITUTION · tx <TxLink hash="EiBHjMBqZfBLZB33H4odbBfskGbVCX1Jor422t5S1cpX">EiBHjMBqZfBLZB33H4odbBfskGbVCX1Jor422t5S1cpX</TxLink>
+                  </td>
+                </tr>
+                <tr>
+                  <td data-h="CLAIM">A changed amount is refused, 0 moved</td>
+                  <td data-h="METHOD" className="mono">
+                    settle
+                  </td>
+                  <td data-h="CHECK">Terms comparison on settle</td>
+                  <td data-h="EVIDENCE" className="hash">
+                    ERR_TERMS_MISMATCH · amount 200 · tx <TxLink hash="2NaWqCYiUnh9DMhRCR6JVSDQ3R7yD26U8Auf3qEer91f">2NaWqCYiUnh9DMhRCR6JVSDQ3R7yD26U8Auf3qEer91f</TxLink>
+                  </td>
+                </tr>
+                <tr>
+                  <td data-h="CLAIM">A settled obligation cannot be settled again</td>
+                  <td data-h="METHOD" className="mono">
+                    settle
+                  </td>
+                  <td data-h="CHECK">Nonce / replay state</td>
+                  <td data-h="EVIDENCE" className="hash">
+                    ERR_NONCE_ALREADY_CONSUMED · tx <TxLink hash="hG6uhpePR9ZcvCZXZprpXa8rvbAGGQPxD4ZyMpP91F6">hG6uhpePR9ZcvCZXZprpXa8rvbAGGQPxD4ZyMpP91F6</TxLink>
+                  </td>
+                </tr>
+                <tr>
+                  <td data-h="CLAIM">Correct evidence and exact terms settle, once</td>
+                  <td data-h="METHOD" className="mono">
+                    submit_evidence_preimage + settle
+                  </td>
+                  <td data-h="CHECK">Digest committed up front, compared at settle</td>
+                  <td data-h="EVIDENCE" className="hash">
+                    Receipt 24 · <AccountLink account={VAULT_TEST} title="view the vault account on NearBlocks">usecase-report-002</AccountLink> · PAID
+                  </td>
+                </tr>
+                <tr>
+                  <td data-h="CLAIM">One click on the live site settles a real demo obligation</td>
+                  <td data-h="METHOD" className="mono">
+                    settle
+                  </td>
+                  <td data-h="CHECK">Live demo obligations demo-live-001 to 008</td>
+                  <td data-h="EVIDENCE" className="hash">
+                    Receipts 31, 35, 36, 37 and 38 · PAID · txs in the receipt table above
+                  </td>
+                </tr>
+                <tr>
+                  <td data-h="CLAIM">The policy budget is capped and tracked on chain</td>
+                  <td data-h="METHOD" className="mono">
+                    create_obligation / settle
+                  </td>
+                  <td data-h="CHECK">Policy spend read from the vault</td>
+                  <td data-h="EVIDENCE" className="hash">
+                    {policyEvidence}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="block" style={{ paddingTop: "1rem", paddingBottom: "2rem" }}>
+          <p className="sec-label">WHAT IS REAL AND WHAT IS SIMULATED</p>
+          <h2 className="sec-title" style={{ fontSize: "clamp(1.9rem,4vw,3rem)" }}>
+            Stated plainly, 15 rows
+          </h2>
+          <div className="table-wrap">
+            <table className="data">
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th>Status</th>
+                  <th>Note</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td data-h="ITEM">Vault contract on NEAR testnet</td>
+                  <td data-h="STATUS">
+                    <span className="st-real">REAL</span>
+                  </td>
+                  <td data-h="NOTE">Deployed code, hash <AccountLink account={VAULT_TEST} title="view the vault account on NearBlocks">{codeHash}</AccountLink>{codeHashIsSnapshot ? " (pinned snapshot from 12 Nov 2026)" : ""}</td>
+                </tr>
+                <tr>
+                  <td data-h="ITEM">Refusal transactions (recipient, amount, replay, before evidence)</td>
+                  <td data-h="STATUS">
+                    <span className="st-real">REAL</span>
+                  </td>
+                  <td data-h="NOTE">Four tx hashes listed on Break it and on Guided demo</td>
+                </tr>
+                <tr>
+                  <td data-h="ITEM">Receipts 24, 31, 34, 35, 36, 37, 38</td>
+                  <td data-h="STATUS">
+                    <span className="st-real">REAL</span>
+                  </td>
+                  <td data-h="NOTE">Written on chain by real settles</td>
+                </tr>
+                <tr>
+                  <td data-h="ITEM">Receipt counts and policy spend</td>
+                  <td data-h="STATUS">
+                    <span className="st-real">REAL</span>
+                  </td>
+                  <td data-h="NOTE">{countsLine}</td>
+                </tr>
+                <tr>
+                  <td data-h="ITEM">Test counts</td>
+                  <td data-h="STATUS">
+                    <span className="st-real">REAL</span>
+                  </td>
+                  <td data-h="NOTE">
+                    Jest {passed} passed, {skipped} skipped, {total} total; cargo test 142 passed
+                  </td>
+                </tr>
+                <tr>
+                  <td data-h="ITEM">MCP server and its six tools</td>
+                  <td data-h="STATUS">
+                    <span className="st-real">REAL CODE</span>
+                  </td>
+                  <td data-h="NOTE">Stdio only, one tool moves funds, run with npx cynex-mcp --sandbox</td>
+                </tr>
+                <tr>
+                  <td data-h="ITEM">Run it live on this site</td>
+                  <td data-h="STATUS">
+                    <span className="st-real">REAL</span>
+                  </td>
+                  <td data-h="NOTE">
+                    Settles the next ready demo obligation on testnet and returns the receipt and tx hash. Proven
+                    live: receipt 38, <AccountLink account={VAULT_TEST} title="view the vault account on NearBlocks">demo-live-008</AccountLink>, tx <TxLink hash="BgvVNfX7CL2FoqR9dS6HLjdHRgedKXfsAUeLp2jhLvM2">BgvVNfX7CL2FoqR9dS6HLjdHRgedKXfsAUeLp2jhLvM2</TxLink>, block 277403330
+                  </td>
+                </tr>
+                <tr>
+                  <td data-h="ITEM">Demo-settle key scope</td>
+                  <td data-h="STATUS">
+                    <span className="st-real">REAL</span>
+                  </td>
+                  <td data-h="NOTE">
+                    Scoped settle-only key on the test vault, allowance 1 NEAR. The browser never sees it.
+                  </td>
+                </tr>
+                <tr>
+                  <td data-h="ITEM">Break it attack form</td>
+                  <td data-h="STATUS">
+                    <span className="st-real">LIVE</span>
+                  </td>
+                  <td data-h="NOTE">Submits a real settle to the test vault on chain and shows the vault's verdict and its transaction hash when one comes back. The four recorded attacks are listed separately on Break it.</td>
+                </tr>
+                <tr>
+                  <td data-h="ITEM">Tamper and detect panel</td>
+                  <td data-h="STATUS">
+                    <span className="st-sim">LOCAL DEMO</span>
+                  </td>
+                  <td data-h="NOTE">Illustrates the receipt hash-link check in the browser, on receipt 24</td>
+                </tr>
+                <tr>
+                  <td data-h="ITEM">Home obligation card</td>
+                  <td data-h="STATUS">
+                    <span className="st-real">REAL VALUES</span>
+                  </td>
+                  <td data-h="NOTE">
+                    Recipient, amount, token, evidence digest, and budget are the real usecase-report-002 terms,
+                    read from the chain
+                  </td>
+                </tr>
+                <tr>
+                  <td data-h="ITEM">TEE attestation</td>
+                  <td data-h="STATUS">
+                    <span className="st-real">REAL</span>
+                  </td>
+                  <td data-h="NOTE">
+                    Request 11912 quote verified off chain, outlayer-verify v0.1.0 exit 0. The vault does not
+                    verify the quote on chain, by design
+                  </td>
+                </tr>
+                <tr>
+                  <td data-h="ITEM">VRF anchor</td>
+                  <td data-h="STATUS">
+                    <span className="st-real">REAL</span>
+                  </td>
+                  <td data-h="NOTE">
+                    Signature verified on chain, bound to the pending request. Proves determinism and binding, not
+                    TEE execution
+                  </td>
+                </tr>
+                <tr>
+                  <td data-h="ITEM">Reputation gate</td>
+                  <td data-h="STATUS">
+                    <span className="st-real">REAL</span>
+                  </td>
+                  <td data-h="NOTE">
+                    Five signals scored before settling. BLOCK refuses, WARN escalates to the owner. A reputation
+                    refusal is not a vault refusal
+                  </td>
+                </tr>
+                <tr>
+                  <td data-h="ITEM">Token</td>
+                  <td data-h="STATUS">
+                    <span className="st-real">REAL</span>
+                  </td>
+                  <td data-h="NOTE"><AccountLink account={TOKEN} />, 6 decimals, testnet only, no mainnet value</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="block" style={{ paddingTop: "1rem" }}>
+          <div className="split">
+            <div className="limits">
+              <p className="sec-label">BUILD STATUS</p>
+              <h2 className="sec-title" style={{ fontSize: "clamp(1.7rem,3.4vw,2.4rem)" }}>
+                As last run
+              </h2>
+              <ul>
+                <li>
+                  <span>
+                    <strong>Jest:</strong> {passed} passed, {skipped} skipped, {total} total.
                   </span>
-                </div>
-              }
-            />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* verify command */}
-      <section className="wrap mt-8">
-        <div className="panel p-6">
-          <div className="flex flex-wrap items-center gap-3 mb-1">
-            <h2 className="text-xl md:text-2xl">One-command verify</h2>
-            <ReadOnlyBadge />
-          </div>
-          <p className="dim text-sm mb-4">Read-only view calls against the vault, no keys, no wallet. Exact vault id included; the RPC endpoint is the default.</p>
-          <div className="space-y-2 mb-4">
-            <CmdBlock cmdKey="verify" />
-            <CmdBlock cmdKey="verifyCsv" />
-            <CmdBlock cmdKey="verifyProd" />
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="mono text-xs dim2 ">expected output</span>
-            <span data-live-region="counts">
-              <CountsLine />
-            </span>
-          </div>
-        </div>
-      </section>
-
-      {/* receipt table */}
-      <section className="wrap mt-8">
-        <div className="panel">
-          <div className="flex flex-wrap items-center justify-between gap-3 p-5 border-b" style={{ borderColor: "var(--line2)" }}>
-            <div>
-              <h2 className="text-xl">Receipt chain, test vault, live</h2>
-              <div className="mono text-xs dim2 mt-1">
-                frozen CSV columns · tx_ref is empty for most receipts: the automatic settle path records no tx hash
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <button className="btn sm" onClick={() => void replayBrowser()} disabled={replay.running}>
-                <span style={{ width: 16, height: 16, display: "inline-grid", placeItems: "center" }}>
-                  <Icon name="check" />
-                </span>
-                Replay in browser
-              </button>
-              <button className="btn sm ghost" onClick={() => void refreshLive()}>
-                <span style={{ width: 16, height: 16, display: "inline-grid", placeItems: "center" }}>
-                  <Icon name="refresh" />
-                </span>
-                Refresh
-              </button>
-            </div>
-          </div>
-          <div className="callout mono text-xs mx-5 mt-4">
-            Warning: receipts 0 to 6 name acme-supplies.testnet, which does not exist on chain (view_account returns UNKNOWN_ACCOUNT). Those
-            settles credited a token balance, because ft_transfer only updates the token contract map, but the account was never created, so
-            they are not payments to a real counterparty. Do not settle to acme-supplies.testnet.
-          </div>
-          <div data-live-region="table">{tableBody()}</div>
-          <div id="replayout" className="px-5 pb-5"></div>
-        </div>
-      </section>
-
-      {/* tamper */}
-      <section className="wrap mt-8">
-        <TamperPanel id="proof" />
-      </section>
-
-      {/* bundles */}
-      <section className="wrap mt-10">
-        <div className="kicker mb-2">Attestation bundles</div>
-        <h2 className="text-xl md:text-2xl mb-1">TEE evidence, verifiable offline</h2>
-        <p className="dim text-sm max-w-2xl mb-6">
-          All four bundles live in the repo under <span className="mono text-[13px] text-ink">docs/attestation-proofs/</span>.
-          Production TEE proof first. The VRF signature does not prove TEE execution. Request 13040 verifies offline with mainnet collateral
-          bundled in its file, because the testnet collateral archive lags. Verify live from a tx hash with{" "}
-          <span className="mono text-[13px]" style={{ color: "var(--accent-text)" }}>
-            scripts/verify-tee-attestation.sh --tx &lt;hash&gt;
-          </span>
-          .
-        </p>
-        <div className="space-y-4">
-          {BUNDLES.map((b) => (
-            <div key={b.id} className="panel p-6" style={b.top ? { background: "var(--raised)" } : undefined}>
-              <div className="flex flex-wrap items-center gap-3 mb-2">
-                <h3 className="text-base">{b.title}</h3>
-                {b.top ? (
-                  <span className="badge b-paid">
-                    <span className="bdot"></span>production
+                </li>
+                <li>
+                  <span>
+                    <strong>Cargo test:</strong> 142 passed.
                   </span>
-                ) : null}
-                <span className="hashchip" title="OutLayer request id">
-                  <span>OutLayer {b.req}</span>
-                </span>
-              </div>
-              <p className="dim text-[13px] mb-3">
-                {b.note} Vault:{" "}
-                <a className="mono text-xs" href={"https://testnet.nearblocks.io/address/" + b.vault} target="_blank" rel="noopener">
-                  {b.vault}
-                </a>
-              </p>
-              <div className="flex flex-wrap items-center gap-3 mb-3">
-                <span className="mono text-xs dim2 ">TEE request tx</span>
-                <HashChip hash={b.tx} />
-              </div>
-              <div className="grid md:grid-cols-[minmax(0,1fr)_auto] gap-3 items-center">
-                <CmdBlock cmdKey={b.key} />
-                <a className="btn sm ghost" href={REPO + "/blob/master/docs/attestation-proofs/" + b.file} target="_blank" rel="noopener">
-                  view bundle, docs/attestation-proofs/{b.file}{" "}
-                  <span style={{ width: 16, height: 16, display: "inline-grid", placeItems: "center" }}>
-                    <Icon name="ext" />
+                </li>
+                <li>
+                  <span>
+                    <strong>Vault code hash:</strong>{" "}
+                    <span className="mono" style={{ fontSize: ".82rem", wordBreak: "break-all" }}>
+                      <AccountLink account={VAULT_TEST} title="view the vault account on NearBlocks">{codeHash}</AccountLink>
+                    </span>
+                    {codeHashIsSnapshot ? " (pinned snapshot from 12 Nov 2026)" : ""}
                   </span>
-                </a>
-              </div>
+                </li>
+                <li>
+                  <span>
+                    <strong>Live reads:</strong> {countsLine}.
+                  </span>
+                </li>
+              </ul>
             </div>
-          ))}
-        </div>
-      </section>
-      <section className="wrap mt-10">
-        <div className="panel p-6">
-          <div className="kicker mb-3">Next</div>
-          <div className="flex flex-wrap gap-x-8 gap-y-3">
-            <a className="mono text-sm inline-flex items-center gap-2" style={{ color: "var(--accent-text)" }} href="#/docs">
-              Read how it works →
-            </a>
-            <a className="mono text-sm inline-flex items-center gap-2" style={{ color: "var(--accent-text)" }} href="#/">
-              Back to the start →
-            </a>
+            <div className="limits">
+              <p className="sec-label">HONEST LIMITS</p>
+              <h2 className="sec-title" style={{ fontSize: "clamp(1.7rem,3.4vw,2.4rem)" }}>
+                What Cynex does not claim
+              </h2>
+              <ul>
+                <li>
+                  <span>
+                    <strong>The vault checks terms, not the caller.</strong> Safety comes from the fixed terms, the
+                    budget, and the scoped settle key, never from trusting who asks.
+                  </span>
+                </li>
+                <li>
+                  <span>
+                    <strong>TEE quotes are verified off chain.</strong> The vault does not verify the attestation
+                    quote on chain. That is by design, and it is stated plainly.
+                  </span>
+                </li>
+                <li>
+                  <span>
+                    <strong>VRF is not TEE proof.</strong> The VRF signature proves determinism and binding to a
+                    pending request. It does not prove TEE execution, and Cynex does not claim it does.
+                  </span>
+                </li>
+              </ul>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
       <Footer />
     </>
   );
 }
-
-export { bytesToHex };

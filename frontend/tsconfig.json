@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2022",
+    "jsx": "react-jsx",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "outDir": "dist",
@@ -15,8 +16,18 @@
     "src",
     "scripts"
   ],
-  // route-smoke.test.ts imports web/src/lib/routes.ts, which sits outside this project rootDir; tsc would fail TS6059. The test is typechecked by ts-jest when jest runs, and routes.ts is typechecked by web tsc -b.
+  // route-smoke.test.ts imports web/src/lib/routes.ts, which sits outside this project rootDir; tsc would fail TS6059. The test is typechecked by ts-jest when jest runs, and routes.ts is typechecked by web tsc -b. The same holds for the demo-settle, demo-attack, breakIt, liveAttempts and nearReceipts tests below, which import web/src and web/api.
+  // links.test.ts imports web/src/lib/links.tsx, same treatment.
   "exclude": [
-    "src/route-smoke.test.ts"
+    "src/route-smoke.test.ts",
+    "src/demoSettle.test.ts",
+    "src/breakItForm.test.ts",
+    "src/demoSettleApi.test.ts",
+    "src/demoAttack.test.ts",
+    "src/demoAttackApi.test.ts",
+    "src/liveAttempts.test.ts",
+    "src/nearReceipts.test.ts",
+    "src/liveReceiptsApi.test.ts",
+    "src/links.test.ts"
   ]
 }
