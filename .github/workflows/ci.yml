@@ -10,7 +10,7 @@ permissions:
 jobs:
   rust:
     name: Contract (fmt, clippy, tests, build)
-    runs-on: ubuntu-latest
+    runs-on: instabox-medium
     defaults:
       run:
         working-directory: contract
@@ -49,7 +49,7 @@ jobs:
 
   frontend:
     name: Frontend (typecheck, tests)
-    runs-on: ubuntu-latest
+    runs-on: instabox-medium
     defaults:
       run:
         working-directory: frontend
