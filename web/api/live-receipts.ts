@@ -6,7 +6,9 @@
  * The response is CDN cached for 10 seconds with stale-while-revalidate
  * for 60 seconds, so the live refresh every 5 seconds mostly reads the
  * CDN instead of the RPC, and a transient RPC failure is covered by a
- * stale cached copy instead of an error page.
+ * stale cached copy instead of an error page. Both Cache-Control and
+ * CDN-Cache-Control carry the same value, because Vercel's CDN needs
+ * the targeted header to cache serverless function responses reliably.
  *
  * Why this endpoint exists: near-api-js parses JSON with JSON.parse,
  * which rounds u64 timestamps over 2^53, and a rounded timestamp
@@ -421,6 +423,7 @@ export async function handleLiveReceipts(
 ): Promise<void> {
   if (req.method !== undefined && req.method !== "GET") {
     res.setHeader("Cache-Control", "no-store");
+    res.setHeader("CDN-Cache-Control", "no-store");
     res
       .status(405)
       .json(fail("METHOD_NOT_ALLOWED", "Only GET is accepted on this endpoint."));
@@ -431,6 +434,7 @@ export async function handleLiveReceipts(
   const vault = Array.isArray(queryVault) ? queryVault[0] : queryVault;
   if (typeof vault !== "string" || !ALLOWED_VAULTS.includes(vault)) {
     res.setHeader("Cache-Control", "no-store");
+    res.setHeader("CDN-Cache-Control", "no-store");
     res.status(400).json(
       fail(
         "INVALID_VAULT",
@@ -454,6 +458,7 @@ export async function handleLiveReceipts(
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown error";
     res.setHeader("Cache-Control", "no-store");
+    res.setHeader("CDN-Cache-Control", "no-store");
     res.status(502).json(
       fail(
         "RECEIPTS_UNAVAILABLE",
@@ -464,6 +469,7 @@ export async function handleLiveReceipts(
   }
 
   res.setHeader("Cache-Control", LIVE_RECEIPTS_CACHE_CONTROL);
+  res.setHeader("CDN-Cache-Control", LIVE_RECEIPTS_CACHE_CONTROL);
   res.status(200).json({ rows: result.rows, block: result.block });
 }
 

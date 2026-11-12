@@ -154,6 +154,12 @@ describe("handleLiveReceipts", () => {
     expect(out.headers()["Cache-Control"]).toBe(
       "s-maxage=10, stale-while-revalidate=60",
     );
+    expect(out.headers()["CDN-Cache-Control"]).toBe(
+      LIVE_RECEIPTS_CACHE_CONTROL,
+    );
+    expect(out.headers()["CDN-Cache-Control"]).toBe(
+      "s-maxage=10, stale-while-revalidate=60",
+    );
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][0]).toBe("https://test.rpc.fastnear.com");
     const init = fetchMock.mock.calls[0][1] as RequestInit;
@@ -206,6 +212,7 @@ describe("handleLiveReceipts", () => {
     expect(b.code).toBe("INVALID_VAULT");
     expect(b.error).toContain("evil.testnet");
     expect(out.headers()["Cache-Control"]).toBe("no-store");
+    expect(out.headers()["CDN-Cache-Control"]).toBe("no-store");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -216,6 +223,7 @@ describe("handleLiveReceipts", () => {
     expect(b.success).toBe(false);
     expect(b.code).toBe("INVALID_VAULT");
     expect(out.headers()["Cache-Control"]).toBe("no-store");
+    expect(out.headers()["CDN-Cache-Control"]).toBe("no-store");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -226,6 +234,7 @@ describe("handleLiveReceipts", () => {
     expect(b.success).toBe(false);
     expect(b.code).toBe("METHOD_NOT_ALLOWED");
     expect(out.headers()["Cache-Control"]).toBe("no-store");
+    expect(out.headers()["CDN-Cache-Control"]).toBe("no-store");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -238,6 +247,7 @@ describe("handleLiveReceipts", () => {
     expect(b.code).toBe("RECEIPTS_UNAVAILABLE");
     expect(b.error).toContain("fetch failed");
     expect(out.headers()["Cache-Control"]).toBe("no-store");
+    expect(out.headers()["CDN-Cache-Control"]).toBe("no-store");
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
@@ -302,6 +312,7 @@ describe("handleLiveReceipts", () => {
     expect(b.success).toBe(false);
     expect(b.code).toBe("RECEIPTS_UNAVAILABLE");
     expect(out.headers()["Cache-Control"]).toBe("no-store");
+    expect(out.headers()["CDN-Cache-Control"]).toBe("no-store");
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(Date.now() - startedAt).toBeLessThan(2000);
   });
@@ -322,6 +333,7 @@ describe("handleLiveReceipts", () => {
     expect(b.code).toBe("RECEIPTS_UNAVAILABLE");
     expect(b.error).toContain("total budget");
     expect(out.headers()["Cache-Control"]).toBe("no-store");
+    expect(out.headers()["CDN-Cache-Control"]).toBe("no-store");
     expect(fetchMock.mock.calls.length).toBeLessThan(10);
     expect(Date.now() - startedAt).toBeLessThan(2000);
   });
@@ -335,6 +347,7 @@ describe("handleLiveReceipts", () => {
     expect(b.code).toBe("RECEIPTS_UNAVAILABLE");
     expect(b.error).toContain("read cap");
     expect(out.headers()["Cache-Control"]).toBe("no-store");
+    expect(out.headers()["CDN-Cache-Control"]).toBe("no-store");
     expect(fetchMock).toHaveBeenCalledTimes(10);
   });
 
