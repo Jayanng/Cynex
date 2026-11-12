@@ -84,9 +84,9 @@ export function Proof() {
     const per = f.link?.perRow ?? [];
     return (
       <>
-        <div className="overflow-x-auto">
+        <div className="overflow-auto max-h-[460px]">
           <table className="tbl">
-            <thead>
+            <thead className="sticky top-0 z-10">
               <tr>
                 <th>index</th>
                 <th>prev_hash</th>
@@ -181,7 +181,7 @@ export function Proof() {
   return (
     <>
       <StripSection />
-      <section className="wrap pt-12">
+      <section className="wrap pt-8 md:pt-10">
         <a
           href="#/"
           className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium mb-4"
@@ -201,8 +201,8 @@ export function Proof() {
       <section className="wrap mt-8">
         <div className="panel p-6">
           <div className="kicker mb-4">Judges, start here</div>
-          <div className="grid grid-cols-[minmax(0,1fr)] gap-x-10 gap-y-4 md:grid-cols-3 text-sm">
-            <div className="md:col-span-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-6 text-sm">
+            <div>
             <JudgeItem
               n="1"
               t="Live vaults"
@@ -224,7 +224,7 @@ export function Proof() {
                 </div>
               }
             />
-            <div className="md:col-span-2">
+            <div>
             <JudgeItem
               n="4"
               t="Demo run + live state"
@@ -343,7 +343,7 @@ export function Proof() {
                 <span className="mono text-xs dim2 ">TEE request tx</span>
                 <HashChip hash={b.tx} />
               </div>
-              <div className="grid md:grid-cols-[1fr_auto] gap-3 items-center">
+              <div className="grid md:grid-cols-[minmax(0,1fr)_auto] gap-3 items-center">
                 <CmdBlock cmdKey={b.key} />
                 <a className="btn sm ghost" href={REPO + "/blob/master/docs/attestation-proofs/" + b.file} target="_blank" rel="noopener">
                   view bundle, docs/attestation-proofs/{b.file}{" "}

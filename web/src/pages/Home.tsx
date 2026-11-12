@@ -100,12 +100,12 @@ function Layer({
 
 function UseCaseSection() {
   return (
-    <section className="wrap mt-24">
+    <section className="wrap mt-12 md:mt-14">
       <div className="panel p-6">
         <div className="kicker mb-3">What it is for</div>
         <h2 className="text-2xl md:text-3xl mb-4">One job: pay for one named report, exactly</h2>
         <p className="dim text-sm leading-relaxed max-w-3xl mb-5">{USECASE.story}</p>
-        <div className="terms-grid mb-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 mb-5">
           <div className="term">
             <div className="tl">owner (human)</div>
             <div className="tv">{USECASE.owner}</div>
@@ -172,7 +172,7 @@ function UseCaseSection() {
 
 function McpSection() {
   return (
-    <section className="wrap mt-24">
+    <section className="wrap mt-12 md:mt-14">
       <div className="kicker mb-3">Agent integration</div>
       <h2 className="text-2xl md:text-3xl mb-4">An MCP server, with one tool that moves funds</h2>
       <p className="dim text-sm leading-relaxed max-w-3xl mb-5">{MCP_FACTS}</p>
@@ -304,7 +304,7 @@ export function Home() {
 
   return (
     <>
-      <section className="wrap pt-12 md:pt-24 relative">
+      <section className="wrap pt-8 md:pt-12 relative">
         <svg
           className="pointer-events-none absolute right-0 -top-4 hidden lg:block"
           width="460"
@@ -342,7 +342,7 @@ export function Home() {
           </div>
           <div className="flex min-w-0 flex-col gap-4">
             <ChecksCard />
-            <div className="panel fadein" data-live-region="latest" style={{ minHeight: 220 }}>
+            <div className="panel fadein" data-live-region="latest">
               <LatestSettle />
             </div>
           </div>
@@ -379,7 +379,7 @@ export function Home() {
       <RefusalPanel />
 
       {/* One live proof */}
-      <section className="wrap mt-24">
+      <section className="wrap mt-12 md:mt-14">
         <div className="panel p-6">
           <div className="flex flex-wrap items-center gap-3 mb-1">
             <span className="kicker">One live proof</span>
@@ -421,7 +421,7 @@ export function Home() {
       <UseCaseSection />
 
       {/* Three layers */}
-      <section className="wrap mt-24">
+      <section className="wrap mt-12 md:mt-14">
         <div className="kicker mb-3">The three layers</div>
         <h2 className="text-2xl md:text-3xl mb-8">The decision moves to the chain</h2>
         <div className="grid gap-4 md:grid-cols-2">
@@ -497,7 +497,7 @@ export function Home() {
 
       <McpSection />
       {/* Trust model */}
-      <section className="wrap mt-24">
+      <section className="wrap mt-12 md:mt-14">
         <div className="panel p-6">
           <div className="kicker mb-3">
             Trust model
@@ -531,7 +531,7 @@ export function Home() {
       <TrustRow />
 
       {/* CTAs */}
-      <section className="wrap mt-24">
+      <section className="wrap mt-12 md:mt-14">
         <div className="grid md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] gap-4">
           <a href="#/demo/guided" className="panel panel-h p-6 block">
             <div className="kicker mb-2">Demo</div>

@@ -10,21 +10,23 @@ import { Logo } from "./Logo";
 /* ---------- footer ---------- */
 export function Footer() {
   return (
-    <footer className="mt-24 border-t" style={{ borderColor: "var(--line2)" }}>
-      <div className="wrap py-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <Logo markSize={24} />
-          <div className="mono text-xs dim2 leading-relaxed">CYNEX · NEAR testnet, no mainnet funds</div>
+    <footer className="mt-16 border-t" style={{ borderColor: "var(--line2)" }}>
+      <div className="wrap py-8">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <Logo markSize={24} />
+            <div className="mono text-xs dim2 leading-relaxed">CYNEX · NEAR testnet, no mainnet funds</div>
+          </div>
+          <div className="flex items-center gap-4">
+            <a className="mono text-xs inline-flex items-center gap-2" href={REPO} target="_blank" rel="noopener">
+              github.com/Jayanng/Cynex{" "}
+              <span style={{ width: 16, height: 16, display: "inline-grid", placeItems: "center" }}>
+                <Icon name="ext" />
+              </span>
+            </a>
+          </div>
         </div>
-        <div className="flex items-center gap-4">
-          <a className="mono text-xs inline-flex items-center gap-2" href={REPO} target="_blank" rel="noopener">
-            github.com/Jayanng/Cynex{" "}
-            <span style={{ width: 16, height: 16, display: "inline-grid", placeItems: "center" }}>
-              <Icon name="ext" />
-            </span>
-          </a>
-        </div>
-        <nav className="flex flex-wrap gap-x-6 gap-y-2 mono text-xs pt-6 mt-6 border-t" style={{ borderColor: "var(--line2)" }} aria-label="Site">
+        <nav className="flex flex-wrap gap-x-6 gap-y-2 mono text-xs pt-5 mt-5 border-t" style={{ borderColor: "var(--line2)" }} aria-label="Site">
           <a href="#/">Home</a>
           <a href="#/demo/guided">Guided demo</a>
           <a href="#/attack">Break it</a>
@@ -59,7 +61,7 @@ export function CountsLine() {
 /* ---------- refusal panel (first screen, real on-chain refusal) ---------- */
 export function RefusalPanel() {
   return (
-    <section className="wrap pt-12">
+    <section className="wrap pt-10">
       <div className="panel p-6 fadein">
         <div className="flex flex-wrap items-center gap-3 mb-3">
           <span className="kicker">

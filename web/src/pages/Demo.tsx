@@ -45,7 +45,7 @@ function Guided({ anchor }: { anchor?: string }) {
               </span>
             </div>
             <p className="dim text-sm leading-relaxed mb-5 max-w-3xl">{s.desc}</p>
-            <div className="terms-grid mb-5">
+            <div className="mb-5">
               <TermsGrid terms={s.terms} />
             </div>
             <div className="space-y-2.5 mb-5">
@@ -128,7 +128,7 @@ export function Demo({ anchor }: { anchor?: string }) {
   }, []);
   return (
     <>
-      <section className="wrap pt-12">
+      <section className="wrap pt-8 md:pt-10">
         <a
           href="#/"
           className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium mb-4"

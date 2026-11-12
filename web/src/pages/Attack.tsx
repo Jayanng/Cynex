@@ -48,17 +48,11 @@ function AttackRunner() {
           demo/attack-scenarios.json. Scenarios 1–3 were executed on the test vault, the refusal tx is linked. Scenarios 4–6 show the verdict the on-chain terms require and the reason code.
         </p>
       </div>
-      <div className="panel p-6 mb-12">
-        <div className="flex flex-col">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-10">
           {ATTACKS.map((a, i) => (
             <div
               key={a.name}
-              className={
-                "flex flex-col gap-2 py-4" +
-                (i === 0 ? " pt-0" : "") +
-                (i === ATTACKS.length - 1 ? " pb-0" : " border-b")
-              }
-              style={{ borderColor: "var(--line2)" }}
+              className="panel p-5 flex flex-col justify-between gap-3"
             >
               <div className="flex flex-wrap items-center gap-3">
                 <h3 className="text-[15px]">{a.name}</h3>
@@ -94,9 +88,7 @@ function AttackRunner() {
               </div>
             </div>
           ))}
-        </div>
       </div>
-
     </>
   );
 }
@@ -253,7 +245,7 @@ function Playground() {
             </span>
           ) : null}
         </div>
-        <div className="terms-grid mb-4">
+        <div className="mb-4">
           <TermsGrid
             terms={[
               ["recipient", r.recipient ?? AGENT],
@@ -325,9 +317,9 @@ function Playground() {
             <option value="p10">demo (read-only)</option>
           </select>
         </div>
-        <div className="overflow-x-auto">
+        <div className="overflow-auto max-h-[460px]">
           <table className="tbl">
-            <thead>
+            <thead className="sticky top-0 z-10">
               <tr>
                 <th>#</th>
                 <th>obligation</th>
@@ -359,7 +351,7 @@ function Playground() {
 export function Attack() {
   return (
     <>
-      <section className="wrap pt-12">
+      <section className="wrap pt-8 md:pt-10">
         <a
           href="#/"
           className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium mb-4"

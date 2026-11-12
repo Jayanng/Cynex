@@ -9,7 +9,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { AGENT, CLI_COMMANDS, COMMIT, MASTER_TIP, CONSOLE_FACTS, CONSOLE_RUN, CP, DOC_COMMITS, MCP_FACTS, MCP_RUN, MCP_TOOLS, RPC_URL, SETTLE_CODES, TOKEN, VAULT_PROD, VAULT_TEST } from "../lib/data";
 import { StripSection } from "../components/Strip";
-import { Badge, CmdBlock, CopyButton, HashChip, Icon } from "../components/ui";
+import { Badge, CmdBlock, CodePanel, HashChip, Icon } from "../components/ui";
 import { Footer } from "../components/shared";
 
 /* Extract plain text from a React tree, for the docs search. */
@@ -98,12 +98,7 @@ const DOCS: DocSection[] = [
           event).
         </p>
         <h3 className="text-ink text-[15px] mt-6 mb-3">Cold run (README Reproduce it, frontend and verify-live steps)</h3>
-        <pre className="codeblock">
-          {CP.coldrun}
-          <button className="icbtn copyfloat" title="Copy">
-            <CopyButton text={CP.coldrun} />
-          </button>
-        </pre>
+        <CodePanel label="cold run commands" text={CP.coldrun} />
         <p className="dim text-[13px] mt-4">
           The tsc line exits 2 with 5 known near-api-js type errors, but the emitted dist-test/ is working JavaScript; the errors are
           expected (README.md:506-509). The verifier is read-only, no keys, no wallet. Current receipt counts are live on the{" "}
@@ -255,12 +250,7 @@ node frontend/dist-test/cli/cynex.js verify-live cynex-vault.cynexmaster.testnet
           .
         </p>
         <h3 className="text-ink text-[15px] mt-6 mb-3">Direct RPC check (not a doc command)</h3>
-        <pre className="codeblock dimc">
-          {CP.curlProd}
-          <button className="icbtn copyfloat" title="Copy">
-            <CopyButton text={CP.curlProd} />
-          </button>
-        </pre>
+        <CodePanel label="direct RPC check" text={CP.curlProd} dim />
         <p className="dim text-[13px] mt-4">
           RPC endpoint: <span className="mono text-[13px] text-ink">{RPC_URL}</span> · verify receipts end-to-end on the{" "}
           <a href="#/proof">Proof page</a>.
@@ -603,7 +593,7 @@ export function Docs({ active }: { active?: string }) {
   return (
     <>
       <StripSection />
-      <section className="wrap pt-12">
+      <section className="wrap pt-8 md:pt-10">
         <a
           href="#/"
           className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium mb-4"
