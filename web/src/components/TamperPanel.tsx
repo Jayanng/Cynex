@@ -42,7 +42,8 @@ export function TamperPanel({ id }: { id: string }) {
 
   const reset = useCallback((b: WorkReceipt[]) => {
     setChain(b.map((c) => ({ ...c })));
-    setPicked(b.length ? Number(b[0].index) : 0);
+    const preferred = b.find((c) => Number(c.index) === 24);
+    setPicked(b.length ? Number((preferred ?? b[0]).index) : 0);
     setLog([
       {
         kind: "diml",
