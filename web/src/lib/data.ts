@@ -293,6 +293,17 @@ export const AUTHORIZED_TERMS = {
   nonce: 30002,
 } as const;
 
+/* The locked terms of the ten demo-live obligations, the target of a
+ * live Break it attack. Every demo-live obligation has the same
+ * terms: recipient cynex-agent2, 100 base units, on the test vault.
+ * Verified live on chain 2026-11-12. A live attack tampers with
+ * these terms on a READY demo-live obligation; the vault refuses
+ * before any transfer. */
+export const DEMO_LIVE_TERMS = {
+  recipient: "cynex-agent2.cynexmaster.testnet",
+  amount: "100",
+} as const;
+
 export const BREAK_IT: BreakItScenario[] = [
   {
     key: "recipient",

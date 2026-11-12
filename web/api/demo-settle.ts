@@ -57,9 +57,9 @@ import type { KeyPairString } from "near-api-js";
 export const config = { maxDuration: 30 };
 
 const RPC_URL = "https://rpc.testnet.fastnear.com";
-const VAULT_TEST = "cynex-testvault.cynexmaster.testnet";
-const DEMO_AGENT = "cynex-agent.cynexmaster.testnet";
-const DEMO_POLICY_ID = "p6-001";
+export const VAULT_TEST = "cynex-testvault.cynexmaster.testnet";
+export const DEMO_AGENT = "cynex-agent.cynexmaster.testnet";
+export const DEMO_POLICY_ID = "p6-001";
 const DEMO_EVIDENCE_REF = "live-demo-button";
 const SETTLE_GAS = 100000000000000n;
 const SETTLE_SOFT_TIMEOUT_MS = 20000;
@@ -71,7 +71,7 @@ const SCOPE_TIMEOUT_MS = 5000;
 const SCAN_TIMEOUT_MS = 10000;
 const RECEIPT_SCAN_BACK = 10;
 
-const DEMO_OBLIGATION_IDS = [
+export const DEMO_OBLIGATION_IDS = [
   "demo-live-001",
   "demo-live-002",
   "demo-live-003",
@@ -336,7 +336,7 @@ export interface DemoChain {
   ): Promise<string>;
 }
 
-function txHashOf(outcome: unknown): string {
+export function txHashOf(outcome: unknown): string {
   const root = outcome as Record<string, unknown>;
   const tx = root.transaction as Record<string, unknown> | undefined;
   if (tx && typeof tx.hash === "string") return tx.hash;
@@ -465,7 +465,7 @@ const sharedRateLimitStore = createRateLimitStore();
 /* Scan the ten demo obligations in order and return the READY rows,
  * with their terms read from the chain. Used before the settle and
  * again after confirmation, so the remaining count is fresh. */
-async function findReady(chain: DemoChain): Promise<ObligationRow[]> {
+export async function findReady(chain: DemoChain): Promise<ObligationRow[]> {
   const ready: ObligationRow[] = [];
   for (const id of DEMO_OBLIGATION_IDS) {
     const row = await chain.getObligation(id);
@@ -479,7 +479,7 @@ async function findReady(chain: DemoChain): Promise<ObligationRow[]> {
  * established", never as a fact. The underlying promise keeps
  * running in the background; there is no abort, only a bounded
  * wait. */
-async function withTimeout<T>(
+export async function withTimeout<T>(
   promise: Promise<T>,
   ms: number,
 ): Promise<T | null> {
@@ -487,6 +487,12 @@ async function withTimeout<T>(
   const timeout = new Promise<null>((resolve) => {
     timer = setTimeout(() => resolve(null), ms);
   });
+  // If the timeout wins the race, the promise may still reject later.
+  // Give it a no-op handler now so a late rejection is not an
+  // unhandled rejection on the warm instance. This changes nothing
+  // about the race: when the promise rejects first, the race still
+  // rejects with its error, and the caller still sees null.
+  promise.catch(() => {});
   try {
     return await Promise.race([promise, timeout]);
   } catch {
@@ -502,7 +508,7 @@ async function withTimeout<T>(
  * call, and a failed transfer rolls the obligation back to READY.
  * Only PAID on chain counts as paid. A read error counts as not yet
  * paid, never as paid. */
-async function waitForPaid(
+export async function waitForPaid(
   chain: DemoChain,
   obligationId: string,
   timeoutMs: number,
@@ -534,7 +540,7 @@ async function waitForPaid(
  * The latest receipt is not necessarily this settle: another settle
  * could have landed between reads. Scan back a few entries and match
  * on obligation_id. */
-async function findReceiptIndex(
+export async function findReceiptIndex(
   chain: DemoChain,
   obligationId: string,
 ): Promise<number | null> {
@@ -748,10 +754,18 @@ export async function handleDemoSettle(
         settleBudgetMs,
       );
     });
-    txHash = await Promise.race([
-      chain.settle(target.obligation_id, recipient, amount),
-      timeout,
-    ]);
+    const settlePromise = chain.settle(
+      target.obligation_id,
+      recipient,
+      amount,
+    );
+    // If the timeout wins the race, the settle promise may still reject
+    // later. Give it a no-op handler now so a late refusal is not an
+    // unhandled rejection on the warm instance. This changes nothing
+    // about the race: when the settle loses first, the race still
+    // rejects with the settle error.
+    settlePromise.catch(() => {});
+    txHash = await Promise.race([settlePromise, timeout]);
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown error";
     if (/timed out/i.test(message)) {
@@ -763,7 +777,7 @@ export async function handleDemoSettle(
       res.status(200).json(
         fail(
           "SETTLE_TIMEOUT",
-          "Confirmation timed out, and it could not be established whether the settle was submitted. Do not click again: the obligation can only settle once, check the explorer for " +
+          "Confirmation timed out, and it could not be established whether the settle was submitted. Do not click again: each obligation settles at most once, check the explorer for " +
             target.obligation_id +
             " and the receipt list on the test vault.",
           { obligationId: target.obligation_id },

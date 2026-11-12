@@ -11,7 +11,7 @@ import { Footer } from "../components/shared";
 import { CopyButton } from "../components/ui";
 
 const TX_URL = "https://testnet.nearblocks.io/txns/";
-const PROVEN_TX = "D7aRDckcLkt4FghZUGpAkrCLx677NAVjPYrWUvTM2EJe";
+const PROVEN_TX = "G4t39dyNEXPWE5EWgyrKALewvVU5hMhwCRBhC6AC7qx8";
 
 const RECORDED = [
   {
@@ -28,6 +28,11 @@ const RECORDED = [
     title: "Replay: settle the same obligation again",
     code: "ERR_NONCE_ALREADY_CONSUMED",
     tx: "hG6uhpePR9ZcvCZXZprpXa8rvbAGGQPxD4ZyMpP91F6",
+  },
+  {
+    title: "Settle before evidence",
+    code: "ERR_INVALID_STATE",
+    tx: "BRXXhezVxYvze3imNHkrShnS8ujUvsShy4f3GtgwpCgQ",
   },
 ];
 
@@ -50,9 +55,9 @@ export function Attack({ anchor }: { anchor?: string }) {
             <span className="red">The vault refuses.</span>
           </h1>
           <p className="hero-sub">
-            Change the recipient or the amount below and try to settle. <strong>Any change from the locked terms is
-            refused.</strong> The form shows the recorded on-chain verdict for that attack; it submits nothing and
-            settles nothing.
+            Pick one of six live attacks below and try to settle. <strong>Any change from the locked terms is
+            refused.</strong> The form submits your attempt to the test vault on chain, and the vault answers with a
+            real verdict and a real transaction hash.
           </p>
         </div>
       </div>
@@ -61,7 +66,7 @@ export function Attack({ anchor }: { anchor?: string }) {
         <section className="block" style={{ paddingBottom: "2rem" }}>
           <p className="sec-label">RECORDED ATTACKS · ON CHAIN</p>
           <h2 className="sec-title" style={{ fontSize: "clamp(1.9rem,4vw,3rem)" }}>
-            These three already happened
+            These four already happened
           </h2>
           <div className="attack-list">
             {RECORDED.map((a) => (
@@ -107,16 +112,16 @@ export function Attack({ anchor }: { anchor?: string }) {
             <div className="proven">
               <div className="ph">
                 <span className="paid">PAID</span>
-                <span className="oid">Already proven live · receipt 35</span>
+                <span className="oid">Already proven live · receipt 36</span>
               </div>
               <dl>
                 <div className="row">
                   <dt>OBLIGATION</dt>
-                  <dd>demo-live-005 · settled</dd>
+                  <dd>demo-live-006 · settled</dd>
                 </div>
                 <div className="row">
                   <dt>RECEIPT</dt>
-                  <dd>35 · PAID</dd>
+                  <dd>36 · PAID</dd>
                 </div>
                 <div className="row">
                   <dt>TRANSACTION</dt>
@@ -128,7 +133,7 @@ export function Attack({ anchor }: { anchor?: string }) {
                 </div>
                 <div className="row">
                   <dt>BLOCK</dt>
-                  <dd>277362593</dd>
+                  <dd>277375354</dd>
                 </div>
               </dl>
             </div>

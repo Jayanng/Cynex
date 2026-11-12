@@ -1,100 +1,108 @@
-/* BreakIt free-form evaluation, pure logic with no React, so Jest can
-   cover it. The form judges proposed terms against the authorized terms
-   fixed on chain; the refusal shown is the recorded one from the test
-   vault, not a fresh live attempt from this click. Amounts compare as
-   numbers through BigInt, so 0100 is the same 100 base units the vault
-   would see, while a non-numeric amount is invalid input, not a refusal. */
+/* BreakIt input validation and free-text term extraction, pure logic
+ * with no React, so Jest can cover it. The validation checks only the
+ * shape of what the judge typed: a non-empty recipient and a
+ * whole-number amount. It judges nothing about the terms: the
+ * outcome of an attack comes from the chain, from /api/demo-attack,
+ * never from a local comparison.
+ *
+ * The extraction is pattern-based, not an LLM: it looks for an
+ * account id and an integer in the judge's free text, shows exactly
+ * what it found, and lets the judge confirm or edit it before
+ * anything is submitted. The settle attempt and the vault rejection
+ * are the live parts; no agent is tricked in the browser.
+ */
 
-import { AUTHORIZED_TERMS, BREAK_IT } from "./data";
+export type BreakItInputValidation =
+  | { ok: true }
+  | { ok: false; error: string };
 
-export type BreakItFormMode = "terms" | "replay" | "evidence";
-
-export type BreakItFormOut = {
-  kind: "refused" | "none" | "invalid";
-  code?: string;
-  tx?: string | null;
-  text: string;
-  /* When set, replaces the default recorded-refusal note under the result. */
-  note?: string;
-};
-
-function scenario(key: string) {
-  return BREAK_IT.find((s) => s.key === key);
-}
-
-export function evaluateBreakItForm(
+export function validateBreakItInput(
   recipient: string,
   amount: string,
-  mode: BreakItFormMode,
-): BreakItFormOut {
+): BreakItInputValidation {
   const r = recipient.trim();
   const a = amount.trim();
-  /* An empty field is not an authorized term, in any mode. */
   if (!r) {
     return {
-      kind: "invalid",
-      text: "Enter a recipient first. An empty recipient is not an authorized term.",
+      ok: false,
+      error: "Enter a recipient first. An empty recipient is not an authorized term.",
     };
   }
   if (!a) {
     return {
-      kind: "invalid",
-      text: "Enter an amount first. An empty amount is not an authorized term.",
+      ok: false,
+      error: "Enter an amount first. An empty amount is not an authorized term.",
     };
   }
-  if (!/^\d+$/.test(a)) {
+  if (!/^[0-9]+$/.test(a)) {
     return {
-      kind: "invalid",
-      text: "The amount must be a whole number of base units.",
+      ok: false,
+      error: "The amount must be a whole number of base units.",
     };
   }
-  /* The attack buttons set the tampered dimension, not the fields:
-     replay resubmits the consumed nonce, remove-evidence submits with
-     no evidence, both keeping the authorized recipient and amount. */
-  /* The nonce comes from AUTHORIZED_TERMS. Receipt 24 is the historical receipt index for usecase-report-002 from the demo run, fixed by that run, so it stays a literal. */
-  if (mode === "replay") {
-    const sc = scenario("replay");
-    return {
-      kind: "refused",
-      code: "ERR_NONCE_ALREADY_CONSUMED",
-      tx: sc ? sc.tx : null,
-      text:
-        "Nonce " +
-        AUTHORIZED_TERMS.nonce +
-        " was already consumed by receipt 24. Reusing it is a double-pay, so the vault refused before moving anything.",
-    };
+  return { ok: true };
+}
+
+export interface ExtractedAttackTerms {
+  recipient: string | null;
+  amount: string | null;
+}
+
+/* Strip the punctuation a judge wraps a token in: quotes, brackets,
+ * a trailing comma or full stop. The inside of the token is left
+ * exactly as typed. */
+function cleanToken(token: string): string {
+  return token.replace(/^["'([{<]+/, "").replace(/["')\]},;:!?.]+$/, "");
+}
+
+/* A token counts as an account id when it is all lowercase letters,
+ * digits and separators, 2 to 64 characters, and does not start or
+ * end with a separator. This matches the server shape check. */
+function looksLikeAccountId(token: string): boolean {
+  if (token.length < 2 || token.length > 64) return false;
+  if (!/^[a-z0-9._-]+$/.test(token)) return false;
+  if (/^[._-]|[._-]$/.test(token)) return false;
+  return true;
+}
+
+/* Extract the best-guess recipient and amount from free text.
+ * Recipient: the first token ending in .testnet wins. Failing that,
+ * the first token that looks like an account id and contains a dot,
+ * underscore or hyphen, so a plain English word is not mistaken for
+ * an account. A bare word with no separator and no .testnet suffix
+ * is not extracted: the judge can type it in the edit box instead.
+ * Amount: the first run of digits once the recipient token is taken
+ * out, so a digit inside the account id is not read as the amount.
+ * Commas are stripped, so 1,000 reads as 1000. Returns null for
+ * either side when nothing usable is found. */
+export function extractAttackTerms(text: string): ExtractedAttackTerms {
+  const tokens = text
+    .split(/\s+/)
+    .map(cleanToken)
+    .filter((t) => t !== "");
+  let recipient: string | null = null;
+  for (const token of tokens) {
+    if (token.endsWith(".testnet") && looksLikeAccountId(token)) {
+      recipient = token;
+      break;
+    }
   }
-  if (mode === "evidence") {
-    return {
-      kind: "refused",
-      code: "ERR_INVALID_STATE",
-      tx: "BRXXhezVxYvze3imNHkrShnS8ujUvsShy4f3GtgwpCgQ",
-      text: "Settle was attempted before evidence was submitted, so the obligation was not READY. The vault refused with ERR_INVALID_STATE before moving anything. The code is inferred from the contract check order, not read directly from the chain.",
-      note: "On this obligation, usecase-report-002, which is now PAID as receipt 24, a live settle returns ERR_NONCE_ALREADY_CONSUMED first, because the nonce check runs before the state check. The refusal above was the executed settle-before-evidence attempt on this obligation, with the exact authorized terms.",
-    };
+  if (recipient === null) {
+    for (const token of tokens) {
+      if (
+        looksLikeAccountId(token) &&
+        /[._-]/.test(token) &&
+        /[a-z]/.test(token)
+      ) {
+        recipient = token;
+        break;
+      }
+    }
   }
-  if (r !== AUTHORIZED_TERMS.recipient) {
-    const sc = scenario("recipient");
-    return {
-      kind: "refused",
-      code: "ERR_RECIPIENT_SUBSTITUTION",
-      tx: sc ? sc.tx : null,
-      text: "The proposed recipient does not match the recipient fixed at authorization. The vault refused before any transfer.",
-    };
-  }
-  if (BigInt(a) !== BigInt(AUTHORIZED_TERMS.amount)) {
-    const sc = scenario("amount");
-    return {
-      kind: "refused",
-      code: "ERR_TERMS_MISMATCH",
-      tx: sc ? sc.tx : null,
-      text: "The proposed amount does not match the amount fixed at authorization, " +
-        AUTHORIZED_TERMS.amount +
-        " base units. The vault refused before any transfer.",
-    };
-  }
-  return {
-    kind: "none",
-    text: "No attack detected. The recipient and amount match the authorized terms. Change the recipient or the amount to see the vault refuse.",
-  };
+  let rest = text;
+  if (recipient !== null) rest = rest.replace(recipient, " ");
+  const amountMatch = rest.match(/\d[\d,]*/);
+  const amount =
+    amountMatch === null ? null : amountMatch[0].replace(/,/g, "");
+  return { recipient, amount };
 }
