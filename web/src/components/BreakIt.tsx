@@ -283,7 +283,7 @@ export function BreakIt() {
   };
 
   return (
-    <section className="wrap mt-24">
+    <section className="wrap mt-12">
       <div className="panel p-6">
         <div className="kicker mb-2">
           Try to break it
@@ -303,7 +303,7 @@ export function BreakIt() {
         </div>
         <div>
           <div className="fadein">
-            <div className="terms-grid mb-4">
+            <div className="mb-4">
               <TermsGrid
                 terms={[
                   ["obligation", "p10-demo-attack-001"],

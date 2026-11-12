@@ -142,8 +142,24 @@ export function CmdBlock({ cmdKey, label }: { cmdKey: string; label?: string }) 
   const first = txt.split("\n")[0];
   return (
     <div className="cmd">
-      <code>{label || first}</code>
-      <CopyButton text={txt} title="Copy command" />
+      <div className="cmd-scroll">
+        <code>{label || first}</code>
+      </div>
+      <div className="cmd-actions">
+        <CopyButton text={txt} title="Copy command" />
+      </div>
+    </div>
+  );
+}
+
+export function CodePanel({ label, text, dim = false }: { label: string; text: string; dim?: boolean }) {
+  return (
+    <div className="codepanel">
+      <div className="codepanel-head">
+        <span className="mono text-xs dim2">{label}</span>
+        <CopyButton text={text} title="Copy snippet" />
+      </div>
+      <pre className={"codeblock" + (dim ? " dimc" : "")}>{text}</pre>
     </div>
   );
 }

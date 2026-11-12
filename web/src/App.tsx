@@ -19,53 +19,83 @@ function parseRoute(): string[] {
 
 function Header({ page }: { page: string }) {
   const { live } = useLive();
+  const [menuOpen, setMenuOpen] = useState(false);
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [page]);
   const nettxt = live.blockHeight
     ? "Testnet \u00b7 " + String(live.blockHeight)
     : live.anyErr
       ? "Testnet \u00b7 retrying"
       : "Testnet";
+  const links: [string, string, string, string?][] = [
+    ["home", "#/", "Home"],
+    ["demo", "#/demo/guided", "Guided demo", "Guided walkthrough of the recorded demo, watch the story"],
+    ["attack", "#/attack", "Break it", "Try to break the vault yourself, interactive playground"],
+    ["docs", "#/docs", "Docs"],
+    ["proof", "#/proof", "Proof"],
+  ];
   return (
     <header
-      className="md:fixed md:top-0 md:left-0 md:right-0 z-50 border-b"
+      className="fixed top-0 left-0 right-0 z-50 border-b"
       style={{ background: "var(--bg)", borderColor: "var(--line)" }}
     >
-      <div className="wrap flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-2 md:flex-nowrap md:h-16 md:py-0">
+      <div className="wrap flex items-center justify-between gap-3 h-16">
         <a href="#/" className="flex items-center gap-3 flex-none">
           <Logo markSize={28} />
           <span className="hidden lg:block text-xs dim2 leading-tight">
             purpose-bound settlement vault
           </span>
         </a>
-        <nav className="flex flex-wrap items-center gap-1" id="mainnav">
-          <a className={"navlink" + (page === "home" ? " active" : "")} href="#/">
-            Home
-          </a>
-          <a
-            className={"navlink" + (page === "demo" ? " active" : "")}
-            href="#/demo/guided"
-            title="Guided walkthrough of the recorded demo, watch the story"
-          >
-            Guided demo
-          </a>
-          <a
-            className={"navlink" + (page === "attack" ? " active" : "")}
-            href="#/attack"
-            title="Try to break the vault yourself, interactive playground"
-          >
-            Break it
-          </a>
-          <a className={"navlink" + (page === "docs" ? " active" : "")} href="#/docs">
-            Docs
-          </a>
-          <a className={"navlink" + (page === "proof" ? " active" : "")} href="#/proof">
-            Proof
-          </a>
+        <nav className="hidden md:flex items-center gap-1" id="mainnav">
+          {links.map(([id, href, label, title]) => (
+            <a key={id} className={"navlink" + (page === id ? " active" : "")} href={href} title={title}>
+              {label}
+            </a>
+          ))}
         </nav>
-        <div className="netpill mono flex-none" title="Live RPC: test.rpc.fastnear.com">
-          <span className={"livedot" + (live.anyErr ? " err" : "")} id="netdot"></span>
-          <span id="nettxt">{nettxt}</span>
+        <div className="flex items-center gap-2 flex-none">
+          <div className="netpill mono" title="Live RPC: test.rpc.fastnear.com">
+            <span className={"livedot" + (live.anyErr ? " err" : "")} id="netdot"></span>
+            <span id="nettxt">{nettxt}</span>
+          </div>
+          <button
+            type="button"
+            className="mobile-menu-btn"
+            aria-label={menuOpen ? "Close navigation menu" : "Open navigation menu"}
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((v) => !v)}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round">
+              {menuOpen ? (
+                <>
+                  <path d="M18 6 6 18" />
+                  <path d="m6 6 12 12" />
+                </>
+              ) : (
+                <>
+                  <path d="M4 7h16" />
+                  <path d="M4 12h16" />
+                  <path d="M4 17h16" />
+                </>
+              )}
+            </svg>
+          </button>
         </div>
       </div>
+      {menuOpen ? (
+        <nav
+          className="md:hidden border-t wrap py-3 flex flex-col gap-1"
+          style={{ borderColor: "var(--line2)", background: "var(--bg)" }}
+          aria-label="Mobile navigation"
+        >
+          {links.map(([id, href, label]) => (
+            <a key={id} className={"navlink" + (page === id ? " active" : "")} href={href} onClick={() => setMenuOpen(false)}>
+              {label}
+            </a>
+          ))}
+        </nav>
+      ) : null}
     </header>
   );
 }
@@ -102,7 +132,7 @@ function Shell() {
         Skip to content
       </a>
       <Header page={page} />
-      <main id="main" className="md:pt-16 min-h-screen">
+      <main id="main" className="pt-16 min-h-screen">
         {page === "demo" ? (
           <Demo anchor={effRoute[2]} />
         ) : page === "attack" ? (
