@@ -6,6 +6,8 @@ AI agents now hold wallets and spend money, but a compromised prompt has already
 
 Cynex is a purpose-bound settlement vault for AI agents on NEAR. A human authorizes one exact payment, recipient, token, amount, evidence, and budget fixed in advance. The agent may ask for settlement, but the vault pays only that payment and refuses everything else. The agent is assumed compromised. It holds a key that can only call `settle`, and the vault, not the agent, decides whether the money moves.
 
+![Cynex home: the vault refuses a changed recipient on chain, 0 tokens moved](docs/screenshots/home.png)
+
 ## Live proof, right now
 
 Both vaults run code hash `65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6`. Testnet throughout, fake testnet USDC with no value.
@@ -25,6 +27,8 @@ Sixty seconds, no wallet, no account, no install.
 **01, 10 seconds. Run it live.** The 10 demo settles are used up. Do: press the button on Home. See: the used-up fallback, pointing to the sandbox demo and the MCP demo. The last live settle, receipt 40 (demo-live-010), is PAID, settled 13 Nov 2026; NearBlocks tx B1sgPrTwzaBrEJYMQrKW3ikxiFXxAH7f5E4jCdKA4ggo, block 277475027.
 
 **02, 15 seconds. Try to break it.** Open Break it and change the recipient. Do: submit a tampered settle. See: refused, `ERR_RECIPIENT_SUBSTITUTION`, 0 tokens moved, with the real refusal transaction hash when one comes back.
+
+![Break it: six live attacks, each answered by the vault on chain](docs/screenshots/break-it.png)
 
 **03, 30 to 60 seconds. Verify on chain.** Run one command from the repo root. Do: `node frontend/dist-test/cli/cynex.js verify-live cynex-testvault.cynexmaster.testnet`. See: every row `verified_ok = true`, 41 receipts, all ok.
 
@@ -59,6 +63,8 @@ That starts a local near-sandbox with the real vault and token contracts, seeds 
 
 **3. Settle.** The agent settles with its scoped key. The vault checks the recipient, the amount, the nonce, and the budget, then pays through the token contract and writes a receipt chained to the previous receipt hash.
 
+![Guided demo: one obligation, four refusals, one payment, all on chain](docs/screenshots/guided-demo.png)
+
 Three layers prove a payment is right, and no layer trusts another. Layer 1, on-chain integrity: for evidence up to 64 KiB, the vault hashes the bytes itself with SHA-256 and compares them to the digest committed at authorization. Layer 2, TEE provenance: a guest program fetches the evidence inside an Intel TDX enclave and hashes it there, and the per-execution TDX quote binds what ran, what went in, and what came out. Layer 3, VRF anchor: the guest requests VRF randomness and the vault verifies the signature on chain, bound to the pending request.
 
 The agent's key is scoped to one contract and one method, `settle`. It cannot transfer NEAR, add keys, or call any owner method. That scope is enforced twice: by the key itself on chain, and by the agent wrapper, which refuses to build any call other than settle before it ever reaches a signer.
@@ -66,6 +72,8 @@ The agent's key is scoped to one contract and one method, `settle`. It cannot tr
 The frozen API, digest format, timeouts, and all eleven settle reason codes are in `docs/contract-api.md`. The threat model is in `docs/threat-model.md`.
 
 ## The proof
+
+![Proof page: every claim names its evidence, live counts from the chain](docs/screenshots/proof.png)
 
 The vault refuses bad terms on chain. Four refusals, then the correct settle, all on the test vault, all with real transaction hashes. Receipt 24, `usecase-report-002`, is the canonical run.
 
