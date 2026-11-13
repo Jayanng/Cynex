@@ -12,8 +12,8 @@ Both vaults run code hash `65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6`. Testne
 
 | | Test vault | Production vault |
 |---|---|---|
-| Receipts | 39 | 13 |
-| Policy | p6-001, spent 6200 of 10000 | p5-prod-001, spent 500 of 1000 |
+| Receipts | 41 | 13 |
+| Policy | p6-001, spent 6400 of 10000 | p5-prod-001, spent 500 of 1000 |
 | Agent balance | 2700 test USDC | |
 
 Four TEE executions carry independently verified TDX attestations. The token is `usdc.fakes.testnet` (USDC.e, 6 decimals).
@@ -22,11 +22,11 @@ Four TEE executions carry independently verified TDX attestations. The token is 
 
 Sixty seconds, no wallet, no account, no install.
 
-**01, 10 seconds. Run it live.** Open the hosted demo and press Run it live. Do: press the button on Home. See: receipt 39, PAID, and a transaction hash.
+**01, 10 seconds. Run it live.** The 10 demo settles are used up. Do: press the button on Home. See: the used-up fallback, pointing to the sandbox demo and the MCP demo. The last live settle, receipt 40 (demo-live-010), is PAID, settled 13 Nov 2026; NearBlocks tx B1sgPrTwzaBrEJYMQrKW3ikxiFXxAH7f5E4jCdKA4ggo, block 277475027.
 
 **02, 15 seconds. Try to break it.** Open Break it and change the recipient. Do: submit a tampered settle. See: refused, `ERR_RECIPIENT_SUBSTITUTION`, 0 tokens moved, with the real refusal transaction hash when one comes back.
 
-**03, 30 to 60 seconds. Verify on chain.** Run one command from the repo root. Do: `node frontend/dist-test/cli/cynex.js verify-live cynex-testvault.cynexmaster.testnet`. See: every row `verified_ok = true`, 39 receipts (40 if your step 01 click succeeded), all ok.
+**03, 30 to 60 seconds. Verify on chain.** Run one command from the repo root. Do: `node frontend/dist-test/cli/cynex.js verify-live cynex-testvault.cynexmaster.testnet`. See: every row `verified_ok = true`, 41 receipts, all ok.
 
 ## What is real and what is simulated
 
@@ -123,7 +123,7 @@ NODE_PATH=$PWD/node_modules npm run jest
 scripts/verify-tee-attestation.sh --bundle docs/attestation-proofs/attestation-proof-10640.json
 ```
 
-**4. Verify the live testnet record.** From the repo root. See a CSV of receipts, 39 rows on the test vault and 13 on the production vault, every row `verified_ok=true`, exit 0. This reads chain state only and spends nothing:
+**4. Verify the live testnet record.** From the repo root. See a CSV of receipts, 41 rows on the test vault and 13 on the production vault, every row `verified_ok=true`, exit 0. This reads chain state only and spends nothing:
 
 ```sh
 node frontend/dist-test/cli/cynex.js verify-live cynex-testvault.cynexmaster.testnet
