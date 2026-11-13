@@ -12,8 +12,8 @@ Both vaults run code hash `65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6`. Testne
 
 | | Test vault | Production vault |
 |---|---|---|
-| Receipts | 35 | 13 |
-| Policy | p6-001, spent 5800 of 10000 | p5-prod-001, spent 500 of 1000 |
+| Receipts | 39 | 13 |
+| Policy | p6-001, spent 6200 of 10000 | p5-prod-001, spent 500 of 1000 |
 | Agent balance | 2700 test USDC | |
 
 Four TEE executions carry independently verified TDX attestations. The token is `usdc.fakes.testnet` (USDC.e, 6 decimals).
@@ -22,22 +22,22 @@ Four TEE executions carry independently verified TDX attestations. The token is 
 
 Sixty seconds, no wallet, no account, no install.
 
-**01, 10 seconds. Run it live.** Open the hosted demo and press Run it live. Do: press the button on Home. See: receipt 36, PAID, and a transaction hash.
+**01, 10 seconds. Run it live.** Open the hosted demo and press Run it live. Do: press the button on Home. See: receipt 39, PAID, and a transaction hash.
 
-**02, 15 seconds. Try to break it.** Open Break it and change the recipient or the amount. Do: submit a tampered settle. See: refused, `ERR_RECIPIENT_SUBSTITUTION`, 0 tokens moved, with the real refusal transaction.
+**02, 15 seconds. Try to break it.** Open Break it and change the recipient. Do: submit a tampered settle. See: refused, `ERR_RECIPIENT_SUBSTITUTION`, 0 tokens moved, with the real refusal transaction hash when one comes back.
 
-**03, 30 to 60 seconds. Verify on chain.** Run one command from the repo root. Do: `node frontend/dist-test/cli/cynex.js verify-live cynex-testvault.cynexmaster.testnet`. See: every row `verified_ok = true`, 35 receipts, all ok.
+**03, 30 to 60 seconds. Verify on chain.** Run one command from the repo root. Do: `node frontend/dist-test/cli/cynex.js verify-live cynex-testvault.cynexmaster.testnet`. See: every row `verified_ok = true`, 39 receipts (40 if your step 01 click succeeded), all ok.
 
 ## What is real and what is simulated
 
 | | Real | Simulated |
 |---|---|---|
 | The vault | Real contract on NEAR testnet, both vaults | Nothing |
-| A refusal | Real on-chain refusal, real tx hash, 0 tokens moved | Nothing |
+| A refusal | Real on-chain refusal, 0 tokens moved, transaction hash when one comes back | Nothing |
 | A settle | Real on-chain settle, real receipt, real tx hash | Nothing |
 | The TEE quote | Real TDX quote, independently verifiable offline | Nothing |
 | The MCP sandbox demo | Real vault and token contracts on a local chain | Nothing mocked |
-| The attack panel on Break it | The tamper form is a local check; the refusal it shows is a real on-chain refusal | The form itself runs in your browser |
+| The attack panel on Break it | For attempts it submits, the form shows the vault's verdict and the transaction hash when one comes back. Some attempts are refused by the handler before submission, including missing obligations, wrong state, or an exhausted demo pool; those have no transaction. | Nothing (pre-submit guards read live chain state and skip tx submission) |
 
 ## Try it yourself
 
@@ -76,7 +76,7 @@ The vault refuses bad terms on chain. Four refusals, then the correct settle, al
 | Amount changed | Proposed 200 base units, authorized 100 | ERR_TERMS_MISMATCH | 2NaWqCYi...Eer91f, 0 tokens moved |
 | Replay | Same nonce reused after the order was paid | ERR_NONCE_ALREADY_CONSUMED | hG6uhpeP...pP91F6, 0 tokens moved |
 
-The recipient balance read before and after each call was identical, so nothing moved. The attack transcript is in `docs/attack-transcript.md`. The full demo script is in `docs/demo-script.md` and the proof record is in `docs/demo-proof.md`.
+The recipient balance read before and after each call was identical, so nothing moved. The attack transcript is in `docs/use-case-demo-script.md`. The full demo script is in `docs/demo-script.md` and the proof record is in `docs/demo-proof.md`.
 
 **Verify the TEE attestation yourself.** Every TEE execution behind the live proofs has a published attestation you can fetch and verify, with no account, no key, and no trust in us. Install the verifier once, then run:
 
@@ -109,7 +109,7 @@ RUSTUP_TOOLCHAIN=1.93.0 cargo clippy --all-targets -- -D warnings
 RUSTUP_TOOLCHAIN=1.93.0 cargo near build non-reproducible-wasm
 ```
 
-**2. Frontend and services.** From `frontend/`. See 463 tests passed, 3 skipped, 466 total:
+**2. Frontend and services.** From `frontend/`. See 655 tests passed, 3 skipped, 658 total:
 
 ```sh
 npm install
@@ -123,7 +123,7 @@ NODE_PATH=$PWD/node_modules npm run jest
 scripts/verify-tee-attestation.sh --bundle docs/attestation-proofs/attestation-proof-10640.json
 ```
 
-**4. Verify the live testnet record.** From the repo root. See a CSV of receipts, 35 rows on the test vault and 13 on the production vault, every row `verified_ok=true`, exit 0. This reads chain state only and spends nothing:
+**4. Verify the live testnet record.** From the repo root. See a CSV of receipts, 39 rows on the test vault and 13 on the production vault, every row `verified_ok=true`, exit 0. This reads chain state only and spends nothing:
 
 ```sh
 node frontend/dist-test/cli/cynex.js verify-live cynex-testvault.cynexmaster.testnet
@@ -140,7 +140,7 @@ The full demo run is separate: it creates obligations and settles with real keys
 
 ## Keys
 
-The hosted site holds one key server-side, and only one: a fresh scoped settle-only key for the Run it live button, stored as a Vercel environment variable, scoped to `settle` on the test vault only (`cynex-testvault.cynexmaster.testnet`), allowance 0.25 NEAR, testnet only, low value. It can only attempt settles; the vault decides. The hosted site never holds the existing executor key, the owner key, or any full-access key, and never offers a generic settlement endpoint.
+The hosted site holds one key server-side, and only one: a fresh scoped settle-only key for the Run it live and Break it buttons, stored as a Vercel environment variable, scoped to `settle` on the test vault only (`cynex-testvault.cynexmaster.testnet`), initial allowance 1 NEAR, testnet only, low value. It can only attempt settles; the vault decides. The hosted site never holds the existing executor key, the owner key, or any full-access key, and never offers a generic settlement endpoint.
 
 ## Docs
 
@@ -148,7 +148,7 @@ The hosted site holds one key server-side, and only one: a fresh scoped settle-o
 - `docs/ledger.md`, the signed build ledger
 - `docs/threat-model.md`, what the vault assumes and what it does not
 - `docs/spike-outlayer.md`, the OutLayer spike report and verdict
-- `docs/attack-transcript.md`, the attack demo log
+- `docs/attack-transcript.md`, historical attack demo log
 - `docs/reputation-engine.md`, the reputation engine
 - `docs/deployment.md`, where the vaults are deployed and how to verify them
 
