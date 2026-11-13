@@ -52,7 +52,7 @@ Notes on the baseline:
 ## Runner live run
 
 The first runner live run is the section 2.6 audit, recorded below. The runner needs the agent key, which
-is held by contract; there are no key files on the frontend
+is held by the contract side; there are no key files on the frontend
 machine, so the end-to-end run is the section 2.6 audit step.
 Run it on the test vault first, then production for the
 rejections only:
@@ -70,9 +70,9 @@ obligation (`obl-verify-demo`) is already PAID, so it replays
 directly, and the runner refuses a production happy-path settle
 without `--allow-production-settle`.
 
-## Runner live run, section 2.6 audit, 2026-11-05
+## Runner live run, acceptance audit, 2026-11-05
 
-The runner's live run happened in the section 2.6 audit (PR #7,
+The runner's live run happened in the acceptance audit (PR #7,
 head 4416385), run by contract with the agent key from the compiled
 PR code. frontend re-queried every transaction below from the chain
 and read the final state live. Balances are

@@ -1,9 +1,8 @@
 # Demo live proof, test vault, 2026-11-07
 
-Run by Muse (contract coordinator) on the test vault
+Run on the test vault
 `cynex-testvault.cynexmaster.testnet`. All calls used the owner key
-`cynexmaster.testnet` (the agent scoped key is production-bound only, so it
-cannot settle on the test vault). Recipient throughout is the agent account
+`cynexmaster.testnet` (the agent holds test-vault-bound settle keys as well, so the owner key was the demo's choice, not a limit: an agent-signed settle already succeeded on the test vault, tx 7HHtxoHX7bvYpRmdm5pyhwhBWWRiCUHiGPMDye8F1oKh, receipt 7). Recipient throughout is the agent account
 `cynex-agent.cynexmaster.testnet`, never acme-supplies.testnet. Token
 `usdc.fakes.testnet` (USDC.e, 6 decimals).
 

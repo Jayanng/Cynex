@@ -16,7 +16,7 @@ Prompt injection swapping the recipient: rejected on chain by the vault reading 
 
 Prompt injection changing the amount: rejected on chain the same way. Reason code: TERMS_MISMATCH.
 
-Replay and double settlement: a one-time nonce is consumed and locked on the first settle attempt, plus obligation state. A duplicate attempt rejects with NONCE_ALREADY_CONSUMED, even while the first attempt is still in flight.
+Replay and double settlement: a PAID settle permanently consumes the nonce. A confirmed callback failure returns the obligation to READY and keeps it retryable up to MAX_TRANSFER_ATTEMPTS (3). A READY resolution marks the first dispatch consumed and cannot be settled again. Cancellation from RECONCILIATION_REQUIRED retires the nonce. A duplicate or otherwise consumed attempt rejects with NONCE_ALREADY_CONSUMED, including while the first attempt is still in flight.
 
 Over-budget settlement: the token invariant spent plus reserved plus amount less than or equal to limit, checked with checked arithmetic. Reservation happens synchronously in settle, before any promise is returned, so two concurrent settle calls cannot both pass the budget check and both pay. Reason code: BUDGET_EXCEEDED.
 
@@ -24,7 +24,7 @@ Expired obligation: settle after expires_at_ns rejects with OBLIGATION_EXPIRED a
 
 Frozen policy: new settle calls are blocked while frozen, with POLICY_FROZEN. A freeze never un-books a transfer already in flight, and a bad agent call never auto-freezes a policy, because that would let the agent brick the demo.
 
-Callback failure and ambiguity: a confirmed failure in on_transfer_complete releases the reservation and returns the obligation to READY, unless the owner cancels it or the policy is frozen, and after 3 confirmed failures it escalates to RECONCILIATION_REQUIRED instead of returning to READY. A callback that never runs leaves the obligation in TRANSFER_PENDING until the owner or reconciler calls mark_reconciliation_required after TRANSFER_TIMEOUT_NS, which is 600000000000 nanoseconds, and the owner then resolves it with resolve_settlement. A transfer is never blind-retried.
+Callback failure and ambiguity: a confirmed failure in on_transfer_complete releases the reservation and returns the obligation to READY, unless the policy is frozen, and after 3 confirmed failures it escalates to RECONCILIATION_REQUIRED instead of returning to READY. A callback that never runs leaves the obligation in TRANSFER_PENDING until the owner or reconciler calls mark_reconciliation_required after TRANSFER_TIMEOUT_NS, which is 600000000000 nanoseconds, and the owner then resolves it with resolve_settlement. A transfer is never blind-retried.
 
 Fake evidence: evidence is accepted only from an allowlisted verifier, bound to pending_request_id and pending_digest, and checked for expiry. Wrong digest, wrong request, expired result, or a non-allowlisted predecessor are all rejected, with EVIDENCE_MISMATCH, OBLIGATION_EXPIRED, EVIDENCE_EXPIRED, or UNAUTHORIZED_VERIFIER as appropriate. Evidence that never arrives never moves an obligation to READY by default. After EVIDENCE_TIMEOUT_NS, which is 3600000000000 nanoseconds, the owner or reconciler calls mark_evidence_timeout.
 
@@ -40,9 +40,9 @@ Key theft: the agent holds only a scoped function call key, receiver set to the 
 
 ## Out of scope, explicitly not claimed
 
-TEE attestation proves a verifier ran untampered over given inputs. It does not prove a real-world delivery happened or that a counterparty is honest. OutLayer is a spike, off the critical path, and its callback fields are not frozen in .
+TEE attestation proves a verifier ran untampered over given inputs. It does not prove a real-world delivery happened or that a counterparty is honest. OutLayer is integrated as an off-chain TEE provenance path. Its callback fields are documented in the contract API, but the vault does not verify the TDX quote on chain and OutLayer is not an on-chain settlement trust gate.
 
-Reputation signals are detection, not prevention. Historical code-change tracking is not claimed, because it would need an archival indexer that is not being built. Signals that are produced must show source and timestamp, unknown maps to WARN for insufficient history, never to a guessed score, and a signal that cannot be sourced is shown as unavailable, not fabricated.
+Reputation signals are detection, not prevention. Code-change recency is implemented as the fifth reputation signal (see `docs/scorecard-code-change-recency.md`): a recent vault code change blocks settlement until the code has aged. Signals that are produced must show source and timestamp, unknown maps to WARN for insufficient history, never to a guessed score, and a signal that cannot be sourced is shown as unavailable, not fabricated.
 
 Function-call keys sandbox which method can be called. They do not, on their own, limit token spending. The vault does that.
 

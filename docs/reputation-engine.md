@@ -1,8 +1,6 @@
 # Reputation signals, real and scoped
 
-is "Reputation signals, real and scoped", plan section 
-and section 3.1.9. This is a frontend : there are no contract steps
-in the plan card and no contract change is needed. frontend built the
+This document is "Reputation signals, real and scoped", section 3.1.9. This is frontend work: there are no contract steps and no contract change is needed. The frontend side built the
 reputation engine in `services/reputation/`, wired it into the agent
 wrapper, and recorded the snapshot method, the blocklist provenance,
 and the sample outputs below. No contract changes, no frozen doc
@@ -48,7 +46,7 @@ first seen; the latest snapshot records it as not found.
 
 We do NOT claim historical code-change tracking. That needs an
 archival source or indexer we are not building, and no such claim
-appears anywhere in this . The pre-existing architecture note
+appears anywhere in this document. The pre-existing architecture note
 outside the repo makes that claim; it is deliberately not repeated
 here.
 
@@ -307,7 +305,7 @@ Stated exactly, so they can be audited:
  signal is shown as unavailable for every checked address, and
  the BLOCK path is proven by tests with a fixture URL, not by a
  live list.
-- **Single snapshot.** Only one snapshot exists, so the age
+- **Two snapshots.** Two snapshots exist (2026-11-06-053024Z and 2026-11-06-205637Z), so the age
  signal is a lower bound: every account's first seen is the
  first snapshot, 2026-11-06, and no earlier history is on
  record. The output says so.
@@ -317,7 +315,7 @@ Stated exactly, so they can be audited:
  ALLOW path is proven by the tests, not by a live sample.
 - **Console gate not exercised live by frontend.** The console
  needs the agent key, which contract holds, so the live console
- run with the gate was the section 2.6 audit step, as in .
+ run with the gate was the acceptance audit step.
  The audit ran it live twice on the test vault: the escalate path
  (fresh p7-audit-004, WARN, exit 1, no settle attempted, obligation
  stayed READY) and the approve path with CYNEX_APPROVE_WARN=1
@@ -334,7 +332,7 @@ Stated exactly, so they can be audited:
 
 ## close confirmation (frontend)
 
-The section 2.6 audit PASS (2026-11-06, 24 itemized checks, no
+The acceptance audit PASS (2026-11-06, 24 itemized checks, no
 blocking findings) is on record in the audit file supplied
 2026-11-06. frontend independently verified the audit's live claims
 via RPC: all seven audit transactions re-queried (0 mismatches),
@@ -344,12 +342,11 @@ spent 3100, agent balance 100, production unchanged), acme
 UNKNOWN_ACCOUNT on three RPC endpoints, and the block 276445952
 header timestamp confirming the 65 ns snapshot rounding observation
 (same millisecond). The acme finding and the snapshot timestamp
-observation are recorded in docs/ledger.md; neither blocks 
-close. There is no contract change in , so there is no
+observation are recorded in docs/ledger.md; neither blocks the close of this work. There is no contract change in this work, so there is no
 corrections draft to apply.
 
-frontend signed in docs/ledger.md on 2026-11-06. contract signature
-and merge remain outstanding, so the is not closed by this
+The frontend side signed in docs/ledger.md on 2026-11-06. The contract-side signature
+and merge remain outstanding, so the work is not closed by this
 signature.
 
 ## Addendum: fifth signal - code-change recency (scorecard brief, 2026-11-06)

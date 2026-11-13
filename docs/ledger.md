@@ -1,10 +1,10 @@
 # Cynex ledger
 
-One row per . A is signed only when its entry criteria,
+One row per milestone. A milestone is signed only when its entry criteria,
 verification, evidence, and quality gate are all on record. frontend
 rows are signed only after Johnson's own frontend acceptance audit.
 
-## : Setup and verification
+## Setup and verification
 
 Status: closed 2026-11-03. Setup work done on jayanng and on (frontend supplementary evidence, merged). contract gate passed, frontend audit passed, both sides signed.
 
@@ -36,7 +36,7 @@ Evidence, captured live 2026-11-03 on jayanng:
  pre-push scaffold note corrected in db6427e, merged in cd05961.
 
 Sign-off: Johnson (contract), 2026-11-03
-Sign-off: (frontend), 2026-11-03
+Sign-off: rastadev (frontend), 2026-11-03
 
 
 ## Schema and interface freeze
@@ -56,7 +56,7 @@ Evidence:
 - frontend acceptance audit, 2026-11-03: TypeScript digest and Jest reproduced live on jayanng, 6 hashes identical to Rust, Jest 9/9, receipt hash matches, frozen files unchanged except sign-off, one low hex note recorded, merged in 38e0033.
 
 Sign-off: Johnson (contract), 2026-11-03
-Sign-off: (frontend), 2026-11-03
+Sign-off: rastadev (frontend), 2026-11-03
 
 
 ## Contract skeleton and key sandbox
@@ -69,13 +69,13 @@ Evidence:
 - Wasm, deployed: SHA-256 34f45bc9f6e81f131bf5d36796d84802f8b57b9affab1dfa2d028d91e8a7dc9f, 167,243 bytes, bs58 4ZiK7Kiw7qVGz4ihdUFJRr8fPdvirEFdkpB8F76ahpmU. Earlier wasm 65e317243f90ccde7da10b0a866b1f1dbbe841c1f2ef3a584df9eecbe88a9857 was superseded by the receipts fix, do not use it as final.
 - Deploy: vault cynex-vault.cynexmaster.testnet, init owner cynexmaster.testnet, tx 93TL95foXP5i3DW9ruArTjn9kgiFcpYqoE43pizfH2TY, redeploy with receipts fix tx FaF5voGbZezPBrzUuKdAzBEsSx7PCuGMd3yAydUYwwJv, on-chain code_hash 4ZiK7Kiw7qVGz4ihdUFJRr8fPdvirEFdkpB8F76ahpmU matching deployed wasm, state owner cynexmaster.testnet, receipt_index 0, last_receipt_hash zeros.
 - Key sandbox: agent cynex-agent.cynexmaster.testnet, exactly 2 keys, FunctionCall key ed25519:9Pkkzc6U8HbaxDF9CRJCPFdZNaXmqSKdzvqZtHv55F6t, receiver vault, methods settle only, allowance 0.25 NEAR, added tx 2qZngxydUmbwaQZ44K9u1VNbAg4cTNmLbJWUKw32ao1i, plus FullAccess key ed25519:EUVNiPKKqiNb2rUyU4Aj5NY6QSvEun1XTBRUKpGRT7RL.
-- Forbidden calls, proven live: create_policy from agent key rejected MethodNameMismatch, tx 3bw3FKFP673Sv1uxpJf83mWP7qPvEJGSFtGgGHDi9RkP; ft_transfer from agent key rejected DepositWithFunctionCall, tx 8md4ZrD6L7r9ia2GwRGjzVXJmjJHaKWxyiRNdneAf931; near send from agent key rejected RequiresFullAccess, tx 9Ea3ctjGmoyda8WZXvdDAvieaSyNFM5ogQVpnVfRSDKN. Positive control: settle call from agent key reached vault and failed ActionError as expected in , settle not implemented, tx G9wX58aCQj6K7oZWGvtHpywphg1oycRSUkmCJoNMm2BD.
+- Forbidden calls, proven live: create_policy from agent key rejected MethodNameMismatch, tx 3bw3FKFP673Sv1uxpJf83mWP7qPvEJGSFtGgGHDi9RkP; ft_transfer from agent key rejected DepositWithFunctionCall, tx 8md4ZrD6L7r9ia2GwRGjzVXJmjJHaKWxyiRNdneAf931; near send from agent key rejected RequiresFullAccess, tx 9Ea3ctjGmoyda8WZXvdDAvieaSyNFM5ogQVpnVfRSDKN. Positive control: settle call from agent key reached vault and failed ActionError as expected at that time, settle not implemented, tx G9wX58aCQj6K7oZWGvtHpywphg1oycRSUkmCJoNMm2BD.
 - Frontend: side-b e2720bf, scaffold verifier, reputation, agent wrapper, frontend client, CLI, sandbox harness, 8 files, 309 insertions, plus audit fix b97e456, client receipts sends numbers not strings, 1 file.
 - frontend acceptance audit, 2026-11-03: section 2.6, live client, state, get_policy, balances, receipts, and key list reproduced on jayanng against deployed vault, no mock or fake outputs, frozen files unchanged, blocking receipts finding closed (contract start/limit plus client numbers, receipts 0,10 and 5,3 both return [] live), notes for cleanup: verifier hash equality, sandbox harness default wasm path. Audit log held outside the repo.
 - Merge: Master 522442f, Merge side-b: frontend scaffold, audited, 8 files, 310 insertions, clean merge.
 
 Sign-off: Johnson (contract), 2026-11-03
-Sign-off: (frontend), 2026-11-03
+Sign-off: rastadev (frontend), 2026-11-03
 
 
 ## Registration and first real settlement
@@ -94,12 +94,12 @@ Evidence:
 - Headroom warning: only 25000000 of funded headroom remains. No further demo settlement above 25000000 without topping up policy funding first; a 25000000 settlement would take funded headroom to zero. obl-003 remains EVIDENCE_PENDING (250000000) and obl-002 remains READY (100000000, unregistered recipient); neither can settle as things stand.
 - Measured gas, now jointly recorded in docs/contract-api.md as 9c70b69, with observed ranges: settle vault 2.588 to 2.592 TGas, ft_transfer 2.023 TGas, callback 2.253 to 2.261 TGas, total settle path about 6.86 to 6.88 TGas, plus create 1.669 TGas, request 1.712 TGas, submit 1.806 TGas, all from obl-007 tx-status gas_burnt. The corrections draft noted in the earlier re-sign row was applied as 9c70b69, not as a solo frontend edit.
 
-Exception to the side rule and to the ledger header rule, for this row only: commits e2d47cd and 74a61ed were authored by Jayanng, not by Adejoke, under a -only exception. The exception was accepted by in chat on 2026-11-04, covering e2d47cd (settle gas and error reporting only), and re-confirmed by the re-sign instruction the same day, extending it to 74a61ed (console exactness, scaffold from chain, receipts print only). The side rule resumes after . Acceptance basis for the takeover fix and its continuation is live proof plus independent review by Adejoke, NOT a section 2.6 independent audit, because the auditor side authored both commits. Earlier audit rounds were section 2.6 audits by Jayaang.
+Exception to the side rule and to the ledger header rule, for this row only: commits e2d47cd and 74a61ed were authored by Jayanng, not by Adejoke, under a milestone-only exception. The exception was accepted by rastadev in chat on 2026-11-04, covering e2d47cd (settle gas and error reporting only), and re-confirmed by the re-sign instruction the same day, extending it to 74a61ed (console exactness, scaffold from chain, receipts print only). The separation rule resumes after that milestone. Acceptance basis for the takeover fix and its continuation is live proof plus independent review by Adejoke, NOT a section 2.6 independent audit, because the auditor side authored both commits. Earlier audit rounds were section 2.6 audits by Jayaang.
 
 Sign-off: Johnson (contract), 2026-11-04
-Sign-off: (frontend), 2026-11-04 (re-signed after 74a61ed, superseding 545746e)
+Sign-off: rastadev (frontend), 2026-11-04 (re-signed after 74a61ed, superseding 545746e)
 
-Close note: audit basis is contract everyday review plus Sol gate on contract code, live testnet proof for both sides, Adejoke independent review of frontend code and chain state, and, for the takeover commits e2d47cd and 74a61ed only, live proof plus Adejoke independent review, NOT a section 2.6 independent audit, as labelled in the frontend row. Contract-api corrections and measured gas in 9c70b69 are doc-to-code alignment only, no contract change. Deferred, not closed by this row: obl-002 READY 100000000 and obl-003 EVIDENCE_PENDING 250000000, both beyond the remaining 25000000 funded headroom, reconciliation methods not implemented in and planned for , and broader cancel states not implemented in .
+Close note: audit basis is contract everyday review plus Sol gate on contract code, live testnet proof for both sides, Adejoke independent review of frontend code and chain state, and, for the takeover commits e2d47cd and 74a61ed only, live proof plus Adejoke independent review, NOT a section 2.6 independent audit, as labelled in the frontend row. Contract-api corrections and measured gas in 9c70b69 are doc-to-code alignment only, no contract change. Deferred, not closed by this row: obl-002 READY 100000000 and obl-003 EVIDENCE_PENDING 250000000, both beyond the remaining 25000000 funded headroom, reconciliation methods not implemented at that point and planned for a later change, and broader cancel states not implemented at that point.
 
 
 ## Async money-path hardening
@@ -107,7 +107,7 @@ Close note: audit basis is contract everyday review plus Sol gate on contract co
 Status: closed 2026-11-04. Contract-api corrections applied on Master c1dd809, side-b merged to Master, both sides signed.
 
 Evidence:
-- Contract: Master c541653, timeout paths, reconciliation, per-token in-flight lock (contract/src/lib.rs, contract/tests/test_async.rs, unit 43 passed, sandbox 1 passed each, fmt and clippy clean, Sol gate PASS). Vault cynex-vault.cynexmaster.testnet code_hash 2kFG4ak3EAuSBnFebnvu182DaNk4KkzBP5LMT1XTPeaJ, matching the draft header. code executing live is proven by obl-003 moving from EVIDENCE_PENDING to CANCELLED, a transition only mark_evidence_timeout can produce from that state, since that method is absent from the contract.
+- Contract: Master c541653, timeout paths, reconciliation, per-token in-flight lock (contract/src/lib.rs, contract/tests/test_async.rs, unit 43 passed, sandbox 1 passed each, fmt and clippy clean, Sol gate PASS). Vault cynex-vault.cynexmaster.testnet code_hash 2kFG4ak3EAuSBnFebnvu182DaNk4KkzBP5LMT1XTPeaJ, matching the draft header. code executing live is proven by obl-003 moving from EVIDENCE_PENDING to CANCELLED, a transition only mark_evidence_timeout can produce from that state, since that method is absent from the earlier contract.
 - Frontend: side-b e2b5970 (obligation states display, live playground reader) plus audit fix 5926d77 (WARN_PENDING names approve_warning to READY).
 - frontend acceptance audit, section 2.6, by Jayaang: e2b5970 checked live (obl-008 PAID, obl-002 READY, obl-003 CANCELLED read correctly from the production vault, typecheck clean, Jest 15/15 at that time, conformance 6/6, receipts still 6, no contract changes), one fix requested (WARN_PENDING method name), fix applied as 5926d77, then audit confirmed clean (typecheck clean, Jest 16/16, conformance 6/6, live playground reads correct).
 - Contract-api close corrections draft, dated 2026-11-04, not committed, confirmed by frontend after line-by-line verification against Master contract lib.rs and the frozen API, not taken from the draft alone: timeout constants TRANSFER_TIMEOUT_NS 600000000000 (10 minutes) and EVIDENCE_TIMEOUT_NS 3600000000000 (1 hour) checked against block timestamp; mark_reconciliation_required owner or reconciler, TRANSFER_PENDING only, in_flight true, timeout reached, only state changes, reservation, in_flight, dispatch time, and lock retained; mark_evidence_timeout owner or reconciler, EVIDENCE_PENDING only, timeout reached, escalate false to CANCELLED and true to WARN_PENDING, pending fields cleared on both paths; resolve_settlement RECONCILIATION_REQUIRED only, in_flight true, timeout elapsed before branching, PAID owner only with non-empty proof and checked reserved subtraction and spent addition and receipt booked with proof as tx_ref, READY and CANCELLED owner or reconciler with reservation released and no receipt, other outcomes ERR_INVALID_OUTCOME; cancel_obligation CREATED or RECONCILIATION_REQUIRED, owner only, other states ERR_INVALID_STATE; per-token lock standalone LookupMap prefix b"i", no new Contract struct field, settle checks the lock after the existing obligation checks and before any reservation with ERR_TOKEN_IN_FLIGHT and no state change, lock set on dispatch, retained through reconciliation and frozen callback failure, cleared on callback Ok to PAID, non-frozen callback Err to READY, every resolve outcome, and cancel from RECONCILIATION_REQUIRED; on_transfer_complete private with callback_result, duplicate callbacks ignored via state, in_flight, and attempt checks; frozen callback Err moves to RECONCILIATION_REQUIRED, not CANCELLED; new error codes ERR_TOKEN_IN_FLIGHT, ERR_TIMEOUT_NOT_REACHED, ERR_INVALID_OUTCOME, ERR_INVALID_PROOF, plus reused ERR_INVALID_STATE, ERR_NOT_OWNER, ERR_NOT_AUTHORIZED, ERR_OBLIGATION_MISSING, ERR_POLICY_MISSING. Existing settle checks keep their relative order, with the lock check sitting between the in_flight check and the reservation, as documented in the draft.
@@ -117,7 +117,7 @@ Evidence:
 - Checks on side-b 5926d77, run by Adejoke: scaffold typecheck clean, frontend typecheck clean, conformance 6/6, Jest 16/16 (9 schema plus 7 states), playground live run exit 0, verify-live six receipts all true.
 
 Sign-off: Johnson (contract), 2026-11-04
-Sign-off: (frontend), 2026-11-04
+Sign-off: rastadev (frontend), 2026-11-04
 
 contract close note: test vault live proof, cynex-testvault.cynexmaster.testnet, labelled live proof plus author review, not an independent audit, not production: transfer timeout to PAID test-obl-001 and test-obl-002, token lock ERR_TOKEN_IN_FLIGHT live, resolve to READY test-obl-004, resolve to CANCELLED test-obl-005 with further settle failing ERR_INVALID_STATE, policy test-001 spent 2000000, reserved 0, receipts indices 0 and 1 only. Duplicate callback remains unit only. Production final state at close: policy-001 spent 975000000, reserved 0, funded 1000000000, frozen false, receipts 0 to 5 only.
 
@@ -135,11 +135,11 @@ Evidence:
 - Gas, measured on and verified against live RPC gas_burnt for test vault settle tx 6tmNdRz6seNB2wpPauYNDzoi2fBsyWk1kAq36vDPEnYd: vault settle receipt 2.867 TGas, ft_transfer 2.017 TGas, callback 2.478 TGas, total 7.362 TGas, within the attached 30 plus 30 TGas, caller prepaid 100 TGas. This replaces the table for settle, as the draft states. Attached values unchanged in code (ft_transfer 30 TGas, callback 30 TGas, console prepaid 100 TGas; the diff adds only SETTLE_GAS_HEADROOM_YOCTO).
 - Live proof, verified by frontend against live RPC reads: test vault exactly at limit 1000 paid, settle 6tmNdRz6seNB2wpPauYNDzoi2fBsyWk1kAq36vDPEnYd, Success, obligation p4-obl-001 on policy p4-001, spent 1000 of limit 1000; test vault limit plus 1 (1001) settle JBdMRgMNaNAsH17SS7KwdYR6jck1tNSERhLPSrwu5rux, Failure ERR_BUDGET_EXCEEDED, obligation p4-obl-002 still READY; test vault low liquid settle 243BzQnKo5RJjnuq5ucFKpow2AduzTZj3SbbzVvDMcmf, Failure ERR_VAULT_STORAGE_EXHAUSTED, obligation p4-obl-003 on policy p4-002 later PAID after top-up and retry (receipt index 3, amount 100, policy p4-002 spent 100 of limit 1000). The pre-top-up headroom figures (0.010524 NEAR below required about 0.01512 NEAR) are not re-derivable after the top-up; the required figure arithmetic checks out (512 times storage byte cost is 0.00512 NEAR plus 0.01 NEAR margin is 0.01512 NEAR). Production exactly at limit 1000 paid, settle FqnRuYQSmGB6C7bCXCiZcU9dFEd3FnSufFczpT5zxyXE, Success, obligation p4-prod-obl-001 on policy p4-prod-001, receipt index 6, policy spent 1000 of limit 1000; production limit plus 1 (1001) settle G5nDEPfA6DfAYmcLRKZvXQ6ibtyWWVTJgNjuEGjZxHUG, Failure ERR_BUDGET_EXCEEDED, obligation p4-prod-obl-002 still READY, receipts still 7. Low liquid was not run on production, by design, as the draft states. Acme token balance reconciles exactly: 975000000 baseline plus 1000000 plus 1000000 (test-obl-001 and test-obl-002) plus 1000 (test p4-obl-001) plus 100 (test p4-obl-003) plus 1000 (production p4-prod-obl-001) equals 977002100 as read live.
 - Draft status: the draft text above is confirmed by frontend but NOT yet applied to docs/contract-api.md. Application happens at close on Master, after frontend confirmation, following the close pattern. This row does not claim the document already contains the section.
-- Live state at sign-off: policy-001 limit 1000000000, spent 975000000, reserved 0, funded 1000000000, not frozen, headroom 25000000; policy p4-prod-001 limit 1000, spent 1000, reserved 0, funded 1000, headroom 0; production receipts 0 to 6, seven total, verify-live not rerun at sign-off (receipts 0 to 5 verified in , receipt 6 verified by direct read here).
+- Live state at sign-off: policy-001 limit 1000000000, spent 975000000, reserved 0, funded 1000000000, not frozen, headroom 25000000; policy p4-prod-001 limit 1000, spent 1000, reserved 0, funded 1000, headroom 0; production receipts 0 to 6, seven total, verify-live not rerun at sign-off (receipts 0 to 5 verified earlier, receipt 6 verified by direct read here).
 - Checks on side-b 0b33845, run by Adejoke at build time: scaffold typecheck clean, frontend typecheck clean, conformance 6/6, Jest 23/23 (9 schema plus 7 states plus 7 budget), budget live runs exit 0 on policy-001 and p4-prod-001, unknown policy exits 1, playground regression unchanged.
 
 Sign-off: Johnson (contract), 2026-11-05
-Sign-off: (frontend), 2026-11-05
+Sign-off: rastadev (frontend), 2026-11-05
 
 contract close note: test vault live proof, cynex-testvault.cynexmaster.testnet, same wasm as production, code hash GDvKC8GdUuR4n7mWPd8SCk3Heayd2QbqGJaijtnpncYm, labelled live proof plus author review, not an independent audit: exactly at limit 1000 paid, settle 6tmNdRz6seNB2wpPauYNDzoi2fBsyWk1kAq36vDPEnYd; limit plus 1 rejected ERR_BUDGET_EXCEEDED, settle JBdMRgMNaNAsH17SS7KwdYR6jck1tNSERhLPSrwu5rux, still READY; low liquid rejected ERR_VAULT_STORAGE_EXHAUSTED, settle 243BzQnKo5RJjnuq5ucFKpow2AduzTZj3SbbzVvDMcmf, still READY, then top-up and retry paid. Measured settle gas 7.362 TGas total, vault 2.867, ft_transfer 2.017, callback 2.478. Production live proof, same wasm: exactly at limit 1000 paid on policy p4-prod-001, settle FqnRuYQSmGB6C7bCXCiZcU9dFEd3FnSufFczpT5zxyXE, receipt index 6; limit plus 1 rejected ERR_BUDGET_EXCEEDED, settle G5nDEPfA6DfAYmcLRKZvXQ6ibtyWWVTJgNjuEGjZxHUG, still READY, receipts still 7. Low liquid was not run on production, by design. Production final state at close, read live: policy-001 spent 975000000, reserved 0, funded 1000000000, frozen false, headroom 25000000; policy p4-prod-001 spent 1000, reserved 0, funded 1000; receipts 0 to 6, seven total.
 
@@ -163,7 +163,7 @@ Evidence:
 - Live state at sign-off: policy-001 limit 1000000000, spent 975001000, reserved 0, funded 1000000000, not frozen; policy p5-prod-001 limit 1000, spent 0, reserved 0, funded 1000; production receipts 0 to 7, eight total; obl-002 READY, obl-003 CANCELLED, obl-verify-demo PAID.
 - Checks on side-b eeca0ff, run by Adejoke at build time: scaffold typecheck clean, frontend typecheck clean, conformance 6/6, Jest 31/31 (9 schema plus 7 states plus 7 budget plus 8 verifier), verify-artifact live runs (obl-002 BLOCK with digest triple-match, obl-003 BLOCK, unknown id exit 1, missing file exit 2), playground, budget, and verify-live regressions unchanged (7 receipts all true at build time; 8 receipts after the console live run, receipt 7 verified by direct read here).
 
-Sign-off: (frontend), 2026-11-05
+Sign-off: rastadev (frontend), 2026-11-05
 
 
 ## Attack demo and playground
@@ -186,7 +186,7 @@ Evidence:
 - Live state at sign-off: policy-001 limit 1000000000, spent 975001000, reserved 0, funded 1000000000, not frozen, headroom 24999000; policy p5-prod-001 limit 1000, spent 0, reserved 0, funded 1000, headroom 1000; production receipts 0 to 7, eight total, verify-live all true; test vault policy p6-001 spent 3000, reserved 0, funded 10000, not frozen; p6-obl-006 and p6-audit-001 PAID; acme-supplies.testnet 977006100.
 - Checks on side-b 14b16fb, run by Adejoke: scaffold typecheck clean, frontend typecheck clean, conformance 6/6, Jest 68/68 (7 suites), playground, budget, and verify-live regressions unchanged (8 receipts all true).
 
-Sign-off: (frontend), 2026-11-05
+Sign-off: rastadev (frontend), 2026-11-05
 
 
 ## Reputation signals, real and scoped
@@ -207,7 +207,7 @@ Evidence:
 - Live state at sign-off: policy-001 limit 1000000000, spent 975001000, reserved 0, funded 1000000000, not frozen, headroom 24999000; policy p5-prod-001 limit 1000, spent 0, reserved 0, funded 1000, headroom 1000; production receipts 0 to 7, eight total, verify-live all true; test vault policy p6-001 spent 3100, reserved 0, funded 10000, not frozen; agent ft_balance_of 100; acme-supplies.testnet 977006100.
 - Checks on side-b 28c6edf, run by Adejoke at build time: repo-root typecheck clean, frontend typecheck clean, scaffold typecheck clean (strict), conformance 6/6, Jest 95/95 (10 suites), playground, budget, and verify-live regressions unchanged (8 receipts all true), attack runner dry-run on both vaults exit 0.
 
-Sign-off: (frontend), 2026-11-06
+Sign-off: rastadev (frontend), 2026-11-06
 
 
 ## OutLayer spike (TEE route investigation)
@@ -293,7 +293,7 @@ Evidence:
 
 Sign-off: Johnson (frontend acceptance audit, section 2.6), 2026-11-06
 
-Sign-off: (frontend), 2026-11-06
+Sign-off: rastadev (frontend), 2026-11-06
 ## Judge's audit fixes (2026-11-06)
 
 Status: all 11 TRUE findings from the judge's audit fixed, reviewed, committed
@@ -503,7 +503,7 @@ Evidence:
  the signal has now caught a second real code change after the
  one.
 
-Sign-off: (frontend), 2026-11-07
+Sign-off: rastadev (frontend), 2026-11-07
 
 Sign-off: Johnson (fifth signal frontend acceptance, section 2.6 audit PASSED), 2026-11-07
 
@@ -656,18 +656,12 @@ Fifth-signal gate re-run against the new code hash: BLOCK, code changed within 1
 
 ## Demo and submission (2026-11-09)
 
-Status: frontend work done on its branch, rebased onto
-Master 9f31347 on 2026-11-09. PR to Master pending. frontend sign-off
-pending the section 2.6 audit.
+Status: merged to Master as c980ffc on 2026-11-10. Section 2.6 audit PASS WITH FIXES (Johnson, 2026-11-09, 20:24 WAT). The audited static frontend was replaced by the React app in web/ (b8b9a54) before the merge; the three audit fixes landed in that rebuild (Docs.tsx:445 minmax sidebar grid, Proof.tsx:110 short-hex receipt hashes with copy and expand, policy cell wired to get_policy). The later dark console rebuild (398d313, PR #27) dropped two of them: the Docs page is now a two-column card grid with no minmax sidebar, and the HexHash component (web/src/components/ui.tsx:87) is no longer used by any page, so receipt hashes render in full in the Proof table. The policy cell on get_policy with p6-001 survived (web/src/lib/near.ts:349).
 
 frontend delivered:
 
-- The new frontend: `index.html` at the repo root, a standalone
- static file with four pages (Landing, Demo with Guided/Sandbox
- toggle, Docs, Proof). It presents Cynex as a product: no ,
- , , submission, or public copy anywhere
- (only the repo file paths `docs/demo.md` and
- `docs/proof.md` still contain the word). Refusal panel
+- The new frontend: the Vite React app in `web/` (entry `web/index.html`), four pages (Landing, Demo with Guided/Sandbox
+ toggle, Docs, Proof). It presents Cynex as a product: no build-plan or submission-process copy in the app (the only frontend reference is the file name `docs/demo-and-submission.md`). Refusal panel
  first on Landing with the real refusal tx
  `AFYAq8Sju41NjBFwPmTHbJ1psmsYQWjVdBhmXBZbpa7S`
  (`ERR_RECIPIENT_SUBSTITUTION`), "0 tokens moved", and a
@@ -712,7 +706,7 @@ frontend delivered:
 - Full frontend record: `docs/demo-and-submission.md`.
 
 Live state re-verified by frontend, 2026-11-09, after the rebase
-(RPC `https://test.rpc.fastnear.com`, block ~276,933,56x): both
+(RPC `https://test.rpc.fastnear.com`, block about 276958870): both
 vaults on code hash
 `65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6`; production 13
 receipts (last index 12, `mcp-prod-001`); test vault 31 receipts
@@ -726,4 +720,12 @@ NODE_PATH the four MCP suites fail to load; that is the
 pre-existing NODE_PATH quirk, not a defect in frontend code.
 Frontend typecheck clean. Conformance 6/6.
 
-Sign-off: pending the section 2.6 audit.
+Sign-off: Johnson (frontend acceptance audit, section 2.6), 2026-11-09 - PASS WITH FIXES. The three design fixes landed in the b8b9a54 rebuild; the dark console rebuild (398d313) later dropped the Docs minmax grid and the HexHash receipt display, and only the policy cell on get_policy survives in the current app (see the status line above).
+
+## Later merges (no separate row)
+
+- PR #21 (frontend website improvements), merged 2026-11-11 11:42 +0100 as 4157e8d, by Adejoke. No section 2.6 audit record exists for this PR.
+- PR #22 (frontend spacing alignment), merged 2026-11-11 17:13 +0100 as 30aad19, by Adejoke. No section 2.6 audit record exists for this PR.
+- PR #23 (MCP entry-check fix), merged 2026-11-11 21:18 +0100 as abd371f, by Jayanng. cynex-mcp 0.1.1 published the same day.
+- PR #25 (frontend web layout fix), merged 2026-11-12 09:32 +0100 as 0fe6515, by Adejoke. No section 2.6 audit record exists for this PR.
+- PR #27 (dark console redesign, Live Break it), merged 2026-11-13 00:55 +0100 as cd419a9, by Jayanng, on Johnson's explicit approval. CI green on both runs before merge.

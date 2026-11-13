@@ -31,10 +31,16 @@ Check a policy, for example the production demo policy:
 near view cynex-vault.cynexmaster.testnet get_policy '{"policy_id":"p5-prod-001"}' --networkId testnet
 ```
 
-Check the receipts and verify the hash chain with the CLI, from `frontend/`:
+Check the receipts and verify the hash chain with the CLI. Build it first: from `frontend/`, run `npm install`, then run the `tsc` line below (tsc itself exits 2 with 5 known near-api-js type errors but still emits working JS into `dist-test/`; the trailing `|| true` keeps the pasted command's exit status zero):
 
 ```sh
-cynex verify-live cynex-vault.cynexmaster.testnet
+npx tsc --outDir dist-test --rootDir .. --module NodeNext --moduleResolution NodeNext --target ES2022 --strict --skipLibCheck --esModuleInterop --lib es2022,dom --typeRoots ./node_modules/@types ../agent/console.ts ../cli/cynex.ts ../services/verifier/verifier.ts ../services/verifier/verify.test.ts ../services/executor/executor.ts ../services/executor/executor.test.ts ../services/console/console.test.ts ../services/reputation/reputation.ts ../services/reputation/snapshot.ts ../services/reputation/live-sources.ts || true
+```
+
+Then from the repo root run:
+
+```sh
+node frontend/dist-test/cli/cynex.js verify-live cynex-vault.cynexmaster.testnet
 ```
 
 Every receipt should report `verified_ok=true`. A gap or a mismatched hash
@@ -53,10 +59,10 @@ vault; the pre-demo baseline was spent 3,400 and balance 700. The expired READY 
 
 ## Deployment history
 
-The production vault was first deployed in . The code hash changed
-with each that touched the contract: G3Mt2gKs94C61Se4oLWvMUgR2Bfv2djdFQLz4TVrDH3E
-(), 7PBw1x6HbH3Eu2dWrTKjEEfxdJnAfFPwPJS5vZMM5zRC, then E2Uq5FzNcfGuDHQfqTGx6Rqd41ZwsBDXtYVx6bhQoFd1 (the judge audit fixes), then 7JJ27aMWztX2F3z4W9zxSmK93eMa7RuTGvmAwWab9x4B (the expired READY cleanup), then EChCjrfRGBwMC6yu7QsrJqgkEuMZCJhmRZ5DNU64GJh9 (the NEAR AI DeepSeek audit fixes), then 65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6 (the as_chunks lint fix and gas optimizations, current). Each deployment was proven live on both
-vaults before the closed, and the ledger in `docs/ledger.md` records the
+The production vault was first deployed in November 2026. The code hash changed
+with each change that touched the contract: G3Mt2gKs94C61Se4oLWvMUgR2Bfv2djdFQLz4TVrDH3E
+(the attack demo and playground work), 7PBw1x6HbH3Eu2dWrTKjEEfxdJnAfFPwPJS5vZMM5zRC (the three-layer verification work), then E2Uq5FzNcfGuDHQfqTGx6Rqd41ZwsBDXtYVx6bhQoFd1 (the judge audit fixes), then 7JJ27aMWztX2F3z4W9zxSmK93eMa7RuTGvmAwWab9x4B (the expired READY cleanup), then EChCjrfRGBwMC6yu7QsrJqgkEuMZCJhmRZ5DNU64GJh9 (the NEAR AI DeepSeek audit fixes), then 65ZQhWUzkTeQkrRuyiWP6oxthpb74cWBEhiAFW4mApu6 (the as_chunks lint fix and gas optimizations, current). Each deployment was proven live on both
+vaults before the work closed, and the ledger in `docs/ledger.md` records the
 tx hash for each one.
 
 ## The TEE guest

@@ -2,7 +2,7 @@
 
 This is the road ahead, ordered from the largest step to the final one, with the timing of each step stated, so a reader can see both the ambition and the schedule. Nothing here is a promise of a date, and nothing here changes the Cynex idea.
 
-Note: this file holds the roadmap content for the README. It lives here, instead of in the README, because the README is being edited on a separate branch for the judge steps (item 1) and merging the roadmap into the README now would conflict. Once that branch merges, this content moves into the README's roadmap section.
+Note: this file holds the roadmap content for the README. It lives here, instead of in the README, because the README is being edited on a separate branch; once that round lands, this content moves into the README's roadmap section.
 
 ## Mainnet deployment
 
@@ -10,7 +10,7 @@ After release, once the mainnet constants are swapped and re-audited. The vault'
 
 ## MCP server
 
-The build in progress now, scoped and waiting on the final decisions, that turns the vault into infrastructure any MCP agent can use. It lands with the release and grows after it: a thin adapter that exposes the vault's operations as tools, holding only the agent's scoped settle key, with the vault still enforcing everything on chain. It is the single biggest impact move available, because it broadens who Cynex serves from one agent to every agent that speaks MCP.
+The MCP server is built and released as cynex-mcp 0.1.1 on npm. It turns the vault into infrastructure any MCP agent can use: a thin adapter that exposes the vault's operations as tools, holding only the agent's scoped settle key, with the vault still enforcing everything on chain. It grows after the release. It is the single biggest impact move available, because it broadens who Cynex serves from one agent to every agent that speaks MCP.
 
 ## More reputation signals
 
@@ -18,7 +18,7 @@ The reputation engine scores five signals today. More signals make the counterpa
 
 ## Hosted demo
 
-The last step before the video. The playground hosted so a judge clicks a link and sees it work without cloning anything. A judge who has to clone, install, and configure before seeing anything is a judge who sees less.
+Done: the hosted demo is live at https://cynex-nine.vercel.app, so a judge clicks a link and sees it work without cloning anything. A judge who has to clone, install, and configure before seeing anything is a judge who sees less.
 
 ## Video
 
