@@ -109,7 +109,7 @@ The matrix runner runs the rows from `services/mcp/acceptance-matrix.md` and rec
 
 ### 2. Claude Code for the real-agent proof
 
-After the SDK client proves the tools behave as documented, a real agent (Claude Code) connects to the same server over stdio, retrieves an obligation, requests settlement, and receives the receipt and balance delta. That session is short and tightly scripted, not an open-ended conversation the submission depends on.
+After the SDK client proves the tools behave as documented, a real agent (Claude Code) connects to the same server over stdio, retrieves an obligation, requests settlement, and receives the receipt and balance delta. That session is short and tightly scripted, not an open-ended conversation the proof depends on.
 
 ### 3. The negative case (the proof that matters)
 
@@ -191,7 +191,7 @@ From `frontend/`:
 npm run mcp:build && npm run mcp:demo
 ```
 
-Or, once the package is published:
+Or, from the published package:
 
 ```sh
 npx cynex-mcp --sandbox

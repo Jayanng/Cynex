@@ -19,7 +19,7 @@ Fixtures needed for a full run: one READY obligation on the test vault for M1, a
 
 Prior evidence, not a substitute: the concrete use case already proved the same refusals through the console on the test vault (obligation `usecase-report-002`, policy `p6-001`, 100 units, PREIMAGE: settle before evidence `ERR_INVALID_STATE`, changed recipient `ERR_RECIPIENT_SUBSTITUTION`, changed amount `ERR_TERMS_MISMATCH`, correct settle PAID with receipt index 24, replay `ERR_NONCE_ALREADY_CONSUMED`). This matrix re-proves them through MCP.
 
-Local proof: `services/mcp/sandbox.test.ts` re-proves the same rows on a local near-sandbox chain (the M1 happy path, the M2 changed-recipient vault refusal, the replay refusal, and the read-only tools), with no testnet funds and the same vault code hash as the deployed testnet vaults. Testnet remains the submission proof; the sandbox run is the repeatable local gate.
+Local proof: `services/mcp/sandbox.test.ts` re-proves the same rows on a local near-sandbox chain (the M1 happy path, the M2 changed-recipient vault refusal, the replay refusal, and the read-only tools), with no testnet funds and the same vault code hash as the deployed testnet vaults. Testnet remains the live proof; the sandbox run is the repeatable local gate.
 
 ## Precondition rows
 

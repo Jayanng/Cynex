@@ -1,14 +1,12 @@
 # Cynex demo script
 
-For the demo video (frontend, Adejoke) and for judges reading the repo. Every
+For the demo video and for judges reading the repo. Every
 step below ran live on the test vault on 2026-11-07, with real tx hashes.
 The full proof record, with before and after chain state, is in
 `docs/demo-proof.md`. The recipient throughout
 is the agent account `cynex-agent.cynexmaster.testnet`, never
 acme-supplies.testnet, which does not exist on chain. All test-vault calls
-were signed with the owner key `cynexmaster.testnet`, because the agent's
-scoped function-call key is bound to the production vault as its receiver
-and cannot settle on the test vault. Settle performs identical on-chain
+were signed with the owner key `cynexmaster.testnet`. The agent holds test-vault-bound settle keys as well, so the owner key was the demo's choice, not a limit: an agent-signed settle already succeeded on the test vault (tx 7HHtxoHX7bvYpRmdm5pyhwhBWWRiCUHiGPMDye8F1oKh, receipt 7). Settle performs identical on-chain
 term and nonce checks regardless of the caller, so the enforcement proof
 is valid.
 
