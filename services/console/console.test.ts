@@ -1,12 +1,12 @@
 /**
- * Console evidence wiring tests,  frontend. The console
+ * Console evidence wiring tests, frontend. The console
  * branches on evidence_type (agent/console.ts): PREIMAGE calls
  * submit_evidence_preimage with the artifact bytes as a JSON
  * number array (owner as courier, no verifier key), TEE calls
  * request_tee_verification with the evidence URL at 300 TGas
  * prepaid, anything else keeps the verifier submit_evidence
  * path. These are pure-function tests; the live proof is the
- * section 2.6 audit, which runs the console against the test
+ * acceptance audit, which runs the console against the test
  * vault with real keys.
  */
 import {

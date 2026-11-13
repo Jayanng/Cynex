@@ -1,14 +1,12 @@
 # Console wiring for PREIMAGE and TEE, cynex-verify --csv, playground polish
 
-frontend delivery for (plan card line 927). contract shipped the
-contract as bbc8464 (layers 2/3) and 42c9bf6 (layer 1), plus the README
+Frontend delivery for the console wiring step. The contract shipped as bbc8464 (layers 2/3) and 42c9bf6 (layer 1), plus the README
 draft (f7fb83a, TDX quote language); both vaults run code hash
 7PBw1x6HbH3Eu2dWrTKjEEfxdJnAfFPwPJS5vZMM5zRC. The method signatures
-below are taken from the frozen docs/contract-api.md (lines 75-76),
-not from the instructions file alone; the two sources agree except
-for the TEE vault receipt gas (2.79 TGas in contract-api.md, 2.82
-TGas in the instructions — different live runs, immaterial, and the
-console attaches 300 TGas prepaid either way).
+below are taken from the frozen docs/contract-api.md (lines 75-76).
+The recorded TEE vault receipt gas differs between sources (2.79 TGas
+in contract-api.md, 2.82 TGas recorded elsewhere), different live runs,
+immaterial, and the console attaches 300 TGas prepaid either way.
 
 ## 1. Console wiring (agent/console.ts)
 
@@ -67,8 +65,7 @@ live chain, and `cynex-verify --csv --file <receipts.json>` for a
 file replay. Both share `verifyLiveChain` / `verifyReceiptChain`
 and a `toCsvRows` / `CSV_COLUMNS` export. The existing
 `verify-live` and `verify-receipts` output is unchanged (regressions
-depend on it). The header is exactly the frozen columns from plan
-section 3.1.10:
+depend on it). The header is exactly the frozen columns:
 
 ```
 index,prev_hash,obligation_id,recipient,amount,token_id,timestamp,tx_ref,verified_ok
@@ -141,7 +138,7 @@ doc states the tip property plainly.
  (READY, TEE), 100 units each, recipient
  cynex-agent.cynexmaster.testnet. The playground reads them live
  but the Fire button is disabled for them. Whether to settle,
- cancel, or leave them is Johnson's decision, not frontend.
+ cancel, or leave them is the owner's decision, not the frontend's.
 
 ## 4. README
 
@@ -173,17 +170,17 @@ needs the evidence URL from the obligation file's `evidence_ref`.
 
 ## Gaps, stated plainly
 
-- **Live console proof is the audit step.** Rio's machine holds no
+- **Live console proof is the audit step.** The test machine holds no
  keys and no CYNEX_ env, so the PREIMAGE and TEE live runs are
- proven by the section 2.6 audit (contract keys, test vault first),
+ proven by the acceptance audit (contract keys, test vault first),
  not by this delivery. The dry-runs above prove the call shapes;
  only a live run proves the chain accepts them.
-- **TEE poll duration is unproven until the audit runs it.**
+- **TEE poll duration is unproven until a live run proves it.**
  `pollTee` is 120 attempts at 5 seconds; a slow OutLayer
  execution could still be pending when the poll ends, and the
  console then reports pending, never verified.
 - **The three production proof obligations are unsettled.**
- Johnson decides whether to settle, cancel, or leave them.
+ The owner decides whether to settle, cancel, or leave them.
 - **No live ALLOW from the reputation gate.** The blocklist signal
  is unavailable (9 candidates checked, provenance in
  demo/reputation-blocklist-provenance.json); acme-supplies.testnet

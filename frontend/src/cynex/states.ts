@@ -1,5 +1,5 @@
 /**
- * Cynex obligation state display,  frontend.
+ * Cynex obligation state display, frontend.
  *
  * Pure mapping from the contract states (frozen in docs/contract-api.md,
  * 9 ObligationStates) to what a frontend shows. No chain reads here;
@@ -72,7 +72,7 @@ const DISPLAY: Record<
     label: "Blocked",
     terminal: true,
     meaning: "Evidence blocked by the verifier.",
-    next: "No settlement path and no cancel path in the  contract; a new obligation is needed.",
+    next: "No settlement path and no cancel path in the contract; a new obligation is needed.",
   },
   CANCELLED: {
     label: "Cancelled",

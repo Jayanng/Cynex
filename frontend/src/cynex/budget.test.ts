@@ -1,5 +1,5 @@
 /**
- * Tests for the  per-token budget display.
+ * Tests for the per-token budget display.
  * Token units and native NEAR are never mixed, the invariant mirrors
  * the contract assert, and inexact token figures throw instead of
  * rendering a rounded budget.

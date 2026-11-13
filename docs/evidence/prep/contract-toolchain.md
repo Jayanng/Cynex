@@ -1,4 +1,4 @@
-# contract toolchain evidence (, 2026-11-03, jayanng)
+# Contract toolchain evidence (2026-11-03)
 
 rustc 1.99.0 (b940084d7 2026-09-28)
 cargo 1.99.0 (5f94df478 2026-08-27)

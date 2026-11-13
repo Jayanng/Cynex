@@ -1,5 +1,5 @@
 /**
- * Tests for the  executor backend. The pure guards
+ * Tests for the executor backend. The pure guards
  * (auth comparison, validation, rate limit, allow-list) are
  * tested directly. The HTTP layer is tested against a stub
  * CLI process: the stub stands in for the CLI's process

@@ -1,5 +1,5 @@
 /* Cynex web, constants and ground-truth data.
-   Ported 1:1 from the static showcase (index.html, PR #12, fixed).
+   Ported from the static showcase (index.html).
    No values are invented; live numbers are read from the chain at runtime. */
 
 export const RPC_URL = "https://test.rpc.fastnear.com";
@@ -23,14 +23,15 @@ export const EXPLORER_BASE = "https://testnet.nearblocks.io";
 export const EX_TX = (h: string) => EXPLORER_BASE + "/txns/" + h;
 export const EX_ADDR = (a: string) => EXPLORER_BASE + "/address/" + a;
 
-/* Demo token (live mode), KEY NOT YET SUPPLIED.
-   Johnson creates this key (via Muse) on the TEST vault only and sends
-   it separately. Until every field below is filled in by hand from
-   Johnson's message, live mode stays DISABLED and the page uses the
-   simulated panel only. NEVER paste the existing executor key, the owner
-   key, or any full-access key here. The demo key is: fresh, settle-only
-   on the test vault, allowance 0.05 NEAR, testnet only, low value.
-   The two obligation ids must also come from Johnson:
+/* Demo token (client-side live mode), RETIRED, fields stay empty.
+   Live attacks no longer use a client-side key: the Break it panel sends
+   the judge's terms to /api/demo-attack, and the server submits the real
+   settle with its scoped demo key (CYNEX_DEMO_KEY, test vault only).
+   This block stays DISABLED with empty fields. NEVER paste the existing
+   executor key, the owner key, or any full-access key here. A demo key
+   is: fresh, settle-only on the test vault, testnet only, low value.
+   The two obligation ids below are the shape a client-side live mode
+   would have needed:
    - readyObligationId: a READY demo obligation (evidence submitted,
      never settled) for the recipient/amount attacks. p10-demo-attack-001
      is PAID, so it would return NONCE_ALREADY_CONSUMED, not the
@@ -435,16 +436,17 @@ export const SETTLE_CODES: [string, string][] = [
   ["ERR_VAULT_STORAGE_EXHAUSTED", "native headroom below the receipt plus deposit plus gas requirement"],
 ];
 
-/* ---- Last-updated commit per Docs source file (git log, Master a79e426). Multi-file sections list each file's commit. ---- */
+/* ---- Last-updated commit per Docs source file (git log, Master 50274ca). Multi-file sections list each file's commit.
+   NOTE: this clean round edits several of these files, so these values go stale again at the clean commit. This map is a historical snapshot and may remain stale. ---- */
 export const DOC_COMMITS: Record<string, string> = {
-  readme: "620fcb3",
-  security: "620fcb3 (README.md), 6b40576 (docs/threat-model.md)",
-  deployment: "d9cdf40",
-  p10demo: "fc3ceac",
-  p10proof: "fc3ceac",
-  reputation: "620fcb3 (README.md), 69b9fd7 (docs/reputation-engine.md, docs/scorecard-code-change-recency.md)",
-  receipts: "6b40576",
-  scorecard: "e26edfb", // docs/scorecard-code-change-recency.md (69b9fd7)
-  mcp: "ddcbcd3", // services/mcp/README.md (ddcbcd3), SECURITY.md 4dec900
-  consoleCli: "b0c7cb1", // agent/console.ts and cli/cynex.ts
+  readme: "330e816",
+  security: "330e816 (README.md), 536246c (docs/threat-model.md)",
+  deployment: "536246c",
+  p10demo: "536246c",
+  p10proof: "536246c",
+  reputation: "330e816 (README.md), 536246c (docs/reputation-engine.md), 84cb3ea (docs/scorecard-code-change-recency.md)",
+  receipts: "536246c",
+  scorecard: "84cb3ea", // docs/scorecard-code-change-recency.md (84cb3ea)
+  mcp: "536246c", // services/mcp/README.md (536246c), services/mcp/SECURITY.md 92cfcfc
+  consoleCli: "84cb3ea", // agent/console.ts and cli/cynex.ts
 };

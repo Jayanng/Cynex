@@ -1,5 +1,5 @@
 /**
- * Cynex attack runner core,  frontend. Pure logic only: no
+ * Cynex attack runner core, frontend. Pure logic only: no
  * network, no signing, no shell. The CLI (cli/cynex.ts) does the
  * live reads and the settle calls; the executor
  * (services/executor/executor.ts) reuses the validators here.
@@ -13,7 +13,7 @@
  *   nonce: settle against a PAID obligation, or a second settle
  *     after a correct one in the same run
  *     -> ERR_NONCE_ALREADY_CONSUMED (checked before the state
- *     check,  contract)
+ *     check)
  *   budget: proposed amount equals the recorded one, and the
  *     recorded amount exceeds the remaining headroom
  *     -> ERR_BUDGET_EXCEEDED (checked after terms, so the
@@ -51,7 +51,7 @@ export const EXPECTED_CODE: Record<AttackScenario, ReasonCode> = {
   budget: "ERR_BUDGET_EXCEEDED",
 };
 
-/** Evidence ref used by every  attack settle, matching contract live proofs. */
+/** Evidence ref used by every attack settle, matching contract live proofs. */
 export const ATTACK_EVIDENCE_REF = "sample-demo";
 
 /** A valid account id that is never a real demo recipient. Used as the wrong payee. */

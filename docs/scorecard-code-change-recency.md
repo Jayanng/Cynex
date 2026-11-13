@@ -1,8 +1,7 @@
 # Scorecard: fifth reputation signal — code-change recency
 
-frontend delivery for the scorecard brief (adejoke-scorecard-brief,
-2026-11-06). This is the one remaining gap in the Cynex track
-scorecard: the reputation engine built in scored four
+frontend delivery for the scorecard brief (2026-11-06). This is the one remaining gap in Cynex
+scorecard: the reputation engine as built scored four
 signals; the scorecard expects a fifth, whether the receiver's
 contract code changed recently. This adds it as a fifth signal,
 wired into the same gate, with tests and live proof. No contract
@@ -259,14 +258,13 @@ code-change signal itself is ALLOW ("no change").
  all verified_ok=true, see the state note below);
  `playground cynex-vault.cynexmaster.testnet p6-prod-001` READY;
  console dry-runs for PREIMAGE and TEE still list the 9 calls
- (the dry-run returns 2 by design, "no keys supplied", as in
- ).
+ (the dry-run returns 2 by design, "no keys supplied").
 
 ## 6. Live state found during this work (not changed by it)
 
 The on-chain state moved since the delivery record
 (8 receipts, agent balance 100, p5-prod-001 spent 0,
-p9-prod-preimage-002 EVIDENCE_PENDING). This is Johnson's audit
+p9-prod-preimage-002 EVIDENCE_PENDING). This is the owner's audit
 and follow-up activity, recorded here so the record stays true:
 
 - Production receipts: **10** (indices 0-9), all verified_ok=true.
@@ -282,19 +280,18 @@ and follow-up activity, recorded here so the record stays true:
 - The three production proof obligations: p9-prod-preimage-001
  READY, p9-prod-preimage-002 **CANCELLED** (was EVIDENCE_PENDING),
  p9-prod-tee-001 READY. Whether to settle or leave the two READY
- ones is still Johnson's decision.
+ ones is still the owner's decision.
 
 ## 7. Gaps, stated plainly
 
 - **The live console gate proof is the audit step.** The console
  dry-run lists the calls but does not run the reputation gate
- (it returns 2, "no keys supplied", by design), and Rio's machine
+ (it returns 2, "no keys supplied", by design), and the test machine
  holds no keys. The gate refusing on a code-change BLOCK is
  proven by the Jest tests (a stub BLOCK report refuses and names
  code_change_recency) and by the live CLI check showing BLOCK on
  the production vault; only a live console run with contract keys
- proves the gate refuses on chain. That is the section 2.6 audit
- step, as in .
+ proves the gate refuses on chain. That is the acceptance audit step.
 - **The NearBlocks v3 endpoint is a third-party dependency.** It
  answered without an API key on testnet and its deployment
  timestamp matched the live chain. If it stops answering, the

@@ -1,5 +1,5 @@
 /**
- * Cynex console,  frontend, audit fixes applied.
+ * Cynex console, frontend, audit fixes applied.
  *
  * Wires the console to the real contract, end to end, in
  * this order, because a fresh obligation is CREATED and
@@ -75,14 +75,14 @@
  * deployed contract takes nonce as an input argument.
  * The console follows the deployed contract.
  *
- *  note: the PREIMAGE and TEE method signatures
+ * note: the PREIMAGE and TEE method signatures
  * here match the frozen docs/contract-api.md (lines 75-76,
- * , committed as 42c9bf6 and bbc8464, deployed at
+ * committed as 42c9bf6 and bbc8464, deployed at
  * code hash 7PBw1x6HbH3Eu2dWrTKjEEfxdJnAfFPwPJS5vZMM5zRC
  * on both vaults). The production proof obligations
- * p9-prod-preimage-001 (READY), p9-prod-preimage-002
- * (EVIDENCE_PENDING), and p9-prod-tee-001 (READY) exist
- * with evidence types PREIMAGE and TEE. The section 2.6
+ * p9-prod-preimage-001 (CANCELLED), p9-prod-preimage-002
+ * (CANCELLED), and p9-prod-tee-001 (CANCELLED) exist
+ * with evidence types PREIMAGE and TEE. The acceptance
  * audit proves this wiring live; a wrong signature shows
  * up there, not here.
  */
@@ -312,7 +312,7 @@ export type EvidenceBranch = "PREIMAGE" | "TEE" | "VERIFIER";
 
 /**
  * Which evidence path an obligation uses. PREIMAGE and TEE
- * are the  layers; anything else keeps the verifier
+ * are the layers; anything else keeps the verifier
  * path (TRUSTED_RELAYER, and evidence over 64 KiB, which
  * cannot go through the preimage cap).
  */
@@ -381,12 +381,12 @@ export async function pollTee(
 
 // Gas for console change calls. near-api-js defaults to 30 TGas prepaid.
 // Settle attaches 30 TGas for ft_transfer plus 30 TGas for the callback,
-// plus about 2.6 TGas of its own execution measured in , so 30 TGas
+// plus about 2.6 TGas of its own execution measured live, so 30 TGas
 // prepaid can never cover it and fails with Exceeded the prepaid gas.
 // contract live settlements used 100 TGas for settle and succeeded.
 export const DEFAULT_CALL_GAS = 30000000000000n;
 export const SETTLE_CALL_GAS = 100000000000000n;
-// TEE verification prepaid gas. Measured live in :
+// TEE verification prepaid gas. Measured live:
 // the outer call needs more than 150 TGas prepaid (100 TGas
 // to OutLayer plus 50 TGas to the callback plus the vault's
 // own execution). 100 TGas prepaid fails with "Exceeded the

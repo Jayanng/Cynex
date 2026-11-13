@@ -1,6 +1,6 @@
 # Reputation signals, real and scoped
 
-This document is "Reputation signals, real and scoped", section 3.1.9. This is frontend work: there are no contract steps and no contract change is needed. The frontend side built the
+This document is "Reputation signals, real and scoped". This is frontend work: there are no contract steps and no contract change is needed. The frontend side built the
 reputation engine in `services/reputation/`, wired it into the agent
 wrapper, and recorded the snapshot method, the blocklist provenance,
 and the sample outputs below. No contract changes, no frozen doc
@@ -332,8 +332,8 @@ Stated exactly, so they can be audited:
 
 ## close confirmation (frontend)
 
-The acceptance audit PASS (2026-11-06, 24 itemized checks, no
-blocking findings) is on record in the audit file supplied
+The acceptance audit passed (2026-11-06, 24 itemized checks, no
+blocking findings); the record is in the audit file supplied
 2026-11-06. frontend independently verified the audit's live claims
 via RPC: all seven audit transactions re-queried (0 mismatches),
 the resulting state read live (p7-audit-004 READY, p7-audit-005

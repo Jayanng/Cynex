@@ -1,10 +1,10 @@
 # Agent scaffold
 
 Entry criteria met: frozen and signed, closed 2026-11-03
-(Master 1045e53, both sides signed, frontend mirror audited under
-section 2.6 and merged as 38e0033).
+(Master 1045e53, contract and frontend signed, frontend mirror audited
+in the acceptance audit and merged as 38e0033).
 
-## Scaffolded in this , frontend
+## Scaffolded in this delivery, frontend
 
 - Frontend: `frontend/src/cynex/client.ts` — read-only view client
  (get_policy, get_obligation, balances, receipts, state, and
@@ -15,7 +15,7 @@ section 2.6 and merged as 38e0033).
  and ReasonCode. Scaffold only; the vault is authoritative.
 - Reputation: `services/reputation/reputation.ts` — sourced
  signals only; unsourced history maps to WARN, never a guessed
- score. Full engine is , not built here.
+ score. Full engine is a later step, not built here.
 - Agent wrapper: `agent/wrapper.ts` — builds only a settle call;
  any other method is rejected in code, matching the scoped
  function-call key (receiver vault, methods settle).
@@ -33,6 +33,6 @@ section 2.6 and merged as 38e0033).
  cannot be deployed, and the key checks (exactly one
  function-call key plus one offline full-access key, and the
  three forbidden-call errors) cannot be captured yet.
-- sign-off (ledger row, both sides) is therefore also
+- sign-off (ledger row, contract and frontend) is therefore also
  pending. This scaffold is frontend work in progress, not a
- closed .
+ closed delivery.

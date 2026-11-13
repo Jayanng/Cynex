@@ -1,5 +1,5 @@
 /**
- * Live sources tests,  frontend.
+ * Live sources tests, frontend.
  *
  * The stub fetch stands in for the RPC endpoint and the blocklist
  * URL so the parsing and error handling can be tested without the

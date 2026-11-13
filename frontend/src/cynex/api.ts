@@ -1,8 +1,8 @@
 /**
- * Cynex contract API - frontend TypeScript mirror,  frozen.
+ * Cynex contract API - frontend TypeScript mirror, frozen.
  *
  * Method and view shapes are taken verbatim (argument names and
- * order) from docs/contract-api.md (, commit 5eee26a).
+ * order) from docs/contract-api.md (commit 5eee26a).
  * This file types the frozen API only. It does not implement a
  * contract client, does not call a contract, and does not invent
  * a method, a view, or a return shape the frozen document does not

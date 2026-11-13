@@ -1,20 +1,19 @@
-> Correction, 2026-11-03, by contract review: the Scaffold section below describes the pre-push state. The side-b branch was pushed to origin on 2026-11-03, after that section was written, and Master at that time was c1cbf0f. The lines saying the branch was not pushed and the remote was still empty are superseded by the push itself. The evidence above them is unchanged.
+> Correction, 2026-11-03, by contract review: the Scaffold section below describes the pre-push state. The frontend branch was pushed to origin on 2026-11-03, after that section was written, and Master at that time was c1cbf0f. The lines saying the branch was not pushed and the remote was still empty are superseded by the push itself. The evidence above them is unchanged.
 
 # frontend evidence — the build machine verification (supplementary)
 
 This file supplements, and does not replace, docs/evidence/prep/agent-toolchain.md
-and live-facts.md in Master (jayanng, commit c1cbf0f). Those files record
-the the build machine verification. This file records the same frontend checks
-re-run on the the build machine on 2026-11-03, before side-b was created
-from Master, so frontend acceptance audit (build plan section 2.6) has live proof from
+and live-facts.md in Master (commit c1cbf0f). Those files record
+the build machine verification. This file records the same frontend checks
+re-run on the build machine on 2026-11-03, before the frontend branch was created
+from Master, so the frontend acceptance audit has live proof from
 both machines, not a claim alone.
 
-Machine: the build machine, agent-browser template, 4 vCPU / 8 GiB / 20 GiB,
-home the home directory, work the workspace. GitHub login on the machine:
-gh auth status — Logged in to github.com the account, git protocol https,
+Machine: the build machine, agent-browser template, 4 vCPU / 8 GiB / 20 GiB. GitHub login on the machine:
+gh auth status — Logged in to github.com, git protocol https,
 token scopes gist, read:org, repo. git fetch origin succeeded after gh auth setup-git.
 
-Frontend verification on Master scaffold (side-b, before commit):
+Frontend verification on the Master scaffold (before commit):
 - cd frontend && npm ci: 86 packages added, 87 audited, 0 vulnerabilities
 - node ESM import check: near-api-js JsonRpcProvider and Account are functions;
  near-kit Near and InMemoryKeyStore are functions. Imports resolve.
@@ -23,9 +22,9 @@ Frontend verification on Master scaffold (side-b, before commit):
 
 ## Toolchain detail (from the run, root package at the time)
 
-# - frontend toolchain evidence (the build machine)
+## Frontend toolchain evidence (the build machine)
 
-Run on the machine itself via the exec API, 2026-11-03.
+Run on the machine itself, 2026-11-03.
 Raw outputs recorded here; nothing typed in.
 
 ## Versions
@@ -39,7 +38,7 @@ Raw outputs recorded here; nothing typed in.
  toolchain gap, recorded, not hidden)
 - cargo-near: NOT installed (cargo reports no such command near)
 - near-cli: NOT installed (near command not found)
- contract / joint toolchain items above are for contract to install in ;
+ Contract / joint toolchain items above are for the contract side to install;
  they do not block the frontend Node scaffold.
 
 ## Node packages (installed in the workspace)
@@ -56,7 +55,7 @@ Raw outputs recorded here; nothing typed in.
  Amount, Gas, KeyType.
 - Note: near-api-js v7 has no legacy connect / keyStores exports.
  frontend code must use the v7 API (JsonRpcProvider etc.), not v6 patterns
- remembered from older docs. This is a interface note, not a
+ remembered from older docs. This is an interface note, not a
  failure: imports resolve and the provider classes exist.
 
 ## NEAR Agent Skills (on this machine)
@@ -68,19 +67,19 @@ Raw outputs recorded here; nothing typed in.
 - Skills (8): near-ai-cloud, near-api-js, near-cli-rs, near-contract-audit,
  near-dapp, near-intents, near-kit, near-smart-contracts
 - skills markdown line count: 11,404; all markdown in the clone: 11,448
- (matches the build plan 11,448 figure, which counts the root docs too)
+ (matches the 11,448 figure, which counts the root docs too)
 
-## Scaffold (branch side-b, NOT pushed)
+## Scaffold (frontend branch, NOT pushed)
 
 - Directories: services/, agent/, frontend/, cli/, demo/, scripts/,
  docs/, docs/evidence/prep/, schemas/, tests/integration/,
  tests/test-vectors/
 - Files: LICENSE (MIT), SECURITY.md, docs/ledger.md,
- docs/threat-model.md (draft, opened in , finalised in ),
+ docs/threat-model.md (draft),
  package.json, package-lock.json
 - Remote: origin https://github.com/Jayanng/Cynex.git
-- Local branch: side-b (remote repo is still empty, Master, no commits)
-- Nothing has been pushed. Push / PR is a separate, user-confirmed step.
+- Local branch: frontend branch (remote repo is still empty, Master, no commits)
+- Nothing has been pushed. Pushing is a separate step.
 
 ## Live facts
 
@@ -89,9 +88,9 @@ See docs/evidence/prep/live-facts.md (testnet RPC reads).
 
 ## Live facts detail (from the run, testnet RPC)
 
-# - Live facts re-verified (frontend, testnet RPC)
+## Live facts re-verified (frontend, testnet RPC)
 
-Run from the the build machine on 2026-11-03 with near-api-js v7
+Run from the build machine on 2026-11-03 with near-api-js v7
 JsonRpcProvider against https://rpc.testnet.near.org, finality final.
 First attempt failed on the v7 query shape (missing finality); the
 corrected call below is the recorded proof, not a typed-in value.
@@ -100,39 +99,39 @@ corrected call below is the recorded proof, not a typed-in value.
 
 - usdc.fakes.testnet ft_metadata:
  spec ft-1.0.0, name Bridged USDC, symbol USDC.e, decimals 6.
- Matches the build plan exactly.
+ Matches the expected values exactly.
 
 ## OutLayer
 
 - outlayer.testnet view_account code_hash:
  5waWVnt6g3FZfjR6vfYXZzpAi3sZdFy8cK2sLz4EJQDt
- (starts 5waWVnt6, as in the plan; block 276077202 at read time).
+ (starts 5waWVnt6, as expected; block 276077202 at read time).
 - outlayer.testnet estimate_execution_cost:
  7000100000000000000000 yocto = 0.0070001 NEAR.
- Matches the build plan exactly.
+ Matches the expected values exactly.
 - outlayer.testnet get_execution_cost:
  ERROR: Contract method is not found at block height 276077214.
- This is the plan expected non-existence, worded by the node as
+ This is the expected non-existence, worded by the node as
  method-not-found rather than a JSON-RPC MethodNotFound code.
  Recorded as-is, not hidden.
 
-## Not yet proven (per plan, must be proven in / )
+## Not yet proven
 
 - Exact static gas (TGas) values for ft_transfer + callback: not measured
- yet; closes this, never invented.
+ yet; never invented.
 - OutLayer callback fields: not proven yet.
-- Blocklist source URL (frontend, ): not named yet.
+- Blocklist source URL: not named yet.
 - Mainnet payout account: supplied by the team lead only, never invented.
 
 
-Differences from the jayanng files, recorded not hidden:
+Differences from the Master files, recorded not hidden:
 - run used a root package.json (near-api-js 7.4.0, near-kit 0.20.2);
  Master correctly puts the frontend package in frontend/package.json
- (near-api-js ^7.0.0, near-kit ^0.20.0). The root package is NOT carried into
- side-b, to avoid duplicating dependencies.
-- On the the build machine, cargo-near, near-cli, and the wasm32 target were
+ (near-api-js ^7.0.0, near-kit ^0.20.0). The root package is NOT carried into the frontend branch,
+ to avoid duplicating dependencies.
+- On the build machine, cargo-near, near-cli, and the wasm32 target were
  NOT installed (rustc/cargo 1.99.0 only). Those are contract / joint toolchain
  items, already recorded in Master contract-toolchain.md, and do not block frontend.
 - get_execution_cost wording: run recorded the node error as
  Contract method is not found; Master records it as MethodNotFound.
- Both mean the method does not exist, as expected in .
+ Both mean the method does not exist, as expected.

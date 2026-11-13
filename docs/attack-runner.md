@@ -1,7 +1,6 @@
 # Attack runner, playground, executor
 
-is "Attack demo and playground" (plan section ,
-joint). contract landed on Master as `cc29f2e`: a duplicate settle
+This is "Attack demo and playground", joint work. contract landed on Master as `cc29f2e`: a duplicate settle
 now reports `NONCE_ALREADY_CONSUMED` instead of
 `ERR_INVALID_STATE` (settle checks the nonce before the state
 check; in-flight and PAID both reject with
@@ -54,11 +53,11 @@ section to the transcript file (default
 `docs/attack-transcript.md`).
 
 The transcript is `docs/attack-transcript.md`. At
-write time it holds contract six verified proof transactions
-on the test vault, each queried by frontend with the obligation
+write time it holds six verified proof transactions
+on the test vault, each queried by the frontend with the obligation
 read live afterwards. The runner's own live run appends
 below; it has not run yet, because the runner needs the agent
-key held by contract (see Honest gaps).
+key held by the contract side (see Honest gaps).
 
 Why the budget scenario proposes the recorded amount: the
 settle check order is nonce, state, recipient, terms, expiry,
@@ -121,12 +120,12 @@ needs the owner to freeze policy `p6-001` during the demo,
 then unfreeze it; the policy is not frozen now.
 
 The read-only `cynex playground <vaultId> <obligationId...>`
-command from is unchanged and still works for the
+command is unchanged and still works for the
 state display.
 
 ## Deliverable 3: executor security
 
-`services/executor/executor.ts`, plan section 3.1.11. Run it
+`services/executor/executor.ts`. Run it
 from the repo root, after compiling to a temp outDir with
 node_modules symlinked into it (same as the typecheck
 command): `node <outDir>/services/executor/executor.js`.
@@ -178,13 +177,13 @@ default.
 
 ## Honest gaps
 
-- The runner's live end-to-end run happened in the section
- 2.6 audit on 2026-11-05 (PR #7, head 4416385): test vault,
+- The runner's live end-to-end run happened in the acceptance
+ audit on 2026-11-05 (head 4416385): test vault,
  all four scenarios plus the happy path, and production,
  rejections only. Every transaction was re-queried from
  chain by frontend and is recorded in the transcript file.
- No live attack transaction was sent from frontend; the run
- was the audit step, with the agent key held by contract.
+ No live attack transaction was sent from the frontend; the run
+ was the acceptance step, with the agent key held by the owner.
 - The playground happy path was proven live in the audit
  through the executor on a fresh owner-created obligation
  `p6-audit-001` (nonce 7, settled, then replay blocked).
@@ -197,7 +196,7 @@ default.
  policy `p6-001` during the demo; the policy is not frozen
  now, so it cannot be demonstrated until then.
 - The contract-api corrections draft arrived
- 2026-11-05 in the sign note and was confirmed line by line
+ 2026-11-05 and was confirmed line by line
  by frontend against Master `lib.rs` and the live proofs (see
  the close confirmation below). The contract claims in this doc
  (nonce check before the state check, in-flight and PAID both
@@ -207,7 +206,7 @@ default.
 
 ## Checks
 
-- Scaffold typecheck clean (repo-root compile per the instructions, temp outDir, node_modules symlinked).
+- Scaffold typecheck clean (repo-root compile, temp outDir, node_modules symlinked).
 - Frontend typecheck clean.
 - Conformance 6/6.
 - Jest (new suites: attacks, executor, playground client).
@@ -220,13 +219,12 @@ default.
  401, invalid input 400 with no execution, rate limit 429
  on the sixth call in 60 seconds.
 - No contract changes, no frozen doc changes. frontend signed
- 2026-11-05 after the section 2.6 audit PASS (see the close
+ 2026-11-05 after the acceptance audit PASS (see the close
  confirmation below).
 
 ## close confirmation (frontend)
 
-The contract-api corrections draft (supplied 2026-11-05
-in the sign note, not committed) was verified line by line by
+The contract-api corrections draft (supplied 2026-11-05, not committed) was verified line by line by
 frontend against Master lib.rs (cc29f2e) and live RPC reads and
 is confirmed: the nonce check now runs before the state check,
 the later in_flight require was removed as unreachable, no
@@ -234,10 +232,9 @@ other check changed order or code, RECONCILIATION_REQUIRED
 keeps in_flight true, and the nonce is still not permanently
 consumed on dispatch. The draft is NOT yet applied to
 docs/contract-api.md; application happens at close on
-Master, after frontend confirmation, following the close
-pattern. frontend signed in docs/ledger.md on 2026-11-05. contract
+Master, after frontend confirmation. frontend signed in docs/ledger.md on 2026-11-05. contract
 signature, draft application, and merge remain outstanding, so
-is not closed by this signature. The section 2.6 audit
+this work is not closed by this signature. The acceptance audit
 PASS (28 checks, one finding, fixed as 14b16fb) is recorded in
-the audit file supplied 2026-11-05 and in the ledger row; frontend independently re-queried all 17 audit transactions from
+the audit file supplied 2026-11-05 and in the ledger row; the frontend independently re-queried all 17 audit transactions from
 chain with 0 mismatches.

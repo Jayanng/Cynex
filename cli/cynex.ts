@@ -1,5 +1,5 @@
 /**
- * Cynex CLI,  scaffold plus  live verification plus  playground plus  budget plus  verifier.
+ * Cynex CLI, scaffold plus live verification plus playground plus budget plus verifier.
  *
  * Commands:
  *   verify-receipts <receipts.json>
@@ -28,8 +28,7 @@
  *     fails the run (fail-closed); re-running passes.
  *   verify --csv <vaultId>
  *   verify --csv --file <receipts.json>
- *     The canonical cynex-verify entry point (plan section
- *     3.1.10). Live mode reads the vault receipts and prints
+ *     The canonical cynex-verify entry point. Live mode reads the vault receipts and prints
  *     the same frozen CSV as verify-live; file mode replays
  *     a receipts JSON file and prints the same CSV instead of
  *     the per-index lines verify-receipts prints. Exits
@@ -1068,7 +1067,7 @@ async function reputationSnapshotCmd(args: string[]): Promise<number> {
       "snapshot " + accountId + ": " + (snap.exists ? "exists" : "not found") + " block " + snap.blockHeight,
     );
   }
-  const file = takeSnapshot(accounts, "side-b", rpcUrl, fetchedAt);
+  const file = takeSnapshot(accounts, "cynex", rpcUrl, fetchedAt);
   mkdirSync(dir, { recursive: true });
   const path = dir + "/" + snapshotFileName(fetchedAt);
   writeFileSync(path, JSON.stringify(file, null, 2) + "\n");

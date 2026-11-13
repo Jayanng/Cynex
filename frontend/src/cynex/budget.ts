@@ -1,5 +1,5 @@
 /**
- * Cynex per-token budget display,  frontend.
+ * Cynex per-token budget display, frontend.
  *
  * Pure rendering of a budget read from the contract: the balances view
  * returns spent, reserved, limit, funded, and native_headroom for one
