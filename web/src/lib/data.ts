@@ -444,7 +444,7 @@ export const DOC_COMMITS: Record<string, string> = {
   p10proof: "fc3ceac",
   reputation: "620fcb3 (README.md), 69b9fd7 (docs/reputation-engine.md, docs/scorecard-code-change-recency.md)",
   receipts: "6b40576",
-  scorecard: "e26edfb", // docs/scorecard-code-change-recency.md (69b9fd7) and docs/demo-and-submission.md (e26edfb, latest)
+  scorecard: "e26edfb", // docs/scorecard-code-change-recency.md (69b9fd7)
   mcp: "ddcbcd3", // services/mcp/README.md (ddcbcd3), SECURITY.md 4dec900
   consoleCli: "b0c7cb1", // agent/console.ts and cli/cynex.ts
 };

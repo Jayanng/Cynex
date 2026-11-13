@@ -661,7 +661,7 @@ Status: merged to Master as c980ffc on 2026-11-10. Section 2.6 audit PASS WITH F
 frontend delivered:
 
 - The new frontend: the Vite React app in `web/` (entry `web/index.html`), four pages (Landing, Demo with Guided/Sandbox
- toggle, Docs, Proof). It presents Cynex as a product: no build-plan or submission-process copy in the app (the only frontend reference is the file name `docs/demo-and-submission.md`). Refusal panel
+ toggle, Docs, Proof). It presents Cynex as a product: no build-plan or submission-process copy in the app. Refusal panel
  first on Landing with the real refusal tx
  `AFYAq8Sju41NjBFwPmTHbJ1psmsYQWjVdBhmXBZbpa7S`
  (`ERR_RECIPIENT_SUBSTITUTION`), "0 tokens moved", and a
@@ -703,7 +703,7 @@ frontend delivered:
  what requires a local command) is in the README; the hosted
  demo URL is added once hosting is chosen, and the expanded
  secrets audit runs before go-live.
-- Full frontend record: `docs/demo-and-submission.md`.
+- Full frontend record: `docs/demo-script.md`, `docs/demo-proof.md`.
 
 Live state re-verified by frontend, 2026-11-09, after the rebase
 (RPC `https://test.rpc.fastnear.com`, block about 276958870): both
