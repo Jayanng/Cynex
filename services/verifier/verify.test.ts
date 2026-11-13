@@ -1,6 +1,6 @@
 /**
- * cynex-verify tests,  frontend. The chain check is the
- * frozen receipt hash (plan section 3.1.10): each receipt's
+ * cynex-verify tests. The chain check is the
+ * frozen receipt hash: each receipt's
  * prev_hash must equal the recomputed hash of the previous
  * receipt, and the index must be the next one. A tamper in a
  * receipt is therefore detected at the NEXT receipt, whose

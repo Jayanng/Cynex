@@ -1,5 +1,5 @@
 /**
- * Cynex playground client,  frontend. Browser only, fetch
+ * Cynex playground client, frontend. Browser only, fetch
  * and DOM, no near-api-js, no keys: the browser holds no key
  * and makes no chain calls itself. Every settle goes through
  * the executor (POST /settle), which validates, rate-limits,
@@ -197,8 +197,8 @@ export function renderTestMatrix(id: string, vaults: DemoVault[]): void {
 }
 
 /**
- * Tamper-and-detect in the browser. The frozen receipt hash
- * (plan section 3.1.10), implemented with Web Crypto so the
+ * Tamper-and-detect in the browser. The frozen receipt hash,
+ * implemented with Web Crypto so the
  * judge can verify a receipt chain without the executor:
  * SHA-256 over index_u64_BE || prev_hash_32_bytes ||
  * obligation_id / recipient / token_id / tx_ref each as

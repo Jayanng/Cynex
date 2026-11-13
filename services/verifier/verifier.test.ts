@@ -1,5 +1,5 @@
 /**
- * Tests for the  real verifier.
+ * Tests for the real verifier.
  * SHA-256 is computed over real artifact bytes, the result is bound
  * to the settlement digest and the pending request, and the trust
  * mode is TRUSTED_RELAYER, never silently downgraded.

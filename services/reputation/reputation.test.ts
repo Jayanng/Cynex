@@ -1,5 +1,5 @@
 /**
- * Reputation engine tests,  frontend.
+ * Reputation engine tests, frontend.
  *
  * The stub sources here stand in for external reads (RPC, the
  * receipts view, snapshot files, a blocklist fetch) so the verdict

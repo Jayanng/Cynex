@@ -1,5 +1,5 @@
 /**
- * Cynex executor backend,  frontend. Plan section 3.1.11.
+ * Cynex executor backend.
  *
  * A small local backend that runs the CLI and submits the
  * agent's settle transactions. The agent's scoped function-call

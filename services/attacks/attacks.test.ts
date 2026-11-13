@@ -1,5 +1,5 @@
 /**
- * Tests for the  attack runner core. Pure functions only:
+ * Tests for the attack runner core. Pure functions only:
  * no network, no signing, no shell. The live behaviour (real
  * settle transactions, real reason codes) is proven by the
  * runner's audit run, not by these tests.

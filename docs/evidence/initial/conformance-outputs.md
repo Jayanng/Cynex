@@ -59,5 +59,5 @@ prev_hash, obl-001, acme-supplies.testnet, 250000000, usdc.fakes.testnet,
 ## Status
 
 mirror is complete for frontend as defined above. Joint sign-off
-on docs/contract-api.md still needs both sides, so is not
-closed by this evidence file alone.
+on docs/contract-api.md still needs contract and frontend, so this
+work is not closed by this evidence file alone.

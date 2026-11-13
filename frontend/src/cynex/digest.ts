@@ -1,8 +1,8 @@
 /**
- * Cynex settlement digest — frontend TypeScript mirror,  DRAFT.
+ * Cynex settlement digest — frontend TypeScript mirror, DRAFT.
  *
  * Implements the frozen settlement digest in docs/contract-api.md
- * (, commit 5eee26a) and Rust schemas/cynex-v1.0.0/src/lib.rs.
+ * (commit 5eee26a) and Rust schemas/cynex-v1.0.0/src/lib.rs.
  * Conformance is checked against the frozen 6 vectors in
  * tests/test-vectors/vectors.json, not against frontend draft vectors.
  *

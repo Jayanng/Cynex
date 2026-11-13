@@ -1,4 +1,4 @@
-# Live facts evidence (, 2026-11-03, testnet RPC)
+# Live facts evidence (2026-11-03, testnet RPC)
 
 usdc.fakes.testnet:
  code_hash: E1E1CJYxT5FjzVSF55QoEWzv6dbqTe2yB6Hpmjks7JJ7

@@ -1,5 +1,5 @@
 /**
- * Live reputation sources,  frontend.
+ * Live reputation sources, frontend.
  *
  * Builds the ReputationSources object from real reads: the RPC
  * view_account call, the contract receipts view paginated from

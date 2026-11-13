@@ -1,5 +1,5 @@
 /**
- * Reputation snapshots,  frontend.
+ * Reputation snapshots, frontend.
  *
  * A snapshot is a dated, checkable record of what the chain said
  * about an account at one moment. It is the only source for the

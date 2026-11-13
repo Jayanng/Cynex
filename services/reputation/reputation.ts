@@ -1,9 +1,9 @@
 /**
- * Reputation service,  frontend, fifth signal added by the
+ * Reputation service, frontend, fifth signal added by the
  * scorecard brief (code-change recency).
  *
  * Real counterparty signals, scoped to what we can actually source
- * (plan 3.1.9). Five signals:
+ * (docs/reputation-engine.md). Five signals:
  *
  *   1. account_existence: does the account exist right now, and what
  *      is its current code hash (RPC view_account, current state

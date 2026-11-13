@@ -1,5 +1,5 @@
 /**
- * Snapshot tests,  frontend.
+ * Snapshot tests, frontend.
  *
  * Covers the snapshot format rules (every field required, a
  * missing account records a null code hash), the file naming, and
@@ -39,7 +39,7 @@ describe("takeSnapshot format rules", () => {
             fetched_at: "2026-11-06T06:00:00.000Z",
           },
         ],
-        "side-b",
+        "cynex",
         "https://test.rpc.fastnear.com",
         "2026-11-06T06:00:00.000Z",
       ),
@@ -59,7 +59,7 @@ describe("takeSnapshot format rules", () => {
             fetched_at: "2026-11-06T06:00:00.000Z",
           },
         ],
-        "side-b",
+        "cynex",
         "https://test.rpc.fastnear.com",
         "2026-11-06T06:00:00.000Z",
       ),
@@ -92,7 +92,7 @@ describe("snapshot round trip and first seen", () => {
           fetched_at: "2026-11-06T06:00:00.000Z",
         },
       ],
-      "side-b",
+      "cynex",
       "https://test.rpc.fastnear.com",
       "2026-11-06T06:00:00.000Z",
     );
@@ -108,7 +108,7 @@ describe("snapshot round trip and first seen", () => {
           fetched_at: "2026-11-06T07:00:00.000Z",
         },
       ],
-      "side-b",
+      "cynex",
       "https://test.rpc.fastnear.com",
       "2026-11-06T07:00:00.000Z",
     );
@@ -149,7 +149,7 @@ describe("snapshot round trip and first seen", () => {
     mkdirSync(badDir, { recursive: true });
     writeFileSync(
       join(badDir, "2026-11-06-060000Z.json"),
-      JSON.stringify({ taken_by: "side-b", source_rpc: "https://test.rpc.fastnear.com" }),
+      JSON.stringify({ taken_by: "cynex", source_rpc: "https://test.rpc.fastnear.com" }),
     );
     expect(() => readSnapshots(badDir, "someone.testnet")).toThrow("missing");
     rmSync(badDir, { recursive: true, force: true });

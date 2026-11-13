@@ -12,13 +12,13 @@ vault (`cynex-testvault.cynexmaster.testnet`, code hash
 `G3Mt2gKs94C61Se4oLWvMUgR2Bfv2djdFQLz4TVrDH3E`). frontend queried
 each transaction hash and read each obligation live afterwards;
 the codes, the proposed parameters, and the states below are
-what the chain returns, not what the instructions claimed.
+what the chain returns, not what was claimed.
 
 Every one of the six failed on chain, so none of them moved
 tokens: a failed settle runs no `ft_transfer`. The before and
 after balances for a failed transaction are therefore the same
 value; the exact balance at each transaction's block is not on
-record from frontend side, so this table records "unchanged"
+record here, so this table records "unchanged"
 rather than inventing a number. The recipient balance read live
 by frontend on 2026-11-05 is 977004100. The only successful settle
 in this window is `p6-obl-003` (PAID on the test vault), which
@@ -51,9 +51,9 @@ Notes on the baseline:
 
 ## Runner live run
 
-The first runner live run is the section 2.6 audit, recorded below. The runner needs the agent key, which
+The first runner live run is the acceptance audit, recorded below. The runner needs the agent key, which
 is held by the contract side; there are no key files on the frontend
-machine, so the end-to-end run is the section 2.6 audit step.
+machine, so the end-to-end run is the acceptance audit step.
 Run it on the test vault first, then production for the
 rejections only:
 
@@ -72,9 +72,8 @@ without `--allow-production-settle`.
 
 ## Runner live run, acceptance audit, 2026-11-05
 
-The runner's live run happened in the acceptance audit (PR #7,
-head 4416385), run by contract with the agent key from the compiled
-PR code. frontend re-queried every transaction below from the chain
+The runner's live run happened in the acceptance audit (head 4416385),
+run by the contract side with the agent key from the compiled code. frontend re-queried every transaction below from the chain
 and read the final state live. Balances are
 acme-supplies.testnet `ft_balance_of`, read before and after each
 call by the runner.
@@ -109,7 +108,7 @@ After: policy-001 spent 975001000, `p5-prod-001` spent 0,
 verify-live 8 receipts, all true; acme 977005100, unchanged by
 the production run. No tokens moved on production.
 
-Executor live, same audit: a valid wrong-recipient settle via
+Executor live, same run: a valid wrong-recipient settle via
 POST `/settle` on `p6-obl-001`, tx
 7Amj8cteMVq4oait1rNKhZgDuXNCGayzgsVnRxE91LtD,
 `ERR_RECIPIENT_SUBSTITUTION`, READY, 977005100 to 977005100,
@@ -128,7 +127,7 @@ F19Eeq8htyztLCxhpvpytHGAzUdvrBGGBdacdj3qarq, submit ALLOWED
 AA2t2h7XJfSU7w9pcFGcis9Q99Ax7q9ra9MNzi9LGg59, nonce 7, amount
 1000, acme-supplies.testnet).
 
-Final live state after the audit (read by frontend): acme
+Final live state after the run (read by frontend): acme
 977006100, up 2000 from 977004100, 1000 from the runner happy
 path on `p6-obl-006` and 1000 from the playground happy path on
 `p6-audit-001`. Policy `p6-001` spent 3000. Production receipts
