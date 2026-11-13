@@ -717,6 +717,8 @@ Frontend typecheck clean. Conformance 6/6.
 
 Sign-off: the owner (frontend acceptance audit), 2026-11-09 - PASS WITH FIXES. The three design fixes landed in the b8b9a54 rebuild; the dark console rebuild (398d313) later dropped the Docs minmax grid and the HexHash receipt display, and only the policy cell on get_policy survives in the current app (see the status line above).
 
+Sign-off: rastadev (Lane B), 2026-11-13. Lane B work complete and verified: the polished frontend is merged and live (PRs #18, #21, #22, #25, #27); the 60-second demo video final cut is verified against the frozen candidate (sha256 b007d3e8..., note cynex-demo-video-60s-final-VERIFICATION.md); the README carries the Judges, start here block and the hosted demo URL; the release candidate is re-frozen at Master 4e094c5 (freeze note cynex-freeze-4e094c5.md; Jest 654 passed, 1 failed, 3 skipped, 658 total; the 1 failure is the known flaky executor live-RPC test). Acceptance basis, stated plainly: frontend acceptance audit by the owner, 2026-11-09 (PASS WITH FIXES); explicit approval by the owner and CI green for PR #27; merges by the owner of PRs #23, #28, #29, #30, #31. PRs #21, #22 and #25 were merged by frontend and carry no separate acceptance audit record, as the Later-merges section states. Caveat: live mode ships disabled — DEMO_TOKEN is empty; the demo key and the two obligation ids were never supplied. Johnson proved the live path on chain himself (test-vault receipts demo-live-001..010, 100 units each to cynex-agent2.cynexmaster.testnet). Lane A line not signed here.
+
 ## Later merges (no separate row)
 
 - PR #21 (frontend website improvements), merged 2026-11-11 11:42 +0100 as 4157e8d, by frontend. No acceptance audit record exists for this PR.
